@@ -1,21 +1,17 @@
 import { useState, useRef } from 'react'
 import { Mic, Square, Trash2, Play, Pause } from 'lucide-react'
 import { voicePreviewStore as voiceBlobStore, resolveFileUrl } from '../../utils/sessionStore'
+import { storeFile } from '../../utils/fileStorage'
 
 // Re-export for backward compat with any existing imports
 export { voiceBlobStore }
 
-function persistVoiceBlob(id: string, blob: Blob) {
-  const reader = new FileReader()
-  reader.onload = () => {
-    const dataUrl = reader.result as string
-    try {
-      const store = JSON.parse(localStorage.getItem('fenster_file_data') ?? '{}')
-      store[id] = { name: id, type: blob.type || 'audio/webm', size: blob.size, dataUrl, uploadedAt: new Date().toISOString() }
-      localStorage.setItem('fenster_file_data', JSON.stringify(store))
-    } catch { /* storage full — voice only available this session */ }
-  }
-  reader.readAsDataURL(blob)
+async function persistVoiceBlob(id: string, blob: Blob) {
+  try {
+    const file = new File([blob], id, { type: blob.type || 'audio/webm' })
+    const url  = await storeFile(file)
+    voiceBlobStore.set(id, url)
+  } catch { /* keep the blob:// url for this session */ }
 }
 
 function VoiceNoteItem({ id, onRemove }: { id: string; onRemove: () => void }) {

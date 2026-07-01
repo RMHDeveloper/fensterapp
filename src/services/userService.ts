@@ -1,16 +1,13 @@
 import { supabase } from '../lib/supabase'
 import type { ManagedUser } from '../types'
-import { loadFromStorage, saveToStorage, STORAGE_KEYS } from '../utils/storage'
 
 const TABLE = 'fenster_managed_users'
 
 export async function getAllManagedUsers(): Promise<ManagedUser[]> {
-  if (!supabase) return loadFromStorage<ManagedUser[]>(STORAGE_KEYS.FENSTER_USERS, [])
+  if (!supabase) return []
   const { data, error } = await supabase.from(TABLE).select('data').order('created_at', { ascending: false })
-  if (error || !data || data.length === 0) return loadFromStorage<ManagedUser[]>(STORAGE_KEYS.FENSTER_USERS, [])
-  const rows = data.map(r => r.data as ManagedUser)
-  saveToStorage(STORAGE_KEYS.FENSTER_USERS, rows)
-  return rows
+  if (error || !data) return []
+  return data.map(r => r.data as ManagedUser)
 }
 
 export async function upsertManagedUser(user: ManagedUser): Promise<void> {

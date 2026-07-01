@@ -1,11 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react'
 import type { Task, TaskStatus, ProductionItem, ProductionStage, Lead, LeadStatus, Payment, Project, Mistake } from '../types'
 import {
-  loadTasks, loadProduction, loadLeads, loadPayments, loadProjects, loadMistakes,
-  saveToStorage, initStorageIfEmpty, resetMockData, STORAGE_KEYS,
-} from '../utils/storage'
-import { seedDefaultUsers } from '../utils/userStorage'
-import {
   onEngineerSiteVisitComplete,
   onQuotationSentToOwner,
   onOwnerApprovedQuotation,
@@ -39,6 +34,7 @@ interface AppDataContextValue {
   updateProject:         (projectId: string, updates: Partial<Project>) => void
   addLead:               (lead: Omit<Lead, 'id'>) => void
   updateLeadStatus:      (leadId: string, status: LeadStatus, extra?: { followUpDate?: string; lostReason?: string }) => void
+  updateLead:            (leadId: string, updates: Partial<Lead>) => void
   updatePaymentAmount:   (paymentId: string, amount: number, method: string) => void
   addTask:               (task: Omit<Task, 'id'>) => void
   addProject:            (project: Omit<Project, 'id'>) => string
@@ -51,14 +47,12 @@ interface AppDataContextValue {
 const AppDataContext = createContext<AppDataContextValue | null>(null)
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
-  useEffect(() => { initStorageIfEmpty(); seedDefaultUsers() }, [])
-
-  const [tasks,      setTasks]      = useState<Task[]>(() => loadTasks())
-  const [production, setProduction] = useState<ProductionItem[]>(() => loadProduction())
-  const [leads,      setLeads]      = useState<Lead[]>(() => loadLeads())
-  const [payments,   setPayments]   = useState<Payment[]>(() => loadPayments())
-  const [projects,   setProjects]   = useState<Project[]>(() => loadProjects())
-  const [mistakes,   setMistakes]   = useState<Mistake[]>(() => loadMistakes())
+  const [tasks,      setTasks]      = useState<Task[]>([])
+  const [production, setProduction] = useState<ProductionItem[]>([])
+  const [leads,      setLeads]      = useState<Lead[]>([])
+  const [payments,   setPayments]   = useState<Payment[]>([])
+  const [projects,   setProjects]   = useState<Project[]>([])
+  const [mistakes,   setMistakes]   = useState<Mistake[]>([])
   const [isSyncing,  setIsSyncing]  = useState(false)
   const [isSupabaseReady, setIsSupabaseReady] = useState(false)
 
@@ -74,14 +68,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => { paymentsRef.current = payments }, [payments])
   useEffect(() => { mistakesRef.current = mistakes }, [mistakes])
 
-  // Persist to localStorage whenever state changes
-  useEffect(() => { saveToStorage(STORAGE_KEYS.TASKS,      tasks)      }, [tasks])
-  useEffect(() => { saveToStorage(STORAGE_KEYS.PRODUCTION, production) }, [production])
-  useEffect(() => { saveToStorage(STORAGE_KEYS.LEADS,      leads)      }, [leads])
-  useEffect(() => { saveToStorage(STORAGE_KEYS.PAYMENTS,   payments)   }, [payments])
-  useEffect(() => { saveToStorage(STORAGE_KEYS.PROJECTS,   projects)   }, [projects])
-  useEffect(() => { saveToStorage(STORAGE_KEYS.MISTAKES,   mistakes)   }, [mistakes])
-
   // ── Supabase: initial fetch + realtime ────────────────────────────────────
   async function refetchAll(): Promise<void> {
     if (!isSupabaseConfigured) return
@@ -95,12 +81,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         getAllMistakes(),
         getAllProduction(),
       ])
-      if (sbProjects.length    > 0) setProjects(sbProjects)
-      if (sbTasks.length       > 0) setTasks(sbTasks)
-      if (sbLeads.length       > 0) setLeads(sbLeads)
-      if (sbPayments.length    > 0) setPayments(sbPayments)
-      if (sbMistakes.length    > 0) setMistakes(sbMistakes)
-      if (sbProduction.length  > 0) setProduction(sbProduction)
+      setProjects(sbProjects)
+      setTasks(sbTasks)
+      setLeads(sbLeads)
+      setPayments(sbPayments)
+      setMistakes(sbMistakes)
+      setProduction(sbProduction)
     } catch (err) {
       console.warn('[Fenster] Supabase fetch error:', err)
     } finally {
@@ -276,6 +262,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     }))
   }
 
+  function updateLead(leadId: string, updates: Partial<Lead>) {
+    setLeads(prev => prev.map(l => {
+      if (l.id !== leadId) return l
+      const updated = { ...l, ...updates }
+      upsertLead(updated)
+      return updated
+    }))
+  }
+
   function updatePaymentAmount(paymentId: string, amount: number, method: string) {
     setPayments(prev => prev.map(p => {
       if (p.id !== paymentId) return p
@@ -314,13 +309,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }
 
   function resetAllData() {
-    resetMockData()
-    setTasks(loadTasks())
-    setProduction(loadProduction())
-    setLeads(loadLeads())
-    setPayments(loadPayments())
-    setProjects(loadProjects())
-    setMistakes(loadMistakes())
+    setTasks([])
+    setProduction([])
+    setLeads([])
+    setPayments([])
+    setProjects([])
+    setMistakes([])
   }
 
   function completeWorkflowStep(task: Task, outcome: string, extraData: Record<string, unknown>) {
@@ -383,7 +377,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       tasks, production, leads, payments, projects, mistakes,
       isSyncing, isSupabaseReady,
       updateTaskStatus, updateTask, updateProductionStage, updateProject,
-      addLead, updateLeadStatus,
+      addLead, updateLeadStatus, updateLead,
       updatePaymentAmount, addTask, addProject, addMistake, resetAllData,
       refetchAll,
       completeWorkflowStep,

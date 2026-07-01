@@ -3,7 +3,6 @@ import { Bell, LogOut, RefreshCw, ChevronRight, UserCog, Users, UserPlus, Pencil
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useAppData } from '../../context/AppDataContext'
-import { clearAllData } from '../../utils/storage'
 import { loadManagedUsers, saveManagedUsers } from '../../utils/userStorage'
 import { storeFile } from '../../utils/fileStorage'
 import { ROLE_LABELS, ROLE_DESCRIPTIONS } from '../../data/permissions'
@@ -105,7 +104,6 @@ export default function SettingsScreen() {
 
   function handleReset() {
     setShowReset(false)
-    clearAllData()
     resetAllData()
     setSnack({ open: true, msg: 'All data cleared.' })
     navigate('/projects', { replace: true })

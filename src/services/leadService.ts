@@ -1,16 +1,13 @@
 import { supabase } from '../lib/supabase'
 import type { Lead } from '../types'
-import { loadFromStorage, saveToStorage, STORAGE_KEYS } from '../utils/storage'
 
 const TABLE = 'fenster_leads'
 
 export async function getAllLeads(): Promise<Lead[]> {
-  if (!supabase) return loadFromStorage<Lead[]>(STORAGE_KEYS.LEADS, [])
+  if (!supabase) return []
   const { data, error } = await supabase.from(TABLE).select('data').order('created_at', { ascending: false })
-  if (error || !data || data.length === 0) return loadFromStorage<Lead[]>(STORAGE_KEYS.LEADS, [])
-  const rows = data.map(r => r.data as Lead)
-  saveToStorage(STORAGE_KEYS.LEADS, rows)
-  return rows
+  if (error || !data) return []
+  return data.map(r => r.data as Lead)
 }
 
 export async function upsertLead(lead: Lead): Promise<void> {

@@ -1,21 +1,29 @@
 import type { ManagedUser, UserRole } from '../types'
-import { loadFromStorage, saveToStorage, STORAGE_KEYS } from './storage'
-import { upsertManagedUsers } from '../services/userService'
+import { getAllManagedUsers, upsertManagedUsers } from '../services/userService'
+
+let _cache: ManagedUser[] = []
 
 export function loadManagedUsers(): ManagedUser[] {
-  return loadFromStorage<ManagedUser[]>(STORAGE_KEYS.FENSTER_USERS, [])
+  return _cache
 }
 
 export function saveManagedUsers(users: ManagedUser[]): void {
-  saveToStorage(STORAGE_KEYS.FENSTER_USERS, users)
-  // Sync to Supabase in background (no await — fire and forget)
+  _cache = users
   upsertManagedUsers(users).catch(() => {})
 }
 
-/** Returns true if the email is already taken by another managed user. */
+export async function initUsersFromSupabase(): Promise<void> {
+  const users = await getAllManagedUsers()
+  if (users.length > 0) {
+    _cache = users
+  } else {
+    seedDefaultUsers()
+  }
+}
+
 export function isEmailTaken(email: string, excludeId?: string): boolean {
   const norm = email.trim().toLowerCase()
-  return loadManagedUsers().some(u => u.email.toLowerCase() === norm && u.id !== excludeId)
+  return _cache.some(u => u.email.toLowerCase() === norm && u.id !== excludeId)
 }
 
 // ─── Production users — one per role ──────────────────────────────────────────
@@ -115,13 +123,8 @@ export const DEFAULT_PRODUCTION_USERS: ManagedUser[] = [
   },
 ]
 
-/**
- * Seeds DEFAULT_PRODUCTION_USERS into localStorage + Supabase on first boot.
- * Only runs if no managed users exist yet.
- */
 export function seedDefaultUsers(): void {
-  const existing = loadManagedUsers()
-  if (existing.length > 0) return   // already seeded — don't overwrite
+  if (_cache.length > 0) return
   saveManagedUsers(DEFAULT_PRODUCTION_USERS)
 }
 
@@ -149,9 +152,8 @@ export const DISPLAY_ROLE_TO_INTERNAL: Record<string, UserRole> = {
   'Installation Technician':      'technician',
 }
 
-// Returns full names of active managed users with a given display role
 export function getActiveManagedUsersByDisplayRole(displayRole: string): string[] {
-  return loadManagedUsers()
+  return _cache
     .filter(u => u.status === 'active' && u.displayRole === displayRole)
     .map(u => u.fullName)
 }

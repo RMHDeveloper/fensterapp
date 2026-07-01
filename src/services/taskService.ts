@@ -1,16 +1,13 @@
 import { supabase } from '../lib/supabase'
 import type { Task } from '../types'
-import { loadFromStorage, saveToStorage, STORAGE_KEYS } from '../utils/storage'
 
 const TABLE = 'fenster_tasks'
 
 export async function getAllTasks(): Promise<Task[]> {
-  if (!supabase) return loadFromStorage<Task[]>(STORAGE_KEYS.TASKS, [])
+  if (!supabase) return []
   const { data, error } = await supabase.from(TABLE).select('data').order('created_at', { ascending: false })
-  if (error || !data || data.length === 0) return loadFromStorage<Task[]>(STORAGE_KEYS.TASKS, [])
-  const rows = data.map(r => r.data as Task)
-  saveToStorage(STORAGE_KEYS.TASKS, rows)
-  return rows
+  if (error || !data) return []
+  return data.map(r => r.data as Task)
 }
 
 export async function upsertTask(task: Task): Promise<void> {

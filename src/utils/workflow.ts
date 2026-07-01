@@ -589,7 +589,7 @@ export function linkTaskToProject(
   _taskId: string,
   _projectId: string,
 ): void {
-  // In the context/localStorage model, tasks carry projectId — no separate linking needed.
+  // Tasks carry projectId — no separate linking needed.
   // This function is here as a named export so callers compile.
 }
 

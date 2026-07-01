@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Plus, UserPlus, HardHat } from 'lucide-react'
+import { Plus, UserPlus, HardHat, Phone, Pencil } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
+import { useAuth } from '../../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { PermissionGate } from '../../components/layout/PermissionGate'
 import { StatusBadge } from '../../components/badges/StatusBadge'
@@ -10,12 +11,13 @@ import { BottomSheet } from '../../components/feedback/BottomSheet'
 import { Dialog } from '../../components/feedback/Dialog'
 import { Snackbar } from '../../components/feedback/Snackbar'
 import { AppHeader } from '../../components/layout/AppHeader'
+import { loadManagedUsers } from '../../utils/userStorage'
 import type { Lead, LeadStatus, LeadSource, LeadInterest } from '../../types'
 
 type Filter = 'all' | LeadStatus
 
 const CHIPS = [
-  { value: 'all'       as Filter, label: 'All'       },
+  { value: 'all'       as Filter, label: 'Active'    },
   { value: 'new'       as Filter, label: 'New'       },
   { value: 'contacted' as Filter, label: 'Contacted' },
   { value: 'qualified' as Filter, label: 'Qualified' },
@@ -28,8 +30,6 @@ const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: 'walk_in',           label: '🚶 Walk-in'          },
   { value: 'online',            label: '🌐 Online'           },
   { value: 'whatsapp',          label: '💬 WhatsApp'         },
-  { value: 'instagram',         label: '📸 Instagram'        },
-  { value: 'facebook',          label: '👍 Facebook'         },
   { value: 'existing_customer', label: '⭐ Existing Customer' },
   { value: 'other',             label: '📌 Other'            },
 ]
@@ -54,8 +54,16 @@ function InterestBadge({ interest }: { interest?: LeadInterest }) {
 }
 
 export default function LeadsScreen() {
-  const { leads, updateLeadStatus, addProject, addTask, addLead } = useAppData()
+  const { leads, updateLeadStatus, updateLead, addProject, addTask, addLead } = useAppData()
+  const { user } = useAuth()
   const navigate = useNavigate()
+
+  const isMdEd = user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED')
+  const isLO   = user?.role === 'lead_manager'
+  const canEditLead = isMdEd || isLO
+  const leadManagers = loadManagedUsers()
+    .filter(u => u.status === 'active' && u.role === 'lead_manager')
+    .map(u => u.fullName)
   const [filter,   setFilter]   = useState<Filter>('all')
   const [search,   setSearch]   = useState('')
   const [selected, setSelected] = useState<Lead | null>(null)
@@ -79,11 +87,23 @@ export default function LeadsScreen() {
   const [newPhone,    setNewPhone]    = useState('')
   const [newEmail,    setNewEmail]    = useState('')
   const [newCity,     setNewCity]     = useState('')
-  const [newBudget,   setNewBudget]   = useState('')
   const [newReq,      setNewReq]      = useState('')
   const [newNotes,    setNewNotes]    = useState('')
   const [newSource,   setNewSource]   = useState<LeadSource>('cold_call')
   const [newInterest, setNewInterest] = useState<LeadInterest>('medium')
+  const [newAssignee, setNewAssignee] = useState('')
+
+  // Edit lead form
+  const [showEdit,      setShowEdit]      = useState(false)
+  const [editName,      setEditName]      = useState('')
+  const [editPhone,     setEditPhone]     = useState('')
+  const [editEmail,     setEditEmail]     = useState('')
+  const [editCity,      setEditCity]      = useState('')
+  const [editReq,       setEditReq]       = useState('')
+  const [editNotes,     setEditNotes]     = useState('')
+  const [editSource,    setEditSource]    = useState<LeadSource>('cold_call')
+  const [editInterest,  setEditInterest]  = useState<LeadInterest>('medium')
+  const [editAssignee,  setEditAssignee]  = useState('')
 
   // Convert to project form
   const [projName,     setProjName]     = useState('')
@@ -94,7 +114,7 @@ export default function LeadsScreen() {
   const [projNote,     setProjNote]     = useState('')
 
   const filtered = leads.filter(l => {
-    const matchFilter = filter === 'all' || l.status === filter
+    const matchFilter = filter === 'all' ? l.status !== 'lost' : l.status === filter
     const matchSearch = !search
       || l.name.toLowerCase().includes(search.toLowerCase())
       || l.phone.includes(search)
@@ -162,7 +182,6 @@ export default function LeadsScreen() {
       email:       newEmail.trim() || undefined,
       city:        newCity.trim(),
       location:    newCity.trim(),
-      budgetRange: newBudget.trim() || undefined,
       requirement: newReq.trim()   || 'TBD',
       notes:       newNotes.trim() || undefined,
       source:      newSource,
@@ -170,14 +189,48 @@ export default function LeadsScreen() {
       status:      'new',
       followUpDate:'TBD',
       priority:    'medium',
-      assignee:    'Sales Team',
+      assignee:    newAssignee.trim() || (isLO ? user!.name : 'Sales Team'),
       createdAt:   new Date().toLocaleDateString('en-IN'),
     })
     setNewName(''); setNewPhone(''); setNewEmail(''); setNewCity('')
-    setNewBudget(''); setNewReq(''); setNewNotes('')
+    setNewReq(''); setNewNotes(''); setNewAssignee('')
     setNewSource('cold_call'); setNewInterest('medium')
     setShowNew(false)
     setSnack({ open: true, msg: 'Lead created successfully!' })
+  }
+
+  function openEdit() {
+    if (!selected) return
+    setEditName(selected.name)
+    setEditPhone(selected.phone)
+    setEditEmail(selected.email ?? '')
+    setEditCity(selected.city)
+    setEditReq(selected.requirement)
+    setEditNotes(selected.notes ?? '')
+    setEditSource(selected.source)
+    setEditInterest(selected.interest ?? 'medium')
+    setEditAssignee(selected.assignee)
+    setShowEdit(true)
+  }
+
+  function handleSaveEdit() {
+    if (!selected || !editName.trim() || !editPhone.trim() || !editCity.trim()) return
+    const updates = {
+      name:        editName.trim(),
+      phone:       editPhone.trim(),
+      email:       editEmail.trim() || undefined,
+      city:        editCity.trim(),
+      location:    editCity.trim(),
+      requirement: editReq.trim() || 'TBD',
+      notes:       editNotes.trim() || undefined,
+      source:      editSource,
+      interest:    editInterest,
+      assignee:    editAssignee || selected.assignee,
+    }
+    updateLead(selected.id, updates)
+    setSelected(prev => prev ? { ...prev, ...updates } : prev)
+    setShowEdit(false)
+    setSnack({ open: true, msg: 'Lead updated!' })
   }
 
   function openConvert() {
@@ -222,7 +275,7 @@ export default function LeadsScreen() {
       status:            'pending',
       priority:          'high',
       dueDate:           'Today',
-      assignee:          projAssignee || 'Sales Team',
+      assignee:          projAssignee || lead?.assignee || '',
       projectId,
       projectName:       name,
       location:          projCity,
@@ -304,9 +357,17 @@ export default function LeadsScreen() {
       <BottomSheet isOpen={!!selected} onClose={() => setSelected(null)} title={selected?.name ?? ''} height="full">
         {selected && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              <StatusBadge status={selected.status} size="md" />
-              <InterestBadge interest={selected.interest} />
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <StatusBadge status={selected.status} size="md" />
+                <InterestBadge interest={selected.interest} />
+              </div>
+              {canEditLead && (
+                <button onClick={openEdit}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 active:bg-slate-50">
+                  <Pencil size={13} /> Edit
+                </button>
+              )}
             </div>
 
             <div className="bg-slate-50 rounded-2xl p-4 space-y-2.5">
@@ -351,6 +412,11 @@ export default function LeadsScreen() {
                 </div>
               </PermissionGate>
             )}
+
+            <a href={`tel:${selected.phone}`}
+              className="w-full flex items-center justify-center gap-2 bg-teal-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-teal-700">
+              <Phone size={16} /> Call {selected.name.split(' ')[0]}
+            </a>
 
             {/* Convert to Project — always shown but enabled only when qualified */}
             {selected.status !== 'won' && (
@@ -415,6 +481,84 @@ export default function LeadsScreen() {
         </div>
       </Dialog>
 
+      {/* ── Edit Lead Sheet ── */}
+      <BottomSheet isOpen={showEdit} onClose={() => setShowEdit(false)} title="Edit Lead" height="full">
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Client Name *</label>
+            <input type="text" value={editName} onChange={e => setEditName(e.target.value)} placeholder="e.g. Rajesh Kumar"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Phone Number *</label>
+            <input type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="9876543210"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Email <span className="text-slate-300 font-normal">(optional)</span></label>
+            <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="optional"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Location / City *</label>
+            <input type="text" value={editCity} onChange={e => setEditCity(e.target.value)} placeholder="e.g. Anna Nagar, Chennai"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Requirement</label>
+            <textarea rows={2} value={editReq} onChange={e => setEditReq(e.target.value)} placeholder="Describe what the client needs…"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500 mb-2 block">Lead Source</label>
+            <div className="flex flex-wrap gap-2">
+              {SOURCE_OPTIONS.map(opt => (
+                <button key={opt.value} type="button" onClick={() => setEditSource(opt.value)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors
+                    ${editSource === opt.value
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white text-slate-600 border-slate-200 active:bg-slate-50'}`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500 mb-2 block">Lead Interest</label>
+            <div className="flex gap-2">
+              {INTEREST_OPTIONS.map(opt => (
+                <button key={opt.value} type="button" onClick={() => setEditInterest(opt.value)}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold border-2 transition-colors
+                    ${editInterest === opt.value ? opt.color : 'bg-white text-slate-500 border-slate-200'}`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {isMdEd && leadManagers.length > 0 && (
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Assign To</label>
+              <select value={editAssignee} onChange={e => setEditAssignee(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 appearance-none">
+                <option value="">Select lead owner…</option>
+                {leadManagers.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Notes <span className="text-slate-300 font-normal">(optional)</span></label>
+            <textarea rows={2} value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Any additional notes…"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
+          </div>
+          <button onClick={handleSaveEdit} disabled={!editName.trim() || !editPhone.trim() || !editCity.trim()}
+            className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-indigo-700 disabled:opacity-50">
+            Save Changes
+          </button>
+        </div>
+      </BottomSheet>
+
       {/* ── Convert to Project Sheet ── */}
       <BottomSheet isOpen={showConvert} onClose={() => setShowConvert(false)} title="Convert to Project" height="full">
         <div className="space-y-4">
@@ -441,16 +585,21 @@ export default function LeadsScreen() {
             </div>
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Assignee</label>
-            <input value={projAssignee} onChange={e => setProjAssignee(e.target.value)} placeholder="Team member name"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
+            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Lead Owner</label>
+            <select value={projAssignee} onChange={e => setProjAssignee(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 appearance-none">
+              <option value="">Select lead owner…</option>
+              {leadManagers.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Note <span className="text-slate-300 font-normal">(optional)</span></label>
             <textarea rows={2} value={projNote} onChange={e => setProjNote(e.target.value)} placeholder="Any important notes…"
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
           </div>
-          <button onClick={handleSaveConvert} disabled={!projName.trim()}
+          <button onClick={handleSaveConvert} disabled={!projName.trim() || !projAssignee.trim()}
             className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-indigo-700 disabled:opacity-50">
             Convert to Project
           </button>
@@ -485,12 +634,6 @@ export default function LeadsScreen() {
             <textarea rows={2} value={newReq} onChange={e => setNewReq(e.target.value)} placeholder="Describe what the client needs…"
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
           </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Budget Range <span className="text-slate-300 font-normal">(optional)</span></label>
-            <input type="text" value={newBudget} onChange={e => setNewBudget(e.target.value)} placeholder="₹50K - 1L"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
-          </div>
-
           {/* Source */}
           <div>
             <label className="text-xs font-semibold text-slate-500 mb-2 block">Lead Source *</label>
@@ -521,13 +664,27 @@ export default function LeadsScreen() {
             </div>
           </div>
 
+          {/* Assign To — MD/ED only */}
+          {isMdEd && leadManagers.length > 0 && (
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Assign To *</label>
+              <select value={newAssignee} onChange={e => setNewAssignee(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 appearance-none">
+                <option value="">Select lead owner…</option>
+                {leadManagers.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Notes <span className="text-slate-300 font-normal">(optional)</span></label>
             <textarea rows={2} value={newNotes} onChange={e => setNewNotes(e.target.value)} placeholder="Any additional notes…"
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
           </div>
 
-          <button onClick={handleAddLead} disabled={!newName.trim() || !newPhone.trim() || !newCity.trim()}
+          <button onClick={handleAddLead} disabled={!newName.trim() || !newPhone.trim() || !newCity.trim() || (isMdEd && !newAssignee)}
             className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-indigo-700 disabled:opacity-50">
             Add Lead
           </button>

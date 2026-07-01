@@ -4,7 +4,7 @@ import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
 export default function LoginScreen() {
-  const { loginWithCredentials } = useAuth()
+  const { loginWithCredentials, isAuthReady } = useAuth()
   const navigate = useNavigate()
 
   const [email,    setEmail]    = useState('')
@@ -16,18 +16,16 @@ export default function LoginScreen() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
-    if (!email.trim())    { setError('Please enter your email.'); return }
-    if (!password)        { setError('Please enter your password.'); return }
+    if (!email.trim()) { setError('Please enter your email.'); return }
+    if (!password)     { setError('Please enter your password.'); return }
     setLoading(true)
-    setTimeout(() => {
-      const result = loginWithCredentials(email.trim(), password)
-      if (!result.success) {
-        setError(result.error ?? 'Invalid email or password.')
-        setLoading(false)
-        return
-      }
-      navigate('/home', { replace: true })
-    }, 300)
+    const result = loginWithCredentials(email.trim(), password)
+    setLoading(false)
+    if (!result.success) {
+      setError(result.error ?? 'Invalid email or password.')
+      return
+    }
+    navigate('/home', { replace: true })
   }
 
   return (
@@ -94,10 +92,10 @@ export default function LoginScreen() {
             </div>
           )}
 
-          <button type="submit" disabled={loading}
+          <button type="submit" disabled={loading || !isAuthReady}
             className="w-full flex items-center justify-center text-[#065F2D] rounded-xl font-bold text-base min-h-[52px] transition-colors mt-1 disabled:opacity-70 active:opacity-90"
             style={{ background: '#9DCD3A' }}>
-            {loading
+            {loading || !isAuthReady
               ? <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
               : 'Login to Fenster OS'}
           </button>

@@ -1,16 +1,13 @@
 import { supabase } from '../lib/supabase'
 import type { Project } from '../types'
-import { loadFromStorage, saveToStorage, STORAGE_KEYS } from '../utils/storage'
 
 const TABLE = 'fenster_projects'
 
 export async function getAllProjects(): Promise<Project[]> {
-  if (!supabase) return loadFromStorage<Project[]>(STORAGE_KEYS.PROJECTS, [])
+  if (!supabase) return []
   const { data, error } = await supabase.from(TABLE).select('data').order('created_at', { ascending: false })
-  if (error || !data || data.length === 0) return loadFromStorage<Project[]>(STORAGE_KEYS.PROJECTS, [])
-  const rows = data.map(r => r.data as Project)
-  saveToStorage(STORAGE_KEYS.PROJECTS, rows)
-  return rows
+  if (error || !data) return []
+  return data.map(r => r.data as Project)
 }
 
 export async function upsertProject(project: Project): Promise<void> {

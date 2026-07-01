@@ -1,7 +1,6 @@
 const UPLOAD_URL = (import.meta.env.VITE_UPLOAD_URL as string | undefined)?.trim()
 const UPLOAD_KEY = (import.meta.env.VITE_UPLOAD_KEY as string | undefined)?.trim()
 
-const LS_KEY = 'fenster_file_data'
 const MAX_FILE_BYTES = 3 * 1024 * 1024
 
 type FileRecord = {
@@ -12,12 +11,19 @@ type FileRecord = {
   uploadedAt: string
 }
 
+const _localStore = new Map<string, FileRecord>()
+
 function load(): Record<string, FileRecord> {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '{}') } catch { return {} }
+  return Object.fromEntries(_localStore)
 }
 
 function save(store: Record<string, FileRecord>) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(store)) } catch {}
+  _localStore.clear()
+  for (const [k, v] of Object.entries(store)) _localStore.set(k, v)
+}
+
+export function removeLocalFile(name: string) {
+  _localStore.delete(name)
 }
 
 async function uploadToHostinger(file: File): Promise<string> {
@@ -45,7 +51,6 @@ async function uploadToHostinger(file: File): Promise<string> {
   return json.url
 }
 
-// When Hostinger is NOT configured (local dev without .env.local), fall back to localStorage
 async function storeLocally(file: File): Promise<string> {
   if (file.size > MAX_FILE_BYTES) return URL.createObjectURL(file)
   return new Promise(resolve => {

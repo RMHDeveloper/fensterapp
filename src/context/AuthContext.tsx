@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import type { AuthUser, UserRole, Permission } from '../types'
 import { hasPermission } from '../utils/permissions'
-import { saveToStorage, loadFromStorage, STORAGE_KEYS } from '../utils/storage'
 import { authenticateUser } from '../data/mockUsers'
-import { loadManagedUsers } from '../utils/userStorage'
+import { loadManagedUsers, initUsersFromSupabase } from '../utils/userStorage'
+
+const SESSION_KEY = 'fenster_session'
 
 export interface LoginResult {
   success: boolean
@@ -11,29 +12,41 @@ export interface LoginResult {
 }
 
 interface AuthContextValue {
-  user: AuthUser | null
-  isLoggedIn: boolean
+  user:                 AuthUser | null
+  isLoggedIn:           boolean
+  isAuthReady:          boolean
   loginWithCredentials: (email: string, password: string) => LoginResult
-  login: (role: UserRole) => void  // kept for settings role switcher
-  logout: () => void
-  can: (permission: Permission) => boolean
-  updateProfile: (updates: Partial<Pick<AuthUser, 'name' | 'photo'>>) => void
+  login:                (role: UserRole) => void
+  logout:               () => void
+  can:                  (permission: Permission) => boolean
+  updateProfile:        (updates: Partial<Pick<AuthUser, 'name' | 'photo'>>) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const [isAuthReady, setIsAuthReady] = useState(false)
   const [user, setUser] = useState<AuthUser | null>(() => {
-    const saved = loadFromStorage<AuthUser | null>(STORAGE_KEYS.AUTH_USER, null)
-    // Migrate legacy role name
-    if (saved && (saved.role as string) === 'installation_incharge') {
-      return { ...saved, role: 'technician' }
-    }
-    return saved
+    try {
+      const saved = sessionStorage.getItem(SESSION_KEY)
+      if (!saved) return null
+      const parsed = JSON.parse(saved) as AuthUser
+      if (parsed && (parsed.role as string) === 'installation_incharge') {
+        return { ...parsed, role: 'technician' }
+      }
+      return parsed
+    } catch { return null }
   })
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.AUTH_USER, user)
+    initUsersFromSupabase().finally(() => setIsAuthReady(true))
+  }, [])
+
+  useEffect(() => {
+    try {
+      if (user) sessionStorage.setItem(SESSION_KEY, JSON.stringify(user))
+      else sessionStorage.removeItem(SESSION_KEY)
+    } catch {}
   }, [user])
 
   function loginWithCredentials(email: string, password: string): LoginResult {
@@ -57,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function login(role: UserRole) {
-    const users = loadManagedUsers()
+    const users   = loadManagedUsers()
     const account = users.find(u => u.role === role)
     if (!account) return
     const initials = account.fullName.split(' ').map((w: string) => w[0] ?? '').join('').slice(0, 2).toUpperCase()
@@ -66,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function logout() {
     setUser(null)
-    localStorage.removeItem(STORAGE_KEYS.AUTH_USER)
+    sessionStorage.removeItem(SESSION_KEY)
   }
 
   function can(permission: Permission): boolean {
@@ -79,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn: !!user, loginWithCredentials, login, logout, can, updateProfile }}>
+    <AuthContext.Provider value={{ user, isLoggedIn: !!user, isAuthReady, loginWithCredentials, login, logout, can, updateProfile }}>
       {children}
     </AuthContext.Provider>
   )

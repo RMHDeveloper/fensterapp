@@ -1,16 +1,13 @@
 import { supabase } from '../lib/supabase'
 import type { Payment } from '../types'
-import { loadFromStorage, saveToStorage, STORAGE_KEYS } from '../utils/storage'
 
 const TABLE = 'fenster_payments'
 
 export async function getAllPayments(): Promise<Payment[]> {
-  if (!supabase) return loadFromStorage<Payment[]>(STORAGE_KEYS.PAYMENTS, [])
+  if (!supabase) return []
   const { data, error } = await supabase.from(TABLE).select('data').order('created_at', { ascending: false })
-  if (error || !data || data.length === 0) return loadFromStorage<Payment[]>(STORAGE_KEYS.PAYMENTS, [])
-  const rows = data.map(r => r.data as Payment)
-  saveToStorage(STORAGE_KEYS.PAYMENTS, rows)
-  return rows
+  if (error || !data) return []
+  return data.map(r => r.data as Payment)
 }
 
 export async function upsertPayment(payment: Payment): Promise<void> {

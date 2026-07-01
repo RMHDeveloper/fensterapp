@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Upload, X, FileText, Eye, Image } from 'lucide-react'
 import { filePreviewStore as previewStore, resolveFileUrl } from '../../utils/sessionStore'
-import { storeFile, deleteRemoteFile } from '../../utils/fileStorage'
+import { storeFile, deleteRemoteFile, removeLocalFile } from '../../utils/fileStorage'
 import { FilePreviewModal } from '../feedback/FilePreviewModal'
 
 interface Props {
@@ -57,14 +57,7 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
     if (identifier.startsWith('http')) {
       deleteRemoteFile(identifier)
     } else {
-      try {
-        const raw = localStorage.getItem('fenster_file_data')
-        if (raw) {
-          const store = JSON.parse(raw)
-          delete store[identifier]
-          localStorage.setItem('fenster_file_data', JSON.stringify(store))
-        }
-      } catch {}
+      removeLocalFile(identifier)
     }
     onChange(files.filter((_, i) => i !== index))
   }

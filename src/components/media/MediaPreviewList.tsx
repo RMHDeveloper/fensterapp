@@ -28,7 +28,6 @@ export function MediaPreviewList({ files, title, emptyText, voiceStore }: Props)
         )}
         {validFiles.map((name, i) => {
           const isAudio = isAudioId(name)
-          // Check passed voiceStore → global voicePreviewStore → localStorage (via resolveFileUrl)
           const audioUrl = isAudio
             ? (voiceStore?.get(name) ?? voicePreviewStore.get(name) ?? resolveFileUrl(name))
             : undefined

@@ -1,16 +1,13 @@
 import { supabase } from '../lib/supabase'
 import type { Mistake } from '../types'
-import { loadFromStorage, saveToStorage, STORAGE_KEYS } from '../utils/storage'
 
 const TABLE = 'fenster_mistakes'
 
 export async function getAllMistakes(): Promise<Mistake[]> {
-  if (!supabase) return loadFromStorage<Mistake[]>(STORAGE_KEYS.MISTAKES, [])
+  if (!supabase) return []
   const { data, error } = await supabase.from(TABLE).select('data').order('created_at', { ascending: false })
-  if (error || !data || data.length === 0) return loadFromStorage<Mistake[]>(STORAGE_KEYS.MISTAKES, [])
-  const rows = data.map(r => r.data as Mistake)
-  saveToStorage(STORAGE_KEYS.MISTAKES, rows)
-  return rows
+  if (error || !data) return []
+  return data.map(r => r.data as Mistake)
 }
 
 export async function upsertMistake(mistake: Mistake): Promise<void> {
