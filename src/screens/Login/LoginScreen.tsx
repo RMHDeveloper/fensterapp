@@ -40,7 +40,7 @@ export default function LoginScreen() {
             style={{ height: 64, maxWidth: 240 }}
           />
         </div>
-        <p className="text-green-200 text-sm mt-1">Operations Workflow</p>
+        <p className="text-green-200 text-sm mt-1">Operating System</p>
       </div>
 
       {/* Form */}
