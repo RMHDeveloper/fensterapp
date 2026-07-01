@@ -38,7 +38,7 @@ interface AppDataContextValue {
   updateProductionStage: (itemId: string, stage: ProductionStage, status?: 'pending' | 'started' | 'done') => void
   updateProject:         (projectId: string, updates: Partial<Project>) => void
   addLead:               (lead: Omit<Lead, 'id'>) => void
-  updateLeadStatus:      (leadId: string, status: LeadStatus) => void
+  updateLeadStatus:      (leadId: string, status: LeadStatus, extra?: { followUpDate?: string; lostReason?: string }) => void
   updatePaymentAmount:   (paymentId: string, amount: number, method: string) => void
   addTask:               (task: Omit<Task, 'id'>) => void
   addProject:            (project: Omit<Project, 'id'>) => string
@@ -267,10 +267,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     upsertLead(newLead)
   }
 
-  function updateLeadStatus(leadId: string, status: LeadStatus) {
+  function updateLeadStatus(leadId: string, status: LeadStatus, extra?: { followUpDate?: string; lostReason?: string }) {
     setLeads(prev => prev.map(l => {
       if (l.id !== leadId) return l
-      const updated = { ...l, status }
+      const updated = { ...l, status, ...extra }
       upsertLead(updated)
       return updated
     }))

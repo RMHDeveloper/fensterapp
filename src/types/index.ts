@@ -466,6 +466,8 @@ export interface Approval {
 }
 
 // ─── Lead ─────────────────────────────────────────────────────────────────────
+export type LeadInterest = 'hot' | 'medium' | 'cold'
+
 export interface Lead {
   id: string
   name: string
@@ -476,6 +478,8 @@ export interface Lead {
   status: LeadStatus
   followUpDate: string
   priority: Priority
+  interest?: LeadInterest
+  lostReason?: string
   lastContact?: string
   notes?: string
   assignee: string
