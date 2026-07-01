@@ -1,7 +1,6 @@
 import type { ManagedUser, UserRole } from '../types'
 import { loadFromStorage, saveToStorage, STORAGE_KEYS } from './storage'
 import { upsertManagedUsers } from '../services/userService'
-import { MOCK_USER_ACCOUNTS } from '../data/mockUsers'
 
 export function loadManagedUsers(): ManagedUser[] {
   return loadFromStorage<ManagedUser[]>(STORAGE_KEYS.FENSTER_USERS, [])
@@ -13,13 +12,117 @@ export function saveManagedUsers(users: ManagedUser[]): void {
   upsertManagedUsers(users).catch(() => {})
 }
 
-/** Returns true if the email is already taken by another managed user OR a demo account. */
+/** Returns true if the email is already taken by another managed user. */
 export function isEmailTaken(email: string, excludeId?: string): boolean {
   const norm = email.trim().toLowerCase()
-  // Check managed users (excluding the user being edited)
-  if (loadManagedUsers().some(u => u.email.toLowerCase() === norm && u.id !== excludeId)) return true
-  // Prevent reusing a built-in demo account email
-  return MOCK_USER_ACCOUNTS.some(u => u.email.toLowerCase() === norm)
+  return loadManagedUsers().some(u => u.email.toLowerCase() === norm && u.id !== excludeId)
+}
+
+// ─── Production users — one per role ──────────────────────────────────────────
+
+const SEED_DATE = '2025-01-01T00:00:00.000Z'
+
+export const DEFAULT_PRODUCTION_USERS: ManagedUser[] = [
+  {
+    id:            'prod_owner_md',
+    fullName:      'Haroon Khan',
+    mobile:        '9000000001',
+    email:         'haroon@fenster.in',
+    password:      'Fenster@MD25',
+    role:          'owner',
+    displayRole:   'Managing Director (MD)',
+    department:    'Management',
+    status:        'active',
+    createdBy:     'system',
+    createdByRole: 'owner',
+    createdAt:     SEED_DATE,
+    updatedAt:     SEED_DATE,
+  },
+  {
+    id:            'prod_lead_mgr',
+    fullName:      'Priya Sharma',
+    mobile:        '9000000002',
+    email:         'priya@fenster.in',
+    password:      'Fenster@LO25',
+    role:          'lead_manager',
+    displayRole:   'Sales Team / Lead Owner',
+    department:    'Sales',
+    status:        'active',
+    createdBy:     'system',
+    createdByRole: 'owner',
+    createdAt:     SEED_DATE,
+    updatedAt:     SEED_DATE,
+  },
+  {
+    id:            'prod_site_eng',
+    fullName:      'Arjun Singh',
+    mobile:        '9000000003',
+    email:         'arjun@fenster.in',
+    password:      'Fenster@SE25',
+    role:          'site_engineer',
+    displayRole:   'Site Engineer',
+    department:    'Site',
+    status:        'active',
+    createdBy:     'system',
+    createdByRole: 'owner',
+    createdAt:     SEED_DATE,
+    updatedAt:     SEED_DATE,
+  },
+  {
+    id:            'prod_prod_mgr',
+    fullName:      'Mohan Das',
+    mobile:        '9000000004',
+    email:         'mohan@fenster.in',
+    password:      'Fenster@PM25',
+    role:          'production_manager',
+    displayRole:   'Production Incharge',
+    department:    'Production',
+    status:        'active',
+    createdBy:     'system',
+    createdByRole: 'owner',
+    createdAt:     SEED_DATE,
+    updatedAt:     SEED_DATE,
+  },
+  {
+    id:            'prod_tech',
+    fullName:      'Rajan Pillai',
+    mobile:        '9000000005',
+    email:         'rajan@fenster.in',
+    password:      'Fenster@TK25',
+    role:          'technician',
+    displayRole:   'Technician',
+    department:    'Installation',
+    status:        'active',
+    createdBy:     'system',
+    createdByRole: 'owner',
+    createdAt:     SEED_DATE,
+    updatedAt:     SEED_DATE,
+  },
+  {
+    id:            'prod_viewer',
+    fullName:      'Guest User',
+    mobile:        '9000000006',
+    email:         'guest@fenster.in',
+    password:      'Fenster@GU25',
+    role:          'viewer',
+    displayRole:   'Viewer',
+    department:    '',
+    status:        'active',
+    createdBy:     'system',
+    createdByRole: 'owner',
+    createdAt:     SEED_DATE,
+    updatedAt:     SEED_DATE,
+  },
+]
+
+/**
+ * Seeds DEFAULT_PRODUCTION_USERS into localStorage + Supabase on first boot.
+ * Only runs if no managed users exist yet.
+ */
+export function seedDefaultUsers(): void {
+  const existing = loadManagedUsers()
+  if (existing.length > 0) return   // already seeded — don't overwrite
+  saveManagedUsers(DEFAULT_PRODUCTION_USERS)
 }
 
 // Display role labels shown in the Add User form

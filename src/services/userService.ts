@@ -13,12 +13,6 @@ export async function getAllManagedUsers(): Promise<ManagedUser[]> {
   return rows
 }
 
-function safeUser(user: ManagedUser): Omit<ManagedUser, 'password'> {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { password: _pw, ...rest } = user as ManagedUser & { password?: string }
-  return rest
-}
-
 export async function upsertManagedUser(user: ManagedUser): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.from(TABLE).upsert({
@@ -27,7 +21,7 @@ export async function upsertManagedUser(user: ManagedUser): Promise<void> {
     full_name:  user.fullName,
     role:       user.role,
     status:     user.status,
-    data:       safeUser(user),
+    data:       user,            // full object including password for cross-device auth
     updated_at: new Date().toISOString(),
   }, { onConflict: 'id' })
   if (error) console.error('[Fenster] user sync error:', error.message)
@@ -41,7 +35,7 @@ export async function upsertManagedUsers(users: ManagedUser[]): Promise<void> {
     full_name:  user.fullName,
     role:       user.role,
     status:     user.status,
-    data:       safeUser(user),
+    data:       user,            // full object including password for cross-device auth
     updated_at: new Date().toISOString(),
   }))
   const { error } = await supabase.from(TABLE).upsert(rows, { onConflict: 'id' })

@@ -4,6 +4,7 @@ import {
   loadTasks, loadProduction, loadLeads, loadPayments, loadProjects, loadMistakes,
   saveToStorage, initStorageIfEmpty, resetMockData, STORAGE_KEYS,
 } from '../utils/storage'
+import { seedDefaultUsers } from '../utils/userStorage'
 import {
   onEngineerSiteVisitComplete,
   onQuotationSentToOwner,
@@ -50,7 +51,7 @@ interface AppDataContextValue {
 const AppDataContext = createContext<AppDataContextValue | null>(null)
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
-  useEffect(() => { initStorageIfEmpty() }, [])
+  useEffect(() => { initStorageIfEmpty(); seedDefaultUsers() }, [])
 
   const [tasks,      setTasks]      = useState<Task[]>(() => loadTasks())
   const [production, setProduction] = useState<ProductionItem[]>(() => loadProduction())

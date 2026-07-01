@@ -2,7 +2,8 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import type { AuthUser, UserRole, Permission } from '../types'
 import { hasPermission } from '../utils/permissions'
 import { saveToStorage, loadFromStorage, STORAGE_KEYS } from '../utils/storage'
-import { authenticateUser, MOCK_USER_ACCOUNTS } from '../data/mockUsers'
+import { authenticateUser } from '../data/mockUsers'
+import { loadManagedUsers } from '../utils/userStorage'
 
 export interface LoginResult {
   success: boolean
@@ -56,9 +57,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function login(role: UserRole) {
-    const account = MOCK_USER_ACCOUNTS.find(u => u.role === role)
+    const users = loadManagedUsers()
+    const account = users.find(u => u.role === role)
     if (!account) return
-    setUser({ id: account.id, role, name: account.name, initials: account.initials, email: account.email })
+    const initials = account.fullName.split(' ').map((w: string) => w[0] ?? '').join('').slice(0, 2).toUpperCase()
+    setUser({ id: account.id, role, name: account.fullName, initials, email: account.email })
   }
 
   function logout() {
