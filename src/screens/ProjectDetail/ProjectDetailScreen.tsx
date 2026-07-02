@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Calendar, MapPin, Phone, CheckCircle2, Star, Navigation, MessageCircle } from 'lucide-react'
+import { ArrowLeft, Calendar, MapPin, Phone, CheckCircle2, Star, Navigation, MessageCircle, Pencil } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
 import { StatusBadge } from '../../components/badges/StatusBadge'
@@ -9,14 +9,13 @@ import { Timeline } from '../../components/layout/Timeline'
 import { Accordion } from '../../components/layout/Accordion'
 import { BottomSheet } from '../../components/feedback/BottomSheet'
 import { Snackbar } from '../../components/feedback/Snackbar'
-import { PermissionGate } from '../../components/layout/PermissionGate'
 import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { MediaPreviewList } from '../../components/media/MediaPreviewList'
 import { voicePreviewStore } from '../../utils/sessionStore'
 import type { TimelineItem } from '../../components/layout/Timeline'
 import type { Task, TaskStatus, Project } from '../../types'
 
-const GOOGLE_REVIEW_LINK = 'https://share.google/ZaHJQF6kz9Aja2qmg'
+const GOOGLE_REVIEW_LINK = 'https://maps.app.goo.gl/SRqthqnsFTo5UdHL9'
 
 function fmtDate(val?: string | null): string {
   if (!val || val === '—' || val.trim() === '') return '—'
@@ -52,32 +51,22 @@ const HISTORY_VISIBLE_FOR: Partial<Record<string, string[]>> = {
   technician:         ['technician', 'installation_incharge', 'owner', 'lead_manager'],
 }
 
-function isImageFile(f: string) { return /\.(jpg|jpeg|png|gif|webp)$/i.test(f) }
-function isAudioFile(f: string)  { return f.startsWith('voice_') || /\.(mp3|wav|webm|ogg|aac|m4a)$/i.test(f) }
 
 function collectProjectFiles(tasks: Task[]) {
-  const all = tasks.flatMap(t => [
-    ...(t.sitePhotos ?? []),
-    ...(t.measurementFiles ?? []),
-    ...(t.installationFiles ?? []),
-    ...(t.proofUploads ?? []),
-    ...(t.additionalDocs ?? []),
-    ...(t.advancePaymentScreenshot ?? []),
-    ...(t.specialNoteProduction ?? []),
-    ...(t.specialNoteInstallation ?? []),
-    ...(t.voiceNotes ?? []).map(v => v.previewUrl ?? v.id),
+  const dedup = (arr: string[]) => [...new Set(arr.filter(Boolean))]
+  const quotationDocs     = dedup(tasks.flatMap(t => [
     ...(t.quotationFile ? [t.quotationFile] : []),
     ...(t.jobSheet ? [t.jobSheet] : []),
     ...(t.glassSheet ? [t.glassSheet] : []),
     ...(t.cuttingSheet ? [t.cuttingSheet] : []),
-  ]).filter(Boolean) as string[]
-  const unique = [...new Set(all)]
-  return {
-    photos: unique.filter(isImageFile),
-    audio:  unique.filter(isAudioFile),
-    docs:   unique.filter(f => !isImageFile(f) && !isAudioFile(f)),
-    total:  unique.length,
-  }
+  ]))
+  const sitePhotos        = dedup(tasks.flatMap(t => [...(t.sitePhotos ?? []), ...(t.measurementFiles ?? [])]))
+  const paymentProofs     = dedup(tasks.flatMap(t => [...(t.advancePaymentScreenshot ?? [])]))
+  const productionDocs    = dedup(tasks.flatMap(t => [...(t.additionalDocs ?? []), ...(t.specialNoteProduction ?? [])]))
+  const installationPhotos= dedup(tasks.flatMap(t => [...(t.installationFiles ?? []), ...(t.specialNoteInstallation ?? [])]))
+  const voiceNotes        = dedup(tasks.flatMap(t => (t.voiceNotes ?? []).map(v => v.previewUrl ?? v.id)))
+  const total = dedup([...quotationDocs, ...sitePhotos, ...paymentProofs, ...productionDocs, ...installationPhotos, ...voiceNotes]).length
+  return { quotationDocs, sitePhotos, paymentProofs, productionDocs, installationPhotos, voiceNotes, total }
 }
 
 const FLOW_STAGE_LABEL: Record<string, string> = {
@@ -187,9 +176,13 @@ export default function ProjectDetailScreen() {
       return v != null && (best == null || v > best) ? v : best
     }, undefined)
 
-  const [showAddTask, setShowAddTask] = useState(false)
-  const [snack,       setSnack]       = useState({ open: false, msg: '' })
-  const [flowTask,    setFlowTask]    = useState<Task | null>(null)
+  const [showAddTask,     setShowAddTask]     = useState(false)
+  const [snack,           setSnack]           = useState({ open: false, msg: '' })
+  const [flowTask,        setFlowTask]        = useState<Task | null>(null)
+  const [editDateType,    setEditDateType]    = useState<'start' | 'due' | null>(null)
+  const [editDateValue,   setEditDateValue]   = useState('')
+  const [showEditClient,  setShowEditClient]  = useState(false)
+  const [editClientName,  setEditClientName]  = useState('')
 
   const activeFlowTask = tasks.find(t => t.flowStage && t.flowStage !== 'completed')
 
@@ -209,32 +202,7 @@ export default function ProjectDetailScreen() {
     window.location.href = `tel:${project.clientPhone}`
   }
 
-  function handleSendGoogleReview() {
-    const clientName = project?.client ?? 'Sir/Madam'
-    const phone = (project?.clientPhone ?? '6379859299').replace(/\D/g, '').replace(/^0/, '')
-    const msg = `Hello ${clientName},\nThank you for choosing Fenster.\n\nWe would be happy if you could share your experience with us by leaving a Google review:\n${GOOGLE_REVIEW_LINK}\n\nRegards,\nFenster Team`
-    window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`, '_blank')
-    // Log activity on the active flow task if available
-    const ft = tasks.find(t => t.flowStage && t.flowStage !== 'completed')
-    if (ft) {
-      updateTask(ft.id, {
-        statusHistory: [
-          ...(ft.statusHistory ?? []),
-          {
-            stage: (ft.flowStage ?? 'completed') as import('../../types').FlowStage,
-            status: ft.status,
-            note: 'Google review link sent to client.',
-            updatedBy: user?.name ?? 'Sales Team',
-            updatedRole: user?.role ?? 'lead_manager',
-            updatedAt: new Date().toLocaleDateString('en-IN'),
-          },
-        ],
-      })
-    }
-    setSnack({ open: true, msg: 'Google review link sent via WhatsApp!' })
-  }
-
-  function handleSaveTask() {
+function handleSaveTask() {
     if (!taskName.trim()) return
     addTask({
       title:            taskName.trim(),
@@ -306,13 +274,25 @@ export default function ProjectDetailScreen() {
           </div>
         )
         const q = project.costBreakdown?.quotationAmount ?? project.quotationAmount ?? flowTaskQuotation
+        const advTask = tasks.find(t => t.flowStage === 'advance_payment' || t.flowStage === 'final_payment' || t.flowStage === 'final_completion' || (t.paidAmount && t.paidAmount > 0))
+        const paid = advTask?.paidAmount ?? 0
+        const balance = advTask?.balanceAmount ?? (q ? Math.max(0, q - paid) : 0)
         if (q) return (
           <div className="space-y-2">
-            <div className="bg-slate-50 rounded-xl px-4 py-3 flex justify-between items-center">
-              <span className="text-xs text-slate-500">Quoted Amount</span>
-              <span className="text-sm font-bold text-slate-700">₹{q.toLocaleString('en-IN')}</span>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: 'Quoted',   value: q,       color: 'bg-slate-50 text-slate-700'     },
+                { label: 'Received', value: paid,     color: 'bg-emerald-50 text-emerald-700' },
+                { label: 'Balance',  value: balance,  color: balance > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-500' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className={`rounded-xl p-2.5 text-center ${color}`}>
+                  <p className="text-[10px] mb-0.5">{label}</p>
+                  <p className="text-xs font-bold">₹{(value / 1000).toFixed(0)}K</p>
+                </div>
+              ))}
             </div>
-            <p className="text-xs text-slate-400 italic text-center">Payment record not yet created.</p>
+            {paid === 0 && <p className="text-xs text-slate-400 italic text-center">No payment received yet.</p>}
+            {paid > 0 && balance === 0 && <p className="text-xs text-emerald-600 font-semibold text-center">✓ Fully paid</p>}
           </div>
         )
         return <p className="text-sm text-slate-400 italic">No payment record.</p>
@@ -323,46 +303,57 @@ export default function ProjectDetailScreen() {
       title: 'Notes & Activity',
       subtitle: (() => {
         const allowedRoles = user?.role ? HISTORY_VISIBLE_FOR[user.role] : undefined
-        const allNotes = tasks.flatMap(t => t.statusHistory ?? [])
-          .filter(e => e.note && (!allowedRoles || allowedRoles.includes(e.updatedRole)))
-        return allNotes.length > 0 ? `${allNotes.length} note${allNotes.length !== 1 ? 's' : ''}` : 'No notes yet'
+        const allEntries = tasks.flatMap(t => t.statusHistory ?? [])
+          .filter(e => (e.note || (e.files && e.files.length > 0)) && (!allowedRoles || allowedRoles.includes(e.updatedRole)))
+        return allEntries.length > 0 ? `${allEntries.length} entr${allEntries.length !== 1 ? 'ies' : 'y'}` : 'No activity yet'
       })(),
       children: (() => {
         const allowedRoles = user?.role ? HISTORY_VISIBLE_FOR[user.role] : undefined
         const allEntries = tasks
           .flatMap(t => (t.statusHistory ?? []).map(e => ({ ...e, taskTitle: t.title })))
-          .filter(e => e.note && (!allowedRoles || allowedRoles.includes(e.updatedRole)))
+          .filter(e => (e.note || (e.files && e.files.length > 0)) && (!allowedRoles || allowedRoles.includes(e.updatedRole)))
           .sort((a, b) => (b.updatedAt > a.updatedAt ? 1 : -1))
         if (allEntries.length === 0) {
           return (
             <p className="text-sm text-slate-400 italic">
-              No notes yet. Notes will appear here when status updates include notes.
+              No activity yet. Notes and file uploads will appear here.
             </p>
           )
         }
         return (
           <div className="space-y-3 divide-y divide-slate-100">
-            {allEntries.map((entry, i) => (
-              <div key={i} className={`flex gap-2.5 ${i > 0 ? 'pt-3' : ''}`}>
-                <div className="flex flex-col items-center pt-1 flex-shrink-0">
-                  <div className="w-2 h-2 rounded-full bg-blue-400" />
+            {allEntries.map((entry, i) => {
+              const timeStr = (() => {
+                try {
+                  const d = new Date(entry.updatedAt)
+                  if (!isNaN(d.getTime())) return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                } catch { /* fall through */ }
+                return ''
+              })()
+              return (
+                <div key={i} className={`flex gap-2.5 ${i > 0 ? 'pt-3' : ''}`}>
+                  <div className="flex flex-col items-center pt-1 flex-shrink-0">
+                    <div className="w-2 h-2 rounded-full bg-blue-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-bold text-blue-500 uppercase mb-0.5">{entry.taskTitle}</p>
+                    {entry.note && <p className="text-xs text-slate-700 leading-relaxed">{entry.note}</p>}
+                    {entry.files && entry.files.length > 0 && (
+                      <div className="mt-1 space-y-0.5">
+                        {entry.files.map((f, fi) => (
+                          <p key={fi} className="text-[10px] text-slate-400">
+                            📎 {f}{timeStr ? <span className="text-slate-300"> · {timeStr}</span> : null}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      {FLOW_STAGE_LABEL[entry.stage] ?? entry.stage.replace(/_/g, ' ')} · {entry.updatedBy} · {entry.updatedAt}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-bold text-blue-500 uppercase mb-0.5">{entry.taskTitle}</p>
-                  <p className="text-xs text-slate-700 leading-relaxed">{entry.note}</p>
-                  {entry.files && entry.files.length > 0 && (
-                    <div className="mt-1 space-y-0.5">
-                      {entry.files.slice(0, 2).map((f, fi) => (
-                        <p key={fi} className="text-[10px] text-slate-400">📎 {f}</p>
-                      ))}
-                    </div>
-                  )}
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    {FLOW_STAGE_LABEL[entry.stage] ?? entry.stage.replace(/_/g, ' ')} · {entry.updatedBy} · {entry.updatedAt}
-                  </p>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )
       })(),
@@ -377,14 +368,23 @@ export default function ProjectDetailScreen() {
         ? <p className="text-sm text-slate-400 italic">No files attached yet.</p>
         : (
           <div className="space-y-4">
-            {projectFiles.photos.length > 0 && (
-              <MediaPreviewList files={projectFiles.photos} title="Photos" />
+            {projectFiles.quotationDocs.length > 0 && (
+              <MediaPreviewList files={projectFiles.quotationDocs} title="Quotation Files" />
             )}
-            {projectFiles.audio.length > 0 && (
-              <MediaPreviewList files={projectFiles.audio} title="Audio" voiceStore={voicePreviewStore} />
+            {projectFiles.sitePhotos.length > 0 && (
+              <MediaPreviewList files={projectFiles.sitePhotos} title="Site Photos" />
             )}
-            {projectFiles.docs.length > 0 && (
-              <MediaPreviewList files={projectFiles.docs} title="Documents" />
+            {projectFiles.paymentProofs.length > 0 && (
+              <MediaPreviewList files={projectFiles.paymentProofs} title="Payment Proofs" />
+            )}
+            {projectFiles.productionDocs.length > 0 && (
+              <MediaPreviewList files={projectFiles.productionDocs} title="Production Docs" />
+            )}
+            {projectFiles.installationPhotos.length > 0 && (
+              <MediaPreviewList files={projectFiles.installationPhotos} title="Installation Photos" />
+            )}
+            {projectFiles.voiceNotes.length > 0 && (
+              <MediaPreviewList files={projectFiles.voiceNotes} title="Voice Notes" voiceStore={voicePreviewStore} />
             )}
           </div>
         ),
@@ -430,6 +430,9 @@ export default function ProjectDetailScreen() {
                 <span className={`font-bold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>Profit</span>
                 <span className={`font-extrabold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                   ₹{profit.toLocaleString('en-IN')}
+                  {ac.quotationAmount > 0 && (
+                    <span className="font-normal opacity-70 text-xs"> ({(profit / ac.quotationAmount * 100).toFixed(1)}%)</span>
+                  )}
                 </span>
               </div>
             )}
@@ -479,14 +482,25 @@ export default function ProjectDetailScreen() {
         {/* Two-column: project info (left) + progress circle (right) */}
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-extrabold text-white leading-tight truncate">{project.client}</h1>
+            {user?.role === 'owner' ? (
+              <button onClick={() => { setEditClientName(project.client); setShowEditClient(true) }} className="text-left w-full">
+                <h1 className="text-xl font-extrabold text-white leading-tight truncate flex items-center gap-1.5">
+                  {project.client} <Pencil size={12} className="text-white/50 flex-shrink-0" />
+                </h1>
+              </button>
+            ) : (
+              <h1 className="text-xl font-extrabold text-white leading-tight truncate">{project.client}</h1>
+            )}
             <p className="text-blue-300 text-xs mt-0.5 truncate">{project.name}</p>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               {(user?.role === 'owner' || user?.role === 'lead_manager') && (() => {
                 const amt = getProjectAmount(project, flowTaskQuotation)
+                const balTask = tasks.find(t => t.balanceAmount && t.balanceAmount > 0)
+                const balance = balTask?.balanceAmount ?? 0
                 return amt != null ? (
                   <span className="text-emerald-300 text-sm font-extrabold">
                     · ₹{amt.toLocaleString('en-IN')}
+                    {balance > 0 && <span className="text-amber-300 text-xs font-semibold"> (Balance ₹{balance.toLocaleString('en-IN')})</span>}
                   </span>
                 ) : null
               })()}
@@ -514,33 +528,76 @@ export default function ProjectDetailScreen() {
 
         {/* 3 date cards */}
         <div className="grid grid-cols-3 gap-2 mt-4">
-          {[
-            { icon: Calendar,     label: 'Start Date',    value: fmtDate(project.startDate ?? project.createdAt) },
-            { icon: Calendar,     label: 'Due Date',      value: fmtDate(project.dueDate)                        },
-            { icon: CheckCircle2, label: 'Completed',     value: fmtDate(project.actualCompletedDate ?? project.completedAt) },
-          ].map(({ icon: Icon, label, value }) => (
-            <div key={label} className="bg-white/15 rounded-2xl p-3 text-center">
-              <Icon size={13} className="text-blue-200 mx-auto mb-1" />
-              <p className="text-[11px] font-bold text-white leading-tight">{value}</p>
-              <p className="text-[10px] text-blue-300 mt-0.5">{label}</p>
-            </div>
-          ))}
+          {/* Start Date — editable for owner/LM */}
+          {(() => {
+            const canEdit = user?.role === 'owner' || user?.role === 'lead_manager'
+            const val = fmtDate(project.startDate ?? project.createdAt)
+            return canEdit ? (
+              <button onClick={() => { setEditDateType('start'); setEditDateValue(project.startDate ?? '') }}
+                className="bg-white/15 rounded-2xl p-3 text-center active:bg-white/25">
+                <Calendar size={13} className="text-blue-200 mx-auto mb-1" />
+                <p className="text-[11px] font-bold text-white leading-tight">{val}</p>
+                <p className="text-[10px] text-blue-300 mt-0.5 flex items-center justify-center gap-0.5">Start <Pencil size={7} /></p>
+              </button>
+            ) : (
+              <div className="bg-white/15 rounded-2xl p-3 text-center">
+                <Calendar size={13} className="text-blue-200 mx-auto mb-1" />
+                <p className="text-[11px] font-bold text-white leading-tight">{val}</p>
+                <p className="text-[10px] text-blue-300 mt-0.5">Start Date</p>
+              </div>
+            )
+          })()}
+          {/* Due Date — editable for owner/LM */}
+          {(() => {
+            const canEdit = user?.role === 'owner' || user?.role === 'lead_manager'
+            const val = fmtDate(project.dueDate)
+            return canEdit ? (
+              <button onClick={() => { setEditDateType('due'); setEditDateValue(project.dueDate && project.dueDate !== '—' ? project.dueDate : '') }}
+                className="bg-white/15 rounded-2xl p-3 text-center active:bg-white/25">
+                <Calendar size={13} className="text-blue-200 mx-auto mb-1" />
+                <p className="text-[11px] font-bold text-white leading-tight">{val}</p>
+                <p className="text-[10px] text-blue-300 mt-0.5 flex items-center justify-center gap-0.5">Due <Pencil size={7} /></p>
+              </button>
+            ) : (
+              <div className="bg-white/15 rounded-2xl p-3 text-center">
+                <Calendar size={13} className="text-blue-200 mx-auto mb-1" />
+                <p className="text-[11px] font-bold text-white leading-tight">{val}</p>
+                <p className="text-[10px] text-blue-300 mt-0.5">Due Date</p>
+              </div>
+            )
+          })()}
+          {/* Remaining Days / Completed */}
+          {(() => {
+            if (project.completedAt || project.actualCompletedDate || project.currentStage === 'completed') {
+              return (
+                <div className="bg-white/15 rounded-2xl p-3 text-center">
+                  <CheckCircle2 size={13} className="text-blue-200 mx-auto mb-1" />
+                  <p className="text-[11px] font-bold text-white leading-tight">{fmtDate(project.actualCompletedDate ?? project.completedAt)}</p>
+                  <p className="text-[10px] text-blue-300 mt-0.5">Completed</p>
+                </div>
+              )
+            }
+            const due = project.dueDate && project.dueDate !== '—' && /^\d{4}-\d{2}-\d{2}/.test(project.dueDate)
+              ? new Date(project.dueDate) : null
+            const today = new Date(); today.setHours(0,0,0,0)
+            const remaining = due ? Math.ceil((due.getTime() - today.getTime()) / 86400000) : null
+            const isOverdue = remaining != null && remaining < 0
+            return (
+              <div className={`bg-white/15 rounded-2xl p-3 text-center ${isOverdue ? 'bg-red-500/20' : ''}`}>
+                <CheckCircle2 size={13} className="text-blue-200 mx-auto mb-1" />
+                <p className={`text-[11px] font-bold leading-tight ${isOverdue ? 'text-red-300' : 'text-white'}`}>
+                  {remaining == null ? '—' : remaining < 0 ? `${Math.abs(remaining)}d over` : remaining === 0 ? 'Today' : `${remaining}d left`}
+                </p>
+                <p className="text-[10px] text-blue-300 mt-0.5">Remaining</p>
+              </div>
+            )
+          })()}
         </div>
       </div>
 
-      {/* Google Review button — shown once installation is done (final payment onward) */}
-      {(['final_payment', 'final_completion', 'completed'].includes(project.currentStage ?? '') || project.isCompleted) && (
-        <div className="px-4 pt-4">
-          <button onClick={handleSendGoogleReview}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-amber-500 text-white text-sm font-bold active:opacity-90">
-            <Star size={16} fill="white" /> Send Google Review Link
-          </button>
-        </div>
-      )}
-
       {/* Quick actions */}
       <div className="px-4 py-4 space-y-2.5">
-        <div className="flex gap-2 justify-center">
+        <div className="flex gap-2 justify-center flex-wrap">
           <button onClick={handleCallClient}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-semibold active:scale-95 transition-transform bg-teal-50 text-teal-700 border-teal-100">
             <Phone size={13} /> Call Client
@@ -553,6 +610,10 @@ export default function ProjectDetailScreen() {
               <MessageCircle size={13} /> WhatsApp
             </a>
           )}
+          <a href={GOOGLE_REVIEW_LINK} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-semibold active:scale-95 transition-transform bg-amber-50 text-amber-700 border-amber-100">
+            <Star size={13} /> Google Review
+          </a>
         </div>
 
         {/* Google Maps link — shown for site engineers to navigate to job site */}
@@ -659,6 +720,40 @@ export default function ProjectDetailScreen() {
           onUpdate={handleFlowUpdate}
         />
       )}
+
+      {/* Edit Date BottomSheet */}
+      <BottomSheet isOpen={editDateType !== null} onClose={() => setEditDateType(null)}
+        title={editDateType === 'start' ? 'Edit Start Date' : 'Edit Due Date'}>
+        <div className="space-y-4">
+          <input type="date" value={editDateValue} onChange={e => setEditDateValue(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-400" />
+          <button onClick={() => {
+            if (!editDateValue) return
+            updateProject(id, editDateType === 'start' ? { startDate: editDateValue } : { dueDate: editDateValue })
+            setSnack({ open: true, msg: `${editDateType === 'start' ? 'Start' : 'Due'} date updated!` })
+            setEditDateType(null)
+          }} className="w-full bg-blue-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-blue-700">
+            Save Date
+          </button>
+        </div>
+      </BottomSheet>
+
+      {/* Edit Client Name BottomSheet */}
+      <BottomSheet isOpen={showEditClient} onClose={() => setShowEditClient(false)} title="Edit Client Name">
+        <div className="space-y-4">
+          <input value={editClientName} onChange={e => setEditClientName(e.target.value)}
+            placeholder="Client name"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-400" />
+          <button onClick={() => {
+            if (!editClientName.trim()) return
+            updateProject(id, { client: editClientName.trim() })
+            setSnack({ open: true, msg: 'Client name updated!' })
+            setShowEditClient(false)
+          }} className="w-full bg-blue-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-blue-700">
+            Save Name
+          </button>
+        </div>
+      </BottomSheet>
 
       <Snackbar isOpen={snack.open} message={snack.msg} type="success" onClose={() => setSnack(s => ({ ...s, open: false }))} />
     </div>

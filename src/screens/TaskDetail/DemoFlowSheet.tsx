@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   X, CheckCircle2, AlertTriangle, Camera, Clock, Send, PhoneCall,
-  Package, Wrench, CreditCard, History,
+  Package, Wrench, CreditCard,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useAppData } from '../../context/AppDataContext'
@@ -137,6 +137,13 @@ const STAGE_LABEL: Record<string, string> = {
   final_completion:    'Complete Project',
   completed:           'Completed',
 }
+
+const FLOW_STAGES_ORDERED: string[] = [
+  'site_assign','site_visit','reschedule_review','site_review','owner_approval',
+  'send_to_client','production_assign','production_check','advance_payment',
+  'production_work','installation_assign','installation_update','final_payment',
+  'final_completion','completed',
+]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const inp = 'w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-400'
@@ -314,7 +321,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   // ── SEND TO CLIENT ────────────────────────────────────────────────────────
   const [clientRejReason,  setClientRejReason]  = useState('')
-  const [sentToClient,     setSentToClient]      = useState(false)
   const [showSentConfirm,  setShowSentConfirm]   = useState(false)
   const [clientRejAction,  setClientRejAction]   = useState('')
   const [showEditCost,     setShowEditCost]      = useState(false)
@@ -361,6 +367,13 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [instMistakeNote,       setInstMistakeNote]       = useState('')
   const [instMistakePhotos,     setInstMistakePhotos]     = useState<string[]>([])
   const [instMistakeReviewAction, setInstMistakeReviewAction] = useState('')
+  const [instCompletedPhotos,   setInstCompletedPhotos]   = useState<string[]>([])
+
+  // ── PRODUCTION ASSIGN extra sheets ────────────────────────────────────────
+  const [extraSheets, setExtraSheets] = useState<string[][]>([])
+
+  // ── OWNER STAGE NAVIGATION ─────────────────────────────────────────────────
+  const [ownerNavStage, setOwnerNavStage] = useState<string | null>(null)
 
   // ── FINAL PAYMENT ─────────────────────────────────────────────────────────
   const [finalPaidAmt, setFinalPaidAmt] = useState('')
@@ -400,7 +413,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   // ── Reset on open / task change ───────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return
-    setSel(''); setError(''); setSentToClient(false); setLmReschedNote(''); setDemoOverride(false); setShowEditCost(false)
+    setSel(''); setError(''); setLmReschedNote(''); setDemoOverride(false); setShowEditCost(false)
     setEngineerName(task.siteEngineerName ?? 'Kavya M')
     setVisitDate(task.visitDate ?? ''); setVisitTime(task.visitTime ?? '')
     setAssignNote(''); setAssignLocation(task.location ?? '')
@@ -439,6 +452,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setTransCost(task.transportCost ? String(task.transportCost) : '')
     setInstNotCompNote(''); setInstNotCompFiles([])
     setInstMistakeNote(''); setInstMistakePhotos([])
+    setInstCompletedPhotos([])
+    setExtraSheets([])
+    setOwnerNavStage(null)
     setFinalPaidAmt(task.paidAmount ? String(task.paidAmount) : '')
     setFinalBalAmt(task.balanceAmount ? String(task.balanceAmount) : '')
     const cb = task.costBreakdown
@@ -880,9 +896,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       jobSheetDetails: jobSheetText || undefined,
       glassSheet: glassSheetFiles[0] ?? undefined,
       cuttingSheet: cuttingSheetFiles[0] ?? undefined,
-      additionalDocs: additionalDocs.length > 0 ? additionalDocs : undefined,
+      additionalDocs: [...additionalDocs, ...extraSheets.flat()].length > 0 ? [...additionalDocs, ...extraSheets.flat()] : undefined,
       productionSheetNote: prodAssignNote || undefined,
-    }, 'Job sheet sent to Production Incharge — checking material availability', [...jobSheetFiles, ...glassSheetFiles, ...cuttingSheetFiles, ...additionalDocs])
+    }, 'Job sheet sent to Production Incharge — checking material availability', [...jobSheetFiles, ...glassSheetFiles, ...cuttingSheetFiles, ...additionalDocs, ...extraSheets.flat()])
   }
 
   function submitProductionCheck() {
@@ -1027,8 +1043,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   function submitInstallationUpdate() {
     if (!sel) return
     if (sel === 'completed') {
-      save({ flowStage: 'final_payment', flowStatus: 'pending', status: 'pending', title: 'Collect Final Payment' },
-        'Installation completed')
+      if (instCompletedPhotos.length === 0) { setError('Upload at least 1 installation photo before submitting.'); return }
+      save({
+        flowStage: 'final_payment', flowStatus: 'pending', status: 'pending', title: 'Collect Final Payment',
+        installationFiles: instCompletedPhotos,
+      }, 'Installation completed', instCompletedPhotos)
     } else if (sel === 'not_completed') {
       if (!instNotCompNote.trim()) { setError('Add reason before saving.'); return }
       save({ flowStatus: 'not_completed', status: 'overdue', installationMistakeDetails: instNotCompNote },
@@ -1205,13 +1224,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   const totalCost = (task.productCost ?? 0) + (task.installationCost ?? 0) + (task.materialCost ?? 0) + (task.transportCost ?? 0)
   const hasCostDetails = !!(task.productCost || task.installationCost || task.materialCost || task.transportCost)
-
-  const hasHistory = (task.statusHistory?.length ?? 0) > 0 ||
-    !!(task.sitePhotos?.length) || !!task.measurementDetails ||
-    !!task.rescheduleReason || !!task.requestedVisitDate || task.quotationAmount != null ||
-    !!task.jobSheetDetails || task.paidAmount != null || !!task.installationPerson ||
-    hasCostDetails || !!task.costBreakdown ||
-    !!(task.specialNoteProduction?.length) || !!(task.specialNoteInstallation?.length)
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -1737,13 +1749,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <div className="space-y-3">
                 <div>
-                  <label className={lbl}>Material Cost (₹)</label>
-                  <input type="text" inputMode="numeric" value={costMaterial}
-                    onChange={e => setCostMaterial(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder="Enter material cost" className={inp} />
-                </div>
-
-                <div>
                   <label className={lbl}>Transport Cost (₹)</label>
                   <input type="text" inputMode="numeric" value={costTransAmt}
                     onChange={e => setCostTransAmt(e.target.value.replace(/[^0-9]/g, ''))}
@@ -1751,7 +1756,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 </div>
 
                 <div>
-                  <label className={lbl}>No. of Sq.Ft</label>
+                  <label className={lbl}>Material Cost (₹)</label>
+                  <input type="text" inputMode="numeric" value={costMaterial}
+                    onChange={e => setCostMaterial(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="Enter material cost" className={inp} />
+                </div>
+
+                <div>
+                  <label className={lbl}>Total Sq. ft</label>
                   <input type="text" inputMode="numeric" value={costSqft}
                     onChange={e => setCostSqft(e.target.value.replace(/[^0-9.]/g, ''))}
                     placeholder="e.g. 120 — drives production & installation cost" className={inp} />
@@ -2185,7 +2197,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   )}
 
                   {/* Step 1: Send buttons */}
-                  {!sentToClient && (() => {
+                  {flowStatus !== 'waiting_response' && (() => {
                     const clientName = task.clientName ?? 'Sir/Madam'
                     const projName   = task.projectName ?? 'your project'
                     const phone      = (task.clientPhone ?? '6379859299').replace(/\D/g, '').replace(/^0/, '')
@@ -2226,7 +2238,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                         <Dialog
                           isOpen={showSentConfirm}
                           onClose={() => setShowSentConfirm(false)}
-                          onConfirm={() => { setSentToClient(true); setShowSentConfirm(false) }}
+                          onConfirm={() => { setShowSentConfirm(false); save({ flowStatus: 'waiting_response', title: 'Waiting Client Response' }, 'Quotation sent to client — waiting for response') }}
                           title="Confirm Sent to Client"
                           message="Are you sure you've sent the quotation to the client?"
                           confirmLabel="Yes, Sent"
@@ -2236,7 +2248,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   })()}
 
                   {/* Step 2: Client response */}
-                  {sentToClient && (
+                  {flowStatus === 'waiting_response' && (
                     <>
                       <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2.5">
                         <CheckCircle2 size={14} className="text-indigo-600 flex-shrink-0" />
@@ -2319,6 +2331,24 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <label className={lbl}>Additional Documents <span className="text-slate-300 font-normal">(optional)</span></label>
                 <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx,.doc,.docx" files={additionalDocs} onChange={setAdditionalDocs} helperText="Any extra reference files" />
               </div>
+
+              {extraSheets.map((files, idx) => (
+                <div key={idx} className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className={lbl}>Additional Sheet {idx + 1}</label>
+                    <button type="button" onClick={() => setExtraSheets(prev => prev.filter((_, i) => i !== idx))}
+                      className="text-xs text-red-400 underline">Remove</button>
+                  </div>
+                  <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx,.doc,.docx"
+                    files={files}
+                    onChange={updated => setExtraSheets(prev => prev.map((f, i) => i === idx ? updated : f))} />
+                </div>
+              ))}
+
+              <button type="button" onClick={() => setExtraSheets(prev => [...prev, []])}
+                className="w-full py-2.5 rounded-xl border border-dashed border-slate-300 text-xs font-semibold text-slate-500 active:bg-slate-50">
+                + Add More Files
+              </button>
 
               <div>
                 <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
@@ -2605,6 +2635,26 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           ════════════════════════════════════════════════════════════════ */}
           {stage === 'production_work' && role === 'production_manager' && flowStatus !== 'overdue' && (
             <>
+              {task.availabilityChecklist && task.availabilityChecklist.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Material Status</p>
+                  <div className="flex flex-wrap gap-2">
+                    {task.availabilityChecklist.map(item => {
+                      const statusColor = item.available
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : item.ordered
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-red-50 text-red-700 border-red-200'
+                      const statusLabel = item.available ? 'Available' : item.ordered ? 'Ordered' : 'N/A'
+                      return (
+                        <span key={item.id} className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border ${statusColor}`}>
+                          {item.label}: {statusLabel}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Production Checklist</p>
 
               {task.paidAmount != null && (
@@ -2978,9 +3028,22 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 </div>
               )}
 
+              {sel === 'completed' && (
+                <div className="space-y-2">
+                  <MultiFileUploadField
+                    label="Installation Photos"
+                    required
+                    accept="image/*"
+                    files={instCompletedPhotos}
+                    onChange={setInstCompletedPhotos}
+                    helperText="Upload at least 1 photo to confirm installation" />
+                </div>
+              )}
+
               {sel && (
                 <button type="button" onClick={submitInstallationUpdate}
-                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${sel === 'completed' ? 'bg-emerald-600' : sel === 'mistake' ? 'bg-red-600' : 'bg-orange-500'}`}>
+                  disabled={sel === 'completed' && instCompletedPhotos.length === 0}
+                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 disabled:opacity-40 ${sel === 'completed' ? 'bg-emerald-600' : sel === 'mistake' ? 'bg-red-600' : 'bg-orange-500'}`}>
                   {sel === 'completed' ? '✓ Installation Completed — Collect Payment' : sel === 'mistake' ? 'Save Mistake' : 'Mark Not Completed'}
                 </button>
               )}
@@ -3200,7 +3263,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               {(() => {
                 const clientName = task.clientName ?? 'Sir/Madam'
                 const phone = (task.clientPhone ?? '6379859299').replace(/\D/g, '').replace(/^0/, '')
-                const reviewLink = 'https://share.google/ZaHJQF6kz9Aja2qmg'
+                const reviewLink = 'https://maps.app.goo.gl/SRqthqnsFTo5UdHL9'
                 const msg = `Hello ${clientName},\nThank you for choosing Fenster.\n\nWe would be happy if you could share your experience with us by leaving a Google review:\n${reviewLink}\n\nRegards,\nFenster Team`
                 return (
                   <button type="button"
@@ -3216,281 +3279,33 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             </div>
           )}
 
-          {/* ═══════════════════════════════════════════════════════════════
-              NOTES & ACTIVITY HISTORY — always visible
-          ════════════════════════════════════════════════════════════════ */}
-          {hasHistory && (
-            <div className="space-y-3 pt-3 mt-2 border-t border-slate-200">
-              <div className="flex items-center gap-2">
-                <History size={13} className="text-slate-400" />
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Notes &amp; Activity</p>
-              </div>
-
-              <div className="space-y-3 divide-y divide-slate-100">
-
-                {/* Quotation Cost Breakdown */}
-                {task.costBreakdown && canSeeCosts && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-violet-500 uppercase mb-2">Quotation Cost Breakdown</p>
-                    <div className="bg-slate-50 rounded-xl px-4 py-3 space-y-1.5">
-                      {task.costBreakdown.numberOfSqft && (
-                        <div className="flex justify-between">
-                          <p className="text-xs text-slate-600">Area</p>
-                          <p className="text-xs font-semibold text-slate-800">{task.costBreakdown.numberOfSqft} sq.ft</p>
-                        </div>
-                      )}
-                      {[
-                        { label: 'Material',     val: task.costBreakdown.materialCost },
-                        { label: 'Production',   val: task.costBreakdown.productionCost },
-                        { label: 'Installation', val: task.costBreakdown.installationCost },
-                        { label: 'Transport',    val: task.costBreakdown.transportCost },
-                      ].map(({ label, val }) => val > 0 ? (
-                        <div key={label} className="flex justify-between">
-                          <p className="text-xs text-slate-600">{label}</p>
-                          <p className="text-xs font-semibold text-slate-800">₹{val.toLocaleString('en-IN')}</p>
-                        </div>
-                      ) : null)}
-                      {canSeeProfit && task.costBreakdown.profit != null && (() => {
-                        const p = task.costBreakdown!.profit!
-                        const pct = task.costBreakdown!.quotationAmount > 0 ? (p / task.costBreakdown!.quotationAmount * 100) : 0
-                        return (
-                          <div className="flex justify-between border-t border-slate-200 pt-1.5 mt-0.5">
-                            <p className="text-xs font-bold text-slate-800">Profit (MD/ED only)</p>
-                            <p className={`text-xs font-bold ${p >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                              ₹{p.toLocaleString('en-IN')} <span className="font-normal opacity-70">({pct.toFixed(1)}%)</span>
-                            </p>
-                          </div>
-                        )
-                      })()}
-                    </div>
-                  </div>
-                )}
-
-                {/* Cost Details */}
-                {hasCostDetails && canSeeCosts && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Installation Cost Details</p>
-                    <div className="bg-slate-50 rounded-xl px-4 py-3 space-y-1.5">
-                      {task.productCost ? (
-                        <div className="flex justify-between">
-                          <p className="text-xs text-slate-600">Product Cost</p>
-                          <p className="text-xs font-semibold text-slate-800">₹{task.productCost.toLocaleString('en-IN')}</p>
-                        </div>
-                      ) : null}
-                      {task.installationCost ? (
-                        <div className="flex justify-between">
-                          <p className="text-xs text-slate-600">Installation Cost</p>
-                          <p className="text-xs font-semibold text-slate-800">₹{task.installationCost.toLocaleString('en-IN')}</p>
-                        </div>
-                      ) : null}
-                      {task.materialCost ? (
-                        <div className="flex justify-between">
-                          <p className="text-xs text-slate-600">Material Cost</p>
-                          <p className="text-xs font-semibold text-slate-800">₹{task.materialCost.toLocaleString('en-IN')}</p>
-                        </div>
-                      ) : null}
-                      {task.transportCost ? (
-                        <div className="flex justify-between">
-                          <p className="text-xs text-slate-600">Transport Cost</p>
-                          <p className="text-xs font-semibold text-slate-800">₹{task.transportCost.toLocaleString('en-IN')}</p>
-                        </div>
-                      ) : null}
-                      <div className="flex justify-between border-t border-slate-200 pt-1.5 mt-0.5">
-                        <p className="text-xs font-bold text-slate-800">Total Cost</p>
-                        <p className="text-xs font-bold text-slate-800">₹{totalCost.toLocaleString('en-IN')}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Site Photos */}
-                {task.sitePhotos?.length ? (
-                  <div className="pt-3 first:pt-0">
-                    <MediaPreviewList
-                      files={task.sitePhotos}
-                      title={`Site Photos (${task.sitePhotos.length})`}
-                    />
-                  </div>
-                ) : null}
-
-                {/* Voice Notes */}
-                {(!!task.specialNoteProduction?.length || !!task.specialNoteInstallation?.length) && (
-                  <div className="pt-3 first:pt-0">
-                    <MediaPreviewList
-                      files={[...(task.specialNoteProduction ?? []), ...(task.specialNoteInstallation ?? [])]}
-                      title="Voice Notes"
-                      voiceStore={voicePreviewStore}
-                    />
-                  </div>
-                )}
-
-                {/* Measurements */}
-                {task.measurementDetails && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-violet-500 uppercase mb-1">Measurements</p>
-                    <p className="text-xs text-slate-700 whitespace-pre-wrap">{task.measurementDetails}</p>
-                  </div>
-                )}
-
-                {/* Location */}
-                {getSiteMapUrl(task) && (
-                  <div className="pt-3 first:pt-0 space-y-2">
-                    <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1">Site Location</p>
-                    {(() => {
-                      const readable = getReadableLocation(task)
-                      const mapUrl   = getSiteMapUrl(task)
-                      return (
-                        <>
-                          {readable
-                            ? <p className="text-sm font-semibold text-slate-700">{readable}</p>
-                            : <p className="text-sm text-slate-500 italic">Site location pinned</p>
-                          }
-                          <MapButton url={mapUrl}
-                            className="flex items-center justify-center gap-2 bg-green-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold active:bg-green-700 w-full min-h-[44px]" />
-                        </>
-                      )
-                    })()}
-                  </div>
-                )}
-
-                {/* Reschedule info */}
-                {(task.rescheduleReason || task.requestedVisitDate) && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-amber-500 uppercase mb-1">Reschedule Request</p>
-                    {task.requestedVisitDate && (
-                      <p className="text-xs text-slate-700">Requested: {task.requestedVisitDate}{task.requestedVisitTime ? ` at ${task.requestedVisitTime}` : ''}</p>
-                    )}
-                    {task.rescheduleReason && <p className="text-xs text-slate-600">Reason: {task.rescheduleReason}</p>}
-                    {task.rescheduleApprovalStatus && (
-                      <p className={`text-xs font-semibold mt-0.5 ${task.rescheduleApprovalStatus === 'approved' ? 'text-emerald-600' : task.rescheduleApprovalStatus === 'rejected' ? 'text-red-600' : 'text-amber-600'}`}>
-                        Status: {task.rescheduleApprovalStatus.charAt(0).toUpperCase() + task.rescheduleApprovalStatus.slice(1)}
-                        {task.rescheduleApprovedBy ? ` by ${task.rescheduleApprovedBy}` : ''}
-                      </p>
-                    )}
-                    {task.rescheduleApprovalNote && (
-                      <p className="text-xs text-slate-500 mt-0.5">LM Note: {task.rescheduleApprovalNote}</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Quotation */}
-                {task.quotationAmount != null && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-violet-500 uppercase mb-1">Quotation</p>
-                    <p className="text-xs font-bold text-slate-800">₹{task.quotationAmount.toLocaleString('en-IN')}</p>
-                    {task.quotationNotes && <p className="text-xs text-slate-500 mt-0.5">{task.quotationNotes}</p>}
-                    {task.quotationFile && (
-                      <div className="mt-1.5">
-                        <MediaPreviewList files={[task.quotationFile]} />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Job Sheet */}
-                {(task.jobSheet || task.jobSheetDetails) && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-orange-500 uppercase mb-1">Job Sheet</p>
-                    {task.jobSheet && <MediaPreviewList files={[task.jobSheet]} />}
-                    {task.jobSheetDetails && <p className="text-xs text-slate-700 whitespace-pre-wrap mt-1">{task.jobSheetDetails}</p>}
-                  </div>
-                )}
-
-                {/* Glass Sheet */}
-                {task.glassSheet && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-cyan-500 uppercase mb-1">Glass Sheet</p>
-                    <MediaPreviewList files={[task.glassSheet]} />
-                  </div>
-                )}
-
-                {/* Cutting Sheet */}
-                {task.cuttingSheet && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-rose-500 uppercase mb-1">Cutting Sheet</p>
-                    <MediaPreviewList files={[task.cuttingSheet]} />
-                  </div>
-                )}
-
-                {/* Payment */}
-                {task.paidAmount != null && task.paidAmount > 0 && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1">Payment</p>
-                    <p className="text-xs font-bold text-slate-800">Paid: ₹{task.paidAmount.toLocaleString('en-IN')}</p>
-                    {task.balanceAmount != null && <p className="text-xs text-slate-500">Balance: ₹{task.balanceAmount.toLocaleString('en-IN')}</p>}
-                    {task.paymentNote && <p className="text-xs text-slate-400 mt-0.5">{task.paymentNote}</p>}
-                  </div>
-                )}
-
-                {/* Production Overdue */}
-                {task.productionOverdueReason && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-red-500 uppercase mb-1">Production Overdue</p>
-                    <p className="text-xs text-slate-700">{task.productionOverdueReason}</p>
-                    {task.productionNewDate && <p className="text-xs text-slate-500 mt-0.5">New date: {task.productionNewDate}</p>}
-                  </div>
-                )}
-
-                {/* Installation */}
-                {task.installationPerson && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-rose-500 uppercase mb-1">Installation</p>
-                    <p className="text-xs font-bold text-slate-800">{task.installationPerson}</p>
-                    {task.installationDate && <p className="text-xs text-slate-500">Date: {task.installationDate}</p>}
-                    {task.installationNote && <p className="text-xs text-slate-500 mt-0.5">{task.installationNote}</p>}
-                    {hasCostDetails && (
-                      <p className="text-xs text-slate-600 font-semibold mt-0.5">
-                        Total Cost: ₹{totalCost.toLocaleString('en-IN')}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Mistake */}
-                {task.installationMistakeDetails && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-red-500 uppercase mb-1">Mistake / Issue</p>
-                    <p className="text-xs text-slate-700">{task.installationMistakeDetails}</p>
-                  </div>
-                )}
-
-                {/* Status history timeline */}
-                {(task.statusHistory?.length ?? 0) > 0 && (
-                  <div className="pt-3 first:pt-0">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Status Timeline</p>
-                    <div className="space-y-2.5">
-                      {[...task.statusHistory!].reverse().map((entry, i) => (
-                        <div key={i} className="flex gap-2.5">
-                          <div className="flex flex-col items-center pt-1">
-                            <div className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
-                            {i < task.statusHistory!.length - 1 && <div className="w-px flex-1 bg-slate-200 mt-1 min-h-[12px]" />}
-                          </div>
-                          <div className="pb-1 flex-1">
-                            <p className="text-[11px] font-bold text-slate-700">{STAGE_LABEL[entry.stage] ?? entry.stage} — {entry.status}</p>
-                            {entry.note && <p className="text-[11px] text-slate-500 mt-0.5">{entry.note}</p>}
-                            {entry.files && entry.files.length > 0 && (
-                              <div className="mt-1 space-y-0.5">
-                                {entry.files.slice(0, 3).map((f, fi) => (
-                                  <p key={fi} className="text-[10px] text-slate-400">📎 {f}</p>
-                                ))}
-                                {entry.files.length > 3 && (
-                                  <p className="text-[10px] text-slate-400">+{entry.files.length - 3} more files</p>
-                                )}
-                              </div>
-                            )}
-                            <p className="text-[10px] text-slate-400 mt-0.5">{entry.updatedBy} · {entry.updatedAt}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-              </div>
-            </div>
-          )}
 
         </div>
+
+        {/* ── Owner Stage Navigator ─────────────────────────────────────────── */}
+        {role === 'owner' && (() => {
+          const activeIdx = FLOW_STAGES_ORDERED.indexOf(ownerNavStage ?? stage)
+          const prevStage = activeIdx > 0 ? FLOW_STAGES_ORDERED[activeIdx - 1] : null
+          const nextStage = activeIdx < FLOW_STAGES_ORDERED.length - 1 ? FLOW_STAGES_ORDERED[activeIdx + 1] : null
+          const displayStage = ownerNavStage ?? stage
+          return (
+            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-4 py-2.5 flex items-center gap-2 z-20">
+              <button type="button" disabled={!prevStage} onClick={() => setOwnerNavStage(prevStage)}
+                className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-30 active:bg-slate-200">
+                ← Prev
+              </button>
+              <div className="flex-1 text-center">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Viewing</p>
+                <p className="text-xs font-extrabold text-slate-700 truncate">{STAGE_LABEL[displayStage] ?? displayStage}</p>
+              </div>
+              <button type="button" disabled={!nextStage} onClick={() => setOwnerNavStage(nextStage)}
+                className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-30 active:bg-slate-200">
+                Next →
+              </button>
+            </div>
+          )
+        })()}
+
       </div>
 
       {/* ── Global fullscreen image preview overlay ────────────────────────── */}

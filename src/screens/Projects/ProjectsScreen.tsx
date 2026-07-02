@@ -16,18 +16,19 @@ import { createProjectFromForm, createSiteAssignTask } from '../../utils/workflo
 import { loadManagedUsers } from '../../utils/userStorage'
 import type { Project } from '../../types'
 
-type Filter = 'all' | 'measurement' | 'quotation' | 'negotiation' | 'production' | 'dispatch' | 'installation' | 'payment' | 'completed'
+type Filter = 'all' | 'measurement' | 'quotation' | 'negotiation' | 'pre_production' | 'production' | 'ready_to_dispatch' | 'installation' | 'payment' | 'completed'
 
 const CHIPS = [
-  { value: 'all'         as Filter, label: 'All'         },
-  { value: 'measurement' as Filter, label: 'Measurement' },
-  { value: 'quotation'   as Filter, label: 'Quotation'   },
-  { value: 'negotiation' as Filter, label: 'Negotiation' },
-  { value: 'production'  as Filter, label: 'Production'  },
-  { value: 'dispatch'    as Filter, label: 'Dispatch'    },
-  { value: 'installation'as Filter, label: 'Installation'},
-  { value: 'payment'     as Filter, label: 'Payment'     },
-  { value: 'completed'   as Filter, label: 'Completed'   },
+  { value: 'all'              as Filter, label: 'All'              },
+  { value: 'measurement'      as Filter, label: 'Measurement'      },
+  { value: 'quotation'        as Filter, label: 'Quotation'        },
+  { value: 'negotiation'      as Filter, label: 'Negotiation'      },
+  { value: 'pre_production'   as Filter, label: 'Pre-Production'   },
+  { value: 'production'       as Filter, label: 'Production'       },
+  { value: 'ready_to_dispatch'as Filter, label: 'Ready to Dispatch'},
+  { value: 'installation'     as Filter, label: 'Installation'     },
+  { value: 'payment'          as Filter, label: 'Payment'          },
+  { value: 'completed'        as Filter, label: 'Completed'        },
 ]
 
 const MEASUREMENT_STAGES = new Set([
@@ -40,12 +41,14 @@ const NEGOTIATION_STAGES = new Set([
   'negotiation','client_approved','advance_payment','client_rejected','client_not_approved',
   'advance_payment_pending','waiting_advance_payment','owner_disapproved'
 ])
+const PRE_PRODUCTION_STAGES = new Set([
+  'production_sheet_preparation','production_admin_check','waiting_material_availability'
+])
 const PRODUCTION_STAGES = new Set([
-  'production_sheet_preparation','production_admin_check','waiting_material_availability',
-  'production_manager_work','ready_to_dispatch'
+  'production_manager_work'
 ])
 const INSTALLATION_STAGES = new Set([
-  'ready_to_dispatch','installation','installation_assigned',
+  'installation','installation_assigned',
   'installation_in_progress','installation_not_completed','installation_mistake'
 ])
 const PAYMENT_STAGES = new Set([
@@ -67,18 +70,19 @@ function matchesFilter(p: Project, filter: Filter): boolean {
   if (filter === 'completed') return isProjectCompleted(p)
   if (isProjectCompleted(p)) return false
   const stage = p.currentStage
-  if (filter === 'measurement'  && stage && MEASUREMENT_STAGES.has(stage))  return true
-  if (filter === 'quotation'    && stage && QUOTATION_STAGES.has(stage))    return true
-  if (filter === 'negotiation'  && stage && NEGOTIATION_STAGES.has(stage))  return true
-  if (filter === 'production'   && stage && PRODUCTION_STAGES.has(stage))   return true
-  if (filter === 'dispatch'     && stage === 'ready_to_dispatch')            return true
-  if (filter === 'installation' && stage && INSTALLATION_STAGES.has(stage)) return true
-  if (filter === 'payment'      && stage && PAYMENT_STAGES.has(stage))      return true
+  if (filter === 'measurement'       && stage && MEASUREMENT_STAGES.has(stage))     return true
+  if (filter === 'quotation'         && stage && QUOTATION_STAGES.has(stage))       return true
+  if (filter === 'negotiation'       && stage && NEGOTIATION_STAGES.has(stage))     return true
+  if (filter === 'pre_production'    && stage && PRE_PRODUCTION_STAGES.has(stage))  return true
+  if (filter === 'production'        && stage && PRODUCTION_STAGES.has(stage))      return true
+  if (filter === 'ready_to_dispatch' && stage === 'ready_to_dispatch')              return true
+  if (filter === 'installation'      && stage && INSTALLATION_STAGES.has(stage))    return true
+  if (filter === 'payment'           && stage && PAYMENT_STAGES.has(stage))         return true
   // Fallback: use status string for projects without currentStage
   if (!stage) {
-    if (filter === 'measurement' && (p.status === 'new' || p.stage?.toLowerCase().includes('visit'))) return true
-    if (filter === 'production'  && p.status === 'active') return true
-    if (filter === 'installation' && p.status === 'active' && (p.stage?.toLowerCase().includes('install') || p.stage?.toLowerCase().includes('dispatch'))) return true
+    if (filter === 'measurement'   && (p.status === 'new' || p.stage?.toLowerCase().includes('visit'))) return true
+    if (filter === 'production'    && p.status === 'active') return true
+    if (filter === 'installation'  && p.status === 'active' && (p.stage?.toLowerCase().includes('install') || p.stage?.toLowerCase().includes('dispatch'))) return true
   }
   return false
 }
@@ -87,7 +91,7 @@ const inp = 'w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 tex
 
 export default function ProjectsScreen() {
   const navigate = useNavigate()
-  const { projects, addProject, addTask } = useAppData()
+  const { projects, addProject, addTask, tasks: allTasks } = useAppData()
   const { user } = useAuth()
   const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
@@ -109,9 +113,27 @@ export default function ProjectsScreen() {
 
   const leadManagers = loadManagedUsers().filter(u => u.role === 'lead_manager' && u.status === 'active')
 
+  function matchesRoleVisibility(p: Project): boolean {
+    const role = user?.role
+    if (!role || role === 'owner') return true
+    if (role === 'lead_manager') return !p.ownerId || p.ownerId === user!.id
+    if (role === 'site_engineer') {
+      return allTasks.some(t =>
+        t.projectId === p.id &&
+        (t.type === 'site_visit' || t.flowStage === 'site_assign' || t.flowStage === 'site_visit') &&
+        (t.assignedTo === user!.name || t.assignee === user!.name || t.siteEngineerName === user!.name)
+      )
+    }
+    if (role === 'production_admin') return !!(p.currentStage && PRE_PRODUCTION_STAGES.has(p.currentStage))
+    if (role === 'production_manager') return !!(p.currentStage && (PRODUCTION_STAGES.has(p.currentStage) || p.currentStage === 'ready_to_dispatch'))
+    if (role === 'technician' || role === 'installation_incharge') {
+      return !!(p.currentStage && (INSTALLATION_STAGES.has(p.currentStage) || p.currentStage === 'ready_to_dispatch'))
+    }
+    return true
+  }
+
   const filtered = projects.filter(p => {
-    // Lead managers see only their own projects (when ownerId is set)
-    if (user?.role === 'lead_manager' && p.ownerId && p.ownerId !== user.id) return false
+    if (!matchesRoleVisibility(p)) return false
     const matchF = matchesFilter(p, filter)
     const matchS = !search
       || p.name.toLowerCase().includes(search.toLowerCase())

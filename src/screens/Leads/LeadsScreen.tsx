@@ -109,11 +109,11 @@ export default function LeadsScreen() {
   const [projName,     setProjName]     = useState('')
   const [projReq,      setProjReq]      = useState('')
   const [projCity,     setProjCity]     = useState('')
-  const [projBudget,   setProjBudget]   = useState('')
   const [projAssignee, setProjAssignee] = useState('')
   const [projNote,     setProjNote]     = useState('')
 
   const filtered = leads.filter(l => {
+    if (user?.role === 'lead_manager' && l.assignee && l.assignee !== user.name) return false
     const matchFilter = filter === 'all' ? l.status !== 'lost' : l.status === filter
     const matchSearch = !search
       || l.name.toLowerCase().includes(search.toLowerCase())
@@ -239,7 +239,6 @@ export default function LeadsScreen() {
     setProjName(selected.name + ' Project')
     setProjReq(selected.requirement)
     setProjCity(selected.city)
-    setProjBudget(selected.budgetRange ?? '')
     setProjAssignee(selected.assignee)
     setProjNote('')
     setSelected(null)
@@ -376,7 +375,6 @@ export default function LeadsScreen() {
                 { label: 'City',        value: selected.city },
                 { label: 'Requirement', value: selected.requirement },
                 { label: 'Source',      value: SOURCE_LABEL[selected.source] ?? selected.source },
-                { label: 'Budget',      value: selected.budgetRange ?? '—' },
                 ...(selected.followUpDate && selected.followUpDate !== 'TBD'
                   ? [{ label: 'Follow-up', value: `📅 ${selected.followUpDate}` }]
                   : []),
@@ -572,17 +570,10 @@ export default function LeadsScreen() {
             <input value={projReq} onChange={e => setProjReq(e.target.value)} placeholder="What product/work is needed"
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-slate-500 mb-1.5 block">City</label>
-              <input value={projCity} onChange={e => setProjCity(e.target.value)} placeholder="Chennai"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Budget</label>
-              <input value={projBudget} onChange={e => setProjBudget(e.target.value)} placeholder="₹1.5L"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
-            </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">City</label>
+            <input value={projCity} onChange={e => setProjCity(e.target.value)} placeholder="Chennai"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Lead Owner</label>

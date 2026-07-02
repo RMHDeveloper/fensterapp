@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Upload, X, FileText, Eye, Image } from 'lucide-react'
+import { Upload, X, FileText, Eye, Image, Camera } from 'lucide-react'
 import { filePreviewStore as previewStore, resolveFileUrl } from '../../utils/sessionStore'
 import { storeFile, deleteRemoteFile, removeLocalFile } from '../../utils/fileStorage'
 import { FilePreviewModal } from '../feedback/FilePreviewModal'
@@ -18,7 +18,9 @@ function isImageName(name: string) { return /\.(jpg|jpeg|png|gif|webp)$/i.test(n
 function isPdfName(name: string)   { return /\.pdf$/i.test(name) }
 
 export function MultiFileUploadField({ label, files, onChange, accept = 'image/*', required, error, helperText }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef  = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
+  const isImageAccept = accept.includes('image') || accept.includes('.jpg') || accept.includes('.png')
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [previewName, setPreviewName] = useState<string>('')
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -70,21 +72,35 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
         </label>
       )}
 
-      {/* Upload button */}
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        disabled={uploading}
-        className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed
-          text-sm font-semibold transition-colors active:opacity-70 disabled:opacity-50 disabled:cursor-not-allowed
-          ${error || uploadError
-            ? 'border-red-300 text-red-500 bg-red-50'
-            : 'border-slate-300 text-slate-500 bg-slate-50 hover:border-blue-400 hover:text-blue-500'
-          }`}
-      >
-        <Upload size={15} />
-        {uploading ? 'Uploading…' : files.length === 0 ? 'Tap to upload files' : 'Add more files'}
-      </button>
+      {/* Upload buttons */}
+      <div className={`flex gap-2 ${isImageAccept ? '' : ''}`}>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed
+            text-sm font-semibold transition-colors active:opacity-70 disabled:opacity-50 disabled:cursor-not-allowed
+            ${error || uploadError
+              ? 'border-red-300 text-red-500 bg-red-50'
+              : 'border-slate-300 text-slate-500 bg-slate-50 hover:border-blue-400 hover:text-blue-500'
+            }`}
+        >
+          <Upload size={15} />
+          {uploading ? 'Uploading…' : 'Upload'}
+        </button>
+
+        {isImageAccept && (
+          <button
+            type="button"
+            onClick={() => cameraRef.current?.click()}
+            disabled={uploading}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 bg-slate-50 text-sm font-semibold active:opacity-70 disabled:opacity-50"
+          >
+            <Camera size={15} />
+            Take Photo
+          </button>
+        )}
+      </div>
 
       <input
         ref={inputRef}
@@ -94,6 +110,17 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
         onChange={handleFileChange}
         className="hidden"
       />
+
+      {isImageAccept && (
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+      )}
 
       {helperText && !error && !uploadError && (
         <p className="text-[11px] text-slate-400 mt-1">{helperText}</p>
