@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Calendar, MapPin, Phone, CheckCircle2, Star, Navigation, MessageCircle, Pencil } from 'lucide-react'
+import { ArrowLeft, Calendar, MapPin, Phone, CheckCircle2, Star, Navigation, MessageCircle, Pencil, AlertTriangle } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
 import { StatusBadge } from '../../components/badges/StatusBadge'
@@ -160,7 +160,7 @@ function buildProjectTimeline(currentStage?: string, createdAt?: string): Timeli
 export default function ProjectDetailScreen() {
   const { id = 'p1' } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { tasks: allTasks, payments, projects, addTask, updateTask, updateProject } = useAppData()
+  const { tasks: allTasks, payments, projects, mistakes: allMistakes, addTask, updateTask, updateProject } = useAppData()
   const { user, can } = useAuth()
 
   const project  = projects.find(p => p.id === id) ?? projects[0]
@@ -358,6 +358,37 @@ function handleSaveTask() {
         )
       })(),
     },
+    ...((() => {
+      const projectMistakes = allMistakes.filter(m => m.projectId === id)
+      if (projectMistakes.length === 0) return []
+      const openCount = projectMistakes.filter(m => m.status !== 'resolved').length
+      return [{
+        id: 'mistakes',
+        title: 'Mistakes',
+        subtitle: openCount > 0 ? `${openCount} open · ${projectMistakes.length} total` : `${projectMistakes.length} resolved`,
+        children: (
+          <div className="space-y-2.5">
+            {projectMistakes.map(m => (
+              <div key={m.id} className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-200">
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <p className="text-xs font-bold text-slate-800 flex-1">{m.title}</p>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                    m.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' :
+                    m.status === 'rework'   ? 'bg-amber-100 text-amber-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>{m.status.replace('_', ' ')}</span>
+                </div>
+                <div className="flex items-center gap-3 text-[10px] text-slate-400 flex-wrap">
+                  {m.madeBy && <span><AlertTriangle size={9} className="inline mr-0.5 text-red-400" />{m.madeBy}</span>}
+                  {m.extraCost && m.extraCost > 0 ? <span className="text-red-500 font-semibold">Extra ₹{m.extraCost.toLocaleString('en-IN')}</span> : null}
+                  <span>{m.reportedAt}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ),
+      }]
+    })()),
     {
       id: 'files',
       title: 'Files',
@@ -610,10 +641,12 @@ function handleSaveTask() {
               <MessageCircle size={13} /> WhatsApp
             </a>
           )}
-          <a href={GOOGLE_REVIEW_LINK} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-semibold active:scale-95 transition-transform bg-amber-50 text-amber-700 border-amber-100">
-            <Star size={13} /> Google Review
-          </a>
+          {['installation','installation_assigned','installation_in_progress','installation_not_completed','installation_mistake','final_payment','payment_pending','partial_paid','remaining_payment_pending','final_completion','completed'].includes(project?.currentStage ?? '') && (
+            <a href={GOOGLE_REVIEW_LINK} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-semibold active:scale-95 transition-transform bg-amber-50 text-amber-700 border-amber-100">
+              <Star size={13} /> Google Review
+            </a>
+          )}
         </div>
 
         {/* Google Maps link — shown for site engineers to navigate to job site */}

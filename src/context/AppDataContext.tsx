@@ -39,6 +39,7 @@ interface AppDataContextValue {
   addTask:               (task: Omit<Task, 'id'>) => void
   addProject:            (project: Omit<Project, 'id'>) => string
   addMistake:            (mistake: Omit<Mistake, 'id'>) => void
+  updateMistake:         (mistakeId: string, updates: Partial<Mistake>) => void
   resetAllData:          () => void
   refetchAll:            () => Promise<void>
   completeWorkflowStep:  (task: Task, outcome: string, extraData: Record<string, unknown>) => void
@@ -308,6 +309,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     upsertMistake(newMistake)
   }
 
+  function updateMistake(mistakeId: string, updates: Partial<Mistake>) {
+    setMistakes(prev => prev.map(m => {
+      if (m.id !== mistakeId) return m
+      const updated = { ...m, ...updates }
+      upsertMistake(updated)
+      return updated
+    }))
+  }
+
   function resetAllData() {
     setTasks([])
     setProduction([])
@@ -378,7 +388,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       isSyncing, isSupabaseReady,
       updateTaskStatus, updateTask, updateProductionStage, updateProject,
       addLead, updateLeadStatus, updateLead,
-      updatePaymentAmount, addTask, addProject, addMistake, resetAllData,
+      updatePaymentAmount, addTask, addProject, addMistake, updateMistake, resetAllData,
       refetchAll,
       completeWorkflowStep,
     }}>
