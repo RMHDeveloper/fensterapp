@@ -815,8 +815,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   function submitSiteAssign() {
     if (!engineerName) { setError('Select a site engineer.'); return }
-    // Debug: log which file we're saving as latest and what the task currently has
-    try { console.debug('[Fenster] submitSiteReview saving', { latestQuot, currentTaskQuotation: task.quotationFile }) } catch {}
     save({
       flowStage: 'site_visit', flowStatus: 'pending', status: 'pending',
       title: 'Visit Customer Site',
