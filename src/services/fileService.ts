@@ -130,6 +130,12 @@ export async function recordUploadedFile(opts: RecordUploadedFileOptions): Promi
     metadata: opts.metadata,
   }
 
+  // Debug log to help trace duplicate-URL issues in production/dev
+  try {
+    // eslint-disable-next-line no-console
+    console.debug('[Fenster] recordUploadedFile:', { projectId: opts.projectId, taskId: opts.taskId, fileName: opts.fileName, url: opts.url, uploadedBy: opts.uploadedBy })
+  } catch {}
+
   return insertRow(row)
 }
 

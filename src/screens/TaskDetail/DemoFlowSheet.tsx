@@ -22,15 +22,38 @@ import { getAppSettings } from '../../utils/appSettings'
 
 function recordQuotationVersion(task: Task, fileName: string, uploadedBy: string, uploadedByRole: string) {
   const url = fileName.startsWith('http') ? fileName : (getFileUrl(fileName) ?? fileName)
+  const displayName = fileName.startsWith('http')
+    ? decodeURIComponent(fileName.split('/').pop() ?? fileName)
+    : fileName
   recordUploadedFile({
     projectId: task.projectId,
     taskId: task.id,
     category: 'quotation',
-    fileName,
+    fileName: displayName,
     url,
     uploadedBy,
     uploadedByRole,
   }).catch(err => console.error('[Fenster] quotation version record failed:', err))
+}
+
+function isSameQuotationFile(a?: string, b?: string) {
+  // Treat empty as different
+  if (!a || !b) return false
+  const resolve = (s: string) => {
+    if (s.startsWith('http')) return s.trim()
+    const url = getFileUrl(s)
+    return (url ?? s).trim()
+  }
+  try {
+    const ra = resolve(a)
+    const rb = resolve(b)
+    if (ra === rb) return true
+    // Fallback: compare filename (basename) after decoding
+    const base = (u: string) => decodeURIComponent((u.split('/').pop() ?? '').split('?')[0])
+    return base(ra) !== '' && base(ra) === base(rb)
+  } catch {
+    return a.trim() === b.trim()
+  }
 }
 
 // Map from task flowStage → project currentStage (for timeline / filter updates)
@@ -68,7 +91,7 @@ function QuotationVersionsPanel({ task }: { task: Task }) {
       getQuotationVersions(task.projectId, task.id).then(rows => { if (!cancelled) setVersions(rows) })
     })
     return () => { cancelled = true; unsubscribe() }
-  }, [task.projectId, task.id])
+  }, [task.projectId, task.id, task.quotationFile])
 
   // Fall back to the legacy single-file fields if no versions have been recorded in fenster_files yet
   if (versions.length === 0) {
@@ -125,6 +148,11 @@ function QuotationVersionsPanel({ task }: { task: Task }) {
             </div>
           )
         })()}
+        <div className="mt-2 text-[10px] text-slate-400">
+          <p className="font-semibold">Debug (task fields):</p>
+          <p className="truncate">task.quotationFile: {String(task.quotationFile)}</p>
+          <p className="truncate">task.previousQuotationFile: {String(task.previousQuotationFile)}</p>
+        </div>
       </>
     )
   }
@@ -657,7 +685,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         ? (task as Task & { packChecklist?: { id: string; label: string; done: boolean }[] }).packChecklist!
         : DEFAULT_PACK_CHECKLIST.map(d => ({ ...d }))
     )
-  }, [isOpen, task.id, task.flowStatus]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, task.id, task.flowStatus, task.flowStage, task.quotationFile]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null
 
@@ -706,6 +734,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       })
     }
 
+    try { console.debug('[Fenster] save -> onUpdate', { updates, newEntries, taskId: task.id }) } catch {}
     onUpdate({
       ...updates,
       statusHistory: [...(task.statusHistory ?? []), ...newEntries],
@@ -786,6 +815,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   function submitSiteAssign() {
     if (!engineerName) { setError('Select a site engineer.'); return }
+    // Debug: log which file we're saving as latest and what the task currently has
+    try { console.debug('[Fenster] submitSiteReview saving', { latestQuot, currentTaskQuotation: task.quotationFile }) } catch {}
     save({
       flowStage: 'site_visit', flowStatus: 'pending', status: 'pending',
       title: 'Visit Customer Site',
@@ -879,6 +910,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     }
 
     // Mark LM review task as reviewed (keep flowStage, change flowStatus so filter hides it)
+    try { console.debug('[Fenster] submitReviseQuotation saving', { latestQuot, currentTaskQuotation: task.quotationFile }) } catch {}
     save({
       flowStage: 'reschedule_review' as FlowStage,
       flowStatus: isApproved ? 'approved' : 'rejected',
@@ -891,6 +923,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     // measurement files are optional
     const hasPin = (locPin.latitude && locPin.longitude) || locPin.mapLink.trim()
     if (!hasPin)                 { setError('Add site location pin before completing.'); return }
+    try { console.debug('[Fenster] submitResendUpdatedQuotation saving', { latestQuot, currentTaskQuotation: task.quotationFile }) } catch {}
     save({
       flowStage: 'site_review', flowStatus: 'ready', status: 'pending',
       title: 'Review Site Visit & Create Quotation',
@@ -922,15 +955,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       transportCost:   transC,
       profit:          quotAmount - (matC + prodC + instC + transC),
     } : undefined
+    const latestQuot = quotFiles[quotFiles.length - 1] ?? quotFiles[0]
     save({
       flowStage: 'owner_approval', flowStatus: 'waiting', status: 'pending',
       title: 'Approve Quotation',
       quotationAmount: quotAmount,
-      quotationFile: quotFiles[0],
+      quotationFile: latestQuot,
       quotationNotes: quotNotes || undefined,
       costBreakdown: breakdown,
+      previousQuotationFile: undefined,
     }, `Quotation ₹${quotAmount.toLocaleString('en-IN')} sent for owner approval`, quotFiles)
-    recordQuotationVersion(task, quotFiles[0], user?.name ?? 'Sales Team', role)
+    recordQuotationVersion(task, latestQuot, user?.name ?? 'Sales Team', role)
   }
 
   function submitOwnerApproval() {
@@ -951,6 +986,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   function submitReviseQuotation() {
     if (!quotAmt)               { setError('Enter the quotation amount.'); return }
     if (quotFiles.length === 0) { setError('Upload the quotation file.'); return }
+    const latestQuot = quotFiles[quotFiles.length - 1] ?? quotFiles[0]
+    if (isSameQuotationFile(latestQuot, task.quotationFile)) {
+      setError('Upload a fresh revised quotation file before resending.')
+      return
+    }
     const quotAmount = Number(quotAmt)
     const sqft  = costSqft ? Number(costSqft) : 0
     const matC  = costMaterial ? Number(costMaterial) : 0
@@ -971,13 +1011,13 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       flowStage: 'owner_approval', flowStatus: 'waiting', status: 'pending',
       title: 'Approve Quotation',
       quotationAmount: quotAmount,
-      quotationFile: quotFiles[0],
-      previousQuotationFile: task.quotationFile || undefined,  // save old file for reapproval view
+      quotationFile: latestQuot,
       quotationNotes: quotNotes || undefined,
       costBreakdown: breakdown,
       ownerRejectionReason: undefined,
+      previousQuotationFile: undefined,
     }, `Revised quotation ₹${quotAmount.toLocaleString('en-IN')} resent for owner approval`, quotFiles)
-    recordQuotationVersion(task, quotFiles[0], user?.name ?? 'Sales Team', role)
+    recordQuotationVersion(task, latestQuot, user?.name ?? 'Sales Team', role)
   }
 
   function submitSendToClient() {
@@ -1012,6 +1052,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   function submitResendUpdatedQuotation() {
     if (!quotAmt)               { setError('Enter the revised quotation amount.'); return }
     if (quotFiles.length === 0) { setError('Upload the revised quotation file.'); return }
+    const latestQuot = quotFiles[quotFiles.length - 1] ?? quotFiles[0]
+    if (isSameQuotationFile(latestQuot, task.quotationFile)) {
+      setError('Upload a fresh revised quotation file before resending.')
+      return
+    }
     const quotAmount = Number(quotAmt)
     const sqft  = costSqft ? Number(costSqft) : 0
     const matC  = costMaterial ? Number(costMaterial) : 0
@@ -1032,12 +1077,13 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       flowStage: 'owner_approval', flowStatus: 'waiting', status: 'pending',
       title: 'Approve Quotation',
       quotationAmount: quotAmount,
-      quotationFile: quotFiles[0],
+      quotationFile: latestQuot,
       quotationNotes: quotNotes || undefined,
       costBreakdown: breakdown,
       clientRejectionReason: undefined,
+      previousQuotationFile: undefined,
     }, `Revised quotation ₹${quotAmount.toLocaleString('en-IN')} sent for owner approval after client rejection`, quotFiles)
-    recordQuotationVersion(task, quotFiles[0], user?.name ?? 'Sales Team', role)
+    recordQuotationVersion(task, latestQuot, user?.name ?? 'Sales Team', role)
   }
 
   function submitEditCostBreakdown() {

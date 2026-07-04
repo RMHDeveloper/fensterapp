@@ -31,7 +31,11 @@ async function uploadToHostinger(file: File): Promise<string> {
     throw new Error('File upload is not configured. Contact your administrator.')
   }
   const form = new FormData()
-  form.append('file', file)
+  // Use a unique filename when uploading to avoid server-side overwrites
+  const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const uploadName = `${uniqueSuffix}_${file.name}`
+  const fileForUpload = new File([file], uploadName, { type: file.type })
+  form.append('file', fileForUpload)
   let res: Response
   try {
     res = await fetch(UPLOAD_URL, {
@@ -48,6 +52,10 @@ async function uploadToHostinger(file: File): Promise<string> {
   }
   const json = await res.json() as { url?: string }
   if (!json.url) throw new Error('Upload failed — invalid server response.')
+  try {
+    // eslint-disable-next-line no-console
+    console.debug('[Fenster] uploadToHostinger -> returned url', json.url)
+  } catch {}
   return json.url
 }
 
