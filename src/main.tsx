@@ -4,7 +4,7 @@ import App from './App'
 import './index.css'
 
 // ── Clear stale localStorage from old app versions ───────────────────────────
-const APP_VERSION = '2.1.0'
+const APP_VERSION = '2.2.0'
 try {
   const storedVer = localStorage.getItem('fenster_app_version')
   if (storedVer !== APP_VERSION) {

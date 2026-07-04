@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, UserPlus, HardHat, Phone, Pencil } from 'lucide-react'
+import { Plus, UserPlus, HardHat, Phone, Pencil, FileDown } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
@@ -14,24 +14,46 @@ import { AppHeader } from '../../components/layout/AppHeader'
 import { loadManagedUsers } from '../../utils/userStorage'
 import type { Lead, LeadStatus, LeadSource, LeadInterest } from '../../types'
 
-type Filter = 'all' | LeadStatus
+type Filter = 'new' | 'contacted' | 'measurement' | 'quotation' | 'negotiation' | 'lost'
 
-const CHIPS = [
-  { value: 'all'       as Filter, label: 'Active'    },
-  { value: 'new'       as Filter, label: 'New'       },
-  { value: 'contacted' as Filter, label: 'Contacted' },
-  { value: 'qualified' as Filter, label: 'Qualified' },
-  { value: 'lost'      as Filter, label: 'Lost'      },
+const CHIPS: { value: Filter; label: string }[] = [
+  { value: 'new',         label: 'New'         },
+  { value: 'contacted',   label: 'Contacted'   },
+  { value: 'measurement', label: 'Measurement' },
+  { value: 'quotation',   label: 'Quotation'   },
+  { value: 'negotiation', label: 'Negotiation' },
+  { value: 'lost',        label: 'Lost'        },
 ]
 
+const LEAD_MEASUREMENT_STAGES = new Set([
+  'new_project','measurement','site_visit_assigned','site_visit','site_visit_completed',
+  'waiting_site_visit_review','reschedule_requested','reschedule_approved',
+])
+const LEAD_QUOTATION_STAGES = new Set([
+  'quotation_preparation','quotation_sent_owner','quotation_sent_md_ed',
+  'owner_approved','md_ed_approved','quotation_rework',
+])
+const LEAD_NEGOTIATION_STAGES = new Set([
+  'sent_to_client','waiting_client_approval','client_approved','client_rejected',
+  'client_not_approved','negotiation','advance_payment','advance_payment_pending',
+  'waiting_advance_payment','owner_disapproved','md_ed_rejected',
+])
+
 const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
-  { value: 'cold_call',         label: '📞 Cold Call'        },
-  { value: 'referral',          label: '🤝 Referral'         },
-  { value: 'walk_in',           label: '🚶 Walk-in'          },
-  { value: 'online',            label: '🌐 Online'           },
-  { value: 'whatsapp',          label: '💬 WhatsApp'         },
-  { value: 'existing_customer', label: '⭐ Existing Customer' },
-  { value: 'other',             label: '📌 Other'            },
+  { value: 'existing_customer', label: 'Existing Client'    },
+  { value: 'md_ed_ref',         label: 'MD / ED Reference'  },
+  { value: 'google',            label: 'Google'             },
+  { value: 'instagram',         label: 'Instagram'          },
+  { value: 'facebook',          label: 'Facebook'           },
+  { value: 'walk_in',           label: 'Walk In'            },
+  { value: 'client_ref',        label: 'Client Reference'   },
+  { value: 'cold_call',         label: 'Cold Call'          },
+  { value: 'cni',               label: 'CNI'                },
+  { value: 'bni',               label: 'BNI'                },
+  { value: 'referral',          label: 'Referral'           },
+  { value: 'whatsapp',          label: 'WhatsApp'           },
+  { value: 'online',            label: 'Online'             },
+  { value: 'other',             label: 'Other'              },
 ]
 
 const SOURCE_LABEL: Record<string, string> = Object.fromEntries(
@@ -54,17 +76,18 @@ function InterestBadge({ interest }: { interest?: LeadInterest }) {
 }
 
 export default function LeadsScreen() {
-  const { leads, updateLeadStatus, updateLead, addProject, addTask, addLead } = useAppData()
+  const { leads, projects, updateLeadStatus, updateLead, addProject, addTask, addLead } = useAppData()
   const { user } = useAuth()
   const navigate = useNavigate()
 
   const isMdEd = user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED')
   const isLO   = user?.role === 'lead_manager'
-  const canEditLead = isMdEd || isLO
+  const canEditLead  = isMdEd || isLO
+  const canExport    = user?.role === 'owner' || user?.role === 'lead_manager' || user?.role === 'production_admin'
   const leadManagers = loadManagedUsers()
     .filter(u => u.status === 'active' && u.role === 'lead_manager')
     .map(u => u.fullName)
-  const [filter,   setFilter]   = useState<Filter>('all')
+  const [filter,   setFilter]   = useState<Filter>('new')
   const [search,   setSearch]   = useState('')
   const [selected, setSelected] = useState<Lead | null>(null)
   const [showNew,  setShowNew]  = useState(false)
@@ -114,7 +137,25 @@ export default function LeadsScreen() {
 
   const filtered = leads.filter(l => {
     if (user?.role === 'lead_manager' && l.assignee && l.assignee !== user.name) return false
-    const matchFilter = filter === 'all' ? l.status !== 'lost' : l.status === filter
+    const proj = projects.find(p => p.leadId === l.id)
+    const projStage = proj?.currentStage
+    let matchFilter = false
+    if (filter === 'lost') {
+      matchFilter = l.status === 'lost'
+    } else if (l.status === 'lost') {
+      matchFilter = false
+    } else if (filter === 'new') {
+      matchFilter = l.status === 'new'
+    } else if (filter === 'contacted') {
+      matchFilter = l.status === 'contacted'
+    } else if (filter === 'measurement') {
+      matchFilter = l.status === 'qualified'
+        || !!(projStage && LEAD_MEASUREMENT_STAGES.has(projStage))
+    } else if (filter === 'quotation') {
+      matchFilter = !!(projStage && LEAD_QUOTATION_STAGES.has(projStage))
+    } else if (filter === 'negotiation') {
+      matchFilter = !!(projStage && LEAD_NEGOTIATION_STAGES.has(projStage))
+    }
     const matchSearch = !search
       || l.name.toLowerCase().includes(search.toLowerCase())
       || l.phone.includes(search)
@@ -182,12 +223,12 @@ export default function LeadsScreen() {
       email:       newEmail.trim() || undefined,
       city:        newCity.trim(),
       location:    newCity.trim(),
-      requirement: newReq.trim()   || 'TBD',
+      requirement: newReq.trim()   || undefined,
       notes:       newNotes.trim() || undefined,
       source:      newSource,
       interest:    newInterest,
       status:      'new',
-      followUpDate:'TBD',
+      followUpDate: undefined,
       priority:    'medium',
       assignee:    newAssignee.trim() || (isLO ? user!.name : 'Sales Team'),
       createdAt:   new Date().toLocaleDateString('en-IN'),
@@ -205,7 +246,7 @@ export default function LeadsScreen() {
     setEditPhone(selected.phone)
     setEditEmail(selected.email ?? '')
     setEditCity(selected.city)
-    setEditReq(selected.requirement)
+    setEditReq(selected.requirement ?? '')
     setEditNotes(selected.notes ?? '')
     setEditSource(selected.source)
     setEditInterest(selected.interest ?? 'medium')
@@ -221,7 +262,7 @@ export default function LeadsScreen() {
       email:       editEmail.trim() || undefined,
       city:        editCity.trim(),
       location:    editCity.trim(),
-      requirement: editReq.trim() || 'TBD',
+      requirement: editReq.trim() || undefined,
       notes:       editNotes.trim() || undefined,
       source:      editSource,
       interest:    editInterest,
@@ -237,7 +278,7 @@ export default function LeadsScreen() {
     if (!selected) return
     setConvertingLead(selected)
     setProjName(selected.name + ' Project')
-    setProjReq(selected.requirement)
+    setProjReq(selected.requirement ?? '')
     setProjCity(selected.city)
     setProjAssignee(selected.assignee)
     setProjNote('')
@@ -262,9 +303,10 @@ export default function LeadsScreen() {
       value:        0,
       stage:        'Lead Converted',
       city:         projCity,
-      productType:  projReq || 'TBD',
+      productType:  projReq || '',
       createdAt:    new Date().toLocaleDateString('en-IN'),
       description:  projNote || projReq,
+      leadId:       lead?.id,
     })
 
     addTask({
@@ -296,12 +338,54 @@ export default function LeadsScreen() {
     setTimeout(() => navigate(`/project/${projectId}`), 800)
   }
 
+  function exportCSV(filename: string, rows: (string | number)[][]) {
+    const csv = rows.map(row =>
+      row.map(cell => {
+        const s = String(cell ?? '')
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
+      }).join(',')
+    ).join('\r\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = filename; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function downloadLeadsExcel() {
+    const rows = [
+      ['#', 'Name', 'Phone', 'Email', 'City', 'Status', 'Interest', 'Source', 'Assignee', 'Requirement', 'Notes', 'Follow Up Date', 'Created At'],
+      ...filtered.map((l, i) => [
+        i + 1,
+        l.name,
+        l.phone,
+        l.email ?? '',
+        l.city,
+        l.status,
+        l.interest ?? '',
+        SOURCE_LABEL[l.source] ?? l.source,
+        l.assignee,
+        l.requirement ?? '',
+        l.notes ?? '',
+        l.followUpDate ?? '',
+        l.createdAt ?? '',
+      ]),
+    ]
+    exportCSV(`Fenster_Leads_${new Date().toISOString().slice(0, 10)}.csv`, rows)
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
       <AppHeader />
       <div className="bg-white px-5 pt-4 pb-4 border-b border-slate-100 sticky top-14 z-20">
         <div className="flex items-center gap-2 mb-3">
           <SearchBar value={search} onChange={setSearch} placeholder="Search leads…" className="flex-1" />
+          {canExport && (
+            <button onClick={downloadLeadsExcel} aria-label="Download Excel"
+              className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center shadow-fab active:bg-emerald-700 flex-shrink-0">
+              <FileDown size={18} className="text-white" />
+            </button>
+          )}
           <PermissionGate permission="create_lead">
             <button onClick={() => setShowNew(true)} aria-label="Add new lead"
               className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-fab active:bg-indigo-700 flex-shrink-0">
@@ -416,24 +500,41 @@ export default function LeadsScreen() {
               <Phone size={16} /> Call {selected.name.split(' ')[0]}
             </a>
 
-            {/* Convert to Project — always shown but enabled only when qualified */}
-            {selected.status !== 'won' && (
+            {/* Assign to Site Engineer (when qualified) */}
+            {selected.status === 'qualified' && (
               <PermissionGate permission="create_project">
                 <button
                   onClick={openConvert}
-                  disabled={selected.status !== 'qualified'}
-                  className="w-full flex items-center justify-center gap-2 border-2 border-indigo-600 text-indigo-600 rounded-xl py-3 text-sm font-bold active:bg-indigo-50 disabled:opacity-40 disabled:pointer-events-none">
-                  <UserPlus size={16} /> Convert to Project
+                  className="w-full flex items-center justify-center gap-2 bg-teal-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-teal-700">
+                  <UserPlus size={16} /> Assign to Site Engineer →
                 </button>
               </PermissionGate>
             )}
 
-            {selected.status === 'won' && (
-              <button onClick={() => { setSelected(null); navigate('/projects') }}
-                className="w-full flex items-center justify-center gap-2 border-2 border-emerald-600 text-emerald-600 rounded-xl py-3 text-sm font-bold active:bg-emerald-50">
-                <HardHat size={16} /> View Project &amp; Tasks
-              </button>
+            {/* Assign Site Engineer — disabled until lead is qualified */}
+            {selected.status !== 'won' && selected.status !== 'qualified' && (
+              <PermissionGate permission="create_project">
+                <button
+                  disabled
+                  className="w-full flex items-center justify-center gap-2 border-2 border-slate-200 text-slate-400 rounded-xl py-3 text-sm font-bold opacity-40 pointer-events-none">
+                  <UserPlus size={16} /> Assign Site Engineer
+                </button>
+              </PermissionGate>
             )}
+
+            {selected.status === 'won' && (() => {
+              const linkedProject = projects.find(p => p.leadId === selected.id)
+              return (
+                <button onClick={() => {
+                  setSelected(null)
+                  if (linkedProject) navigate(`/project/${linkedProject.id}`)
+                  else navigate('/projects')
+                }}
+                  className="w-full flex items-center justify-center gap-2 border-2 border-emerald-600 text-emerald-600 rounded-xl py-3 text-sm font-bold active:bg-emerald-50">
+                  <HardHat size={16} /> View Progress →
+                </button>
+              )
+            })()}
           </div>
         )}
       </BottomSheet>
@@ -508,18 +609,13 @@ export default function LeadsScreen() {
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-500 mb-2 block">Lead Source</label>
-            <div className="flex flex-wrap gap-2">
+            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Lead Source</label>
+            <select value={editSource} onChange={e => setEditSource(e.target.value as LeadSource)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 appearance-none">
               {SOURCE_OPTIONS.map(opt => (
-                <button key={opt.value} type="button" onClick={() => setEditSource(opt.value)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors
-                    ${editSource === opt.value
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white text-slate-600 border-slate-200 active:bg-slate-50'}`}>
-                  {opt.label}
-                </button>
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
-            </div>
+            </select>
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-500 mb-2 block">Lead Interest</label>
@@ -558,7 +654,7 @@ export default function LeadsScreen() {
       </BottomSheet>
 
       {/* ── Convert to Project Sheet ── */}
-      <BottomSheet isOpen={showConvert} onClose={() => setShowConvert(false)} title="Convert to Project" height="full">
+      <BottomSheet isOpen={showConvert} onClose={() => setShowConvert(false)} title="Assign Site Engineer" height="full">
         <div className="space-y-4">
           <div>
             <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Project Name *</label>
@@ -592,7 +688,7 @@ export default function LeadsScreen() {
           </div>
           <button onClick={handleSaveConvert} disabled={!projName.trim() || !projAssignee.trim()}
             className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-indigo-700 disabled:opacity-50">
-            Convert to Project
+            Assign Site Engineer →
           </button>
         </div>
       </BottomSheet>
@@ -627,18 +723,13 @@ export default function LeadsScreen() {
           </div>
           {/* Source */}
           <div>
-            <label className="text-xs font-semibold text-slate-500 mb-2 block">Lead Source *</label>
-            <div className="flex flex-wrap gap-2">
+            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Lead Source *</label>
+            <select value={newSource} onChange={e => setNewSource(e.target.value as LeadSource)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 appearance-none">
               {SOURCE_OPTIONS.map(opt => (
-                <button key={opt.value} type="button" onClick={() => setNewSource(opt.value)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors
-                    ${newSource === opt.value
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white text-slate-600 border-slate-200 active:bg-slate-50'}`}>
-                  {opt.label}
-                </button>
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
-            </div>
+            </select>
           </div>
 
           {/* Interest */}

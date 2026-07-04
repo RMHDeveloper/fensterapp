@@ -4,6 +4,8 @@ import type { Project } from '../../types'
 interface Props {
   project: Project
   onClick?: () => void
+  role?: string
+  balanceAmount?: number
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -54,7 +56,7 @@ function getDaysLabel(dueDate?: string): { text: string; color: string } | null 
   return              { text: 'Due today',           color: 'text-orange-600' }
 }
 
-export function ProjectRow({ project, onClick }: Props) {
+export function ProjectRow({ project, onClick, role, balanceAmount }: Props) {
   const stage      = project.currentStage ?? project.stage ?? ''
   const stageLabel = STAGE_LABELS[stage] ?? (stage.replace(/_/g, ' ') || 'Active')
   const stageCls   = STAGE_COLORS[stage] ?? 'bg-slate-100 text-slate-600'
@@ -86,7 +88,22 @@ export function ProjectRow({ project, onClick }: Props) {
 
         {/* Main info */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-slate-800 truncate leading-tight">{project.name}</p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-bold text-slate-800 truncate leading-tight flex-1">{project.name}</p>
+            {(() => {
+              const val = project.quotationAmount ?? project.value
+              if (!val) return null
+              const isOwner = role === 'owner'
+              return (
+                <div className="flex-shrink-0 text-right">
+                  <p className="text-xs font-extrabold text-emerald-700">₹{(val / 1000).toFixed(0)}K</p>
+                  {isOwner && balanceAmount != null && balanceAmount > 0 && (
+                    <p className="text-[10px] font-bold text-amber-600">₹{(balanceAmount / 1000).toFixed(0)}K bal</p>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
           <p className="text-xs text-slate-500 truncate mt-0.5">{project.client}</p>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${stageCls}`}>

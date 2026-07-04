@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileText, Image, Mic, Eye } from 'lucide-react'
+import { FileText, Image, Mic, Eye, Download } from 'lucide-react'
 import { resolveFileUrl, voicePreviewStore } from '../../utils/sessionStore'
 import { FilePreviewModal } from '../feedback/FilePreviewModal'
 
@@ -60,13 +60,19 @@ export function MediaPreviewList({ files, title, emptyText, voiceStore }: Props)
               }
               <p className="text-xs text-slate-700 flex-1 truncate">{name}</p>
               {fileUrl ? (
-                <button type="button"
-                  onClick={() => setPreview({ src: fileUrl, name })}
-                  className="flex items-center gap-1 text-[10px] text-blue-600 font-bold px-2 py-1 bg-white rounded border border-blue-200 flex-shrink-0 active:opacity-70">
-                  <Eye size={10} /> {isImg ? 'View' : isPdf ? 'View' : 'Open'}
-                </button>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button type="button"
+                    onClick={() => setPreview({ src: fileUrl, name })}
+                    className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center active:bg-blue-100">
+                    <Eye size={11} className="text-blue-500" />
+                  </button>
+                  <a href={fileUrl} download={name} target="_blank" rel="noopener noreferrer"
+                    className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center active:bg-emerald-100">
+                    <Download size={11} className="text-emerald-600" />
+                  </a>
+                </div>
               ) : (
-                <p className="text-[10px] text-slate-400 flex-shrink-0 italic">Preview unavailable</p>
+                <p className="text-[10px] text-slate-400 flex-shrink-0 italic">Unavailable</p>
               )}
             </div>
           )

@@ -34,8 +34,15 @@ const CHIPS: { value: Filter; label: string }[] = [
   { value: 'cancelled', label: 'Cancelled' },
 ]
 
+const STAGES_PAST_SITE_VISIT = new Set([
+  'site_review','reschedule_review','owner_approval','send_to_client','advance_payment',
+  'production_assign','production_check','production_work','installation_assign',
+  'installation_update','final_payment','final_completion','completed',
+])
+
 function visitStatus(task: Task): Filter {
   if (task.status === 'completed' || task.flowStage === 'completed') return 'completed'
+  if (task.flowStage && STAGES_PAST_SITE_VISIT.has(task.flowStage)) return 'completed'
   if (task.flowStatus === 'dropped' || task.status === 'overdue') return 'cancelled'
   return 'scheduled'
 }
@@ -51,10 +58,8 @@ export default function SiteVisitScreen() {
 
   // Find all site-visit-related tasks (flow tasks or regular site_visit type)
   const visitTasks = tasks.filter(t => {
-    // Match by flowStage (flow tasks) OR by task.type for regular tasks
-    const isSiteStage = t.flowStage
-      ? ['site_visit', 'site_assign', 'reschedule_review'].includes(t.flowStage)
-      : t.type === 'site_visit'
+    // Include by task type (set at creation) OR by current flowStage — catches completed visits too
+    const isSiteStage = t.type === 'site_visit' || Boolean(t.flowStage && ['site_visit', 'site_assign', 'reschedule_review'].includes(t.flowStage))
     if (!isSiteStage) return false
 
     if (role === 'site_engineer') {

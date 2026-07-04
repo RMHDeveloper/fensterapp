@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Upload, X, FileText, Eye, Image, Camera } from 'lucide-react'
+import { Upload, X, FileText, Eye, Image, Camera, Download } from 'lucide-react'
 import { filePreviewStore as previewStore, resolveFileUrl } from '../../utils/sessionStore'
 import { storeFile, deleteRemoteFile, removeLocalFile } from '../../utils/fileStorage'
 import { FilePreviewModal } from '../feedback/FilePreviewModal'
@@ -147,11 +147,17 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
                 )}
                 <p className="text-xs text-slate-700 flex-1 truncate">{name}</p>
                 {src && (
-                  <button type="button"
-                    onClick={() => openPreview(src, name)}
-                    className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 active:bg-blue-100">
-                    <Eye size={12} className="text-blue-500" />
-                  </button>
+                  <>
+                    <button type="button"
+                      onClick={() => openPreview(src, name)}
+                      className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 active:bg-blue-100">
+                      <Eye size={12} className="text-blue-500" />
+                    </button>
+                    <a href={src} download={name} target="_blank" rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 active:bg-emerald-100">
+                      <Download size={12} className="text-emerald-600" />
+                    </a>
+                  </>
                 )}
                 <button type="button" onClick={() => removeFile(i)}
                   className="w-6 h-6 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0 active:bg-red-100">

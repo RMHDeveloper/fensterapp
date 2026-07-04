@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import type { AuthUser, UserRole, Permission } from '../types'
 import { hasPermission } from '../utils/permissions'
 import { authenticateUser } from '../data/mockUsers'
-import { loadManagedUsers, initUsersFromSupabase } from '../utils/userStorage'
+import { loadManagedUsers, initUsersFromSupabase, DEFAULT_PRODUCTION_USERS } from '../utils/userStorage'
 
 const SESSION_KEY = 'fenster_session'
 
@@ -72,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function login(role: UserRole) {
     const users   = loadManagedUsers()
     const account = users.find(u => u.role === role)
+      ?? DEFAULT_PRODUCTION_USERS.find(u => u.role === role)
     if (!account) return
     const initials = account.fullName.split(' ').map((w: string) => w[0] ?? '').join('').slice(0, 2).toUpperCase()
     setUser({ id: account.id, role, name: account.fullName, initials, email: account.email })

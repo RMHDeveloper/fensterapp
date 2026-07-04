@@ -15,7 +15,15 @@ export function saveManagedUsers(users: ManagedUser[]): void {
 export async function initUsersFromSupabase(): Promise<void> {
   const users = await getAllManagedUsers()
   if (users.length > 0) {
-    _cache = users
+    // One-time migration: update owner email + name from haroon→deepak
+    const migrated = users.map(u =>
+      u.id === 'prod_owner_md' && (u.email === 'haroon@fenster.in' || u.fullName === 'Haroon Khan')
+        ? { ...u, email: 'deepak@fenster.in', fullName: 'Deepak', updatedAt: new Date().toISOString() }
+        : u
+    )
+    const changed = migrated.some((u, i) => u !== users[i])
+    _cache = migrated
+    if (changed) upsertManagedUsers(migrated).catch(() => {})
   } else {
     seedDefaultUsers()
   }
@@ -33,9 +41,9 @@ const SEED_DATE = '2025-01-01T00:00:00.000Z'
 export const DEFAULT_PRODUCTION_USERS: ManagedUser[] = [
   {
     id:            'prod_owner_md',
-    fullName:      'Haroon Khan',
+    fullName:      'Deepak',
     mobile:        '9000000001',
-    email:         'haroon@fenster.in',
+    email:         'deepak@fenster.in',
     password:      'Fenster@MD25',
     role:          'owner',
     displayRole:   'Managing Director (MD)',

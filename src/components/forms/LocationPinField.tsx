@@ -48,7 +48,7 @@ export function LocationPinField({ value, onChange, error }: Props) {
         setLoading(false)
         setShowManual(false)
         const address = await reverseGeocode(lat, lng)
-        onChange({ latitude: lat, longitude: lng, mapLink: link, label: address })
+        onChange({ latitude: lat, longitude: lng, mapLink: link, label: address || `${lat}, ${lng}` })
       },
       () => {
         setGeoError('Location access denied.')
