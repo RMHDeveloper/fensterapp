@@ -270,12 +270,9 @@ export default function HomeScreen() {
                 </div>
               ) : (
                 todayTasks.slice(0, 4).map((task, idx) => (
-                  <TodayTaskRow
-                    key={task.id}
-                    task={task}
-                    onClick={() => navigate(`/task/${task.id}`)}
-                    isLast={idx === Math.min(todayTasks.length, 4) - 1}
-                  />
+                  task.flowStage
+                    ? <FlowTaskCard key={task.id} task={task} onClick={() => setFlowTaskId(task.id)} />
+                    : <TodayTaskRow key={task.id} task={task} onClick={() => navigate(`/task/${task.id}`)} isLast={idx === Math.min(todayTasks.length, 4) - 1} />
                 ))
               )}
             </div>
