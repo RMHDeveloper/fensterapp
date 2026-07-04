@@ -16,7 +16,7 @@ import { FlowTaskCard } from '../../components/cards/FlowTaskCard'
 import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { ProjectCard } from '../../components/cards/ProjectCard'
 import { EmptyState } from '../../components/feedback/EmptyState'
-import type { Task, UserRole } from '../../types'
+import type { UserRole } from '../../types'
 import type { ComponentType } from 'react'
 import type { LucideProps } from 'lucide-react'
 
@@ -45,7 +45,7 @@ export default function HomeScreen() {
   const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
 
   const role            = user?.role ?? 'viewer'
-  const todayTasks      = tasks.filter(t => t.dueDate === 'Today' || t.status === 'overdue' || t.status === 'in_progress')
+  const todayTasks      = tasks.filter(t => !t.flowStage && (t.dueDate === 'Today' || t.status === 'overdue' || t.status === 'in_progress'))
   const activeProjects  = projects.filter(p => p.status === 'active')
   const openMistakes    = mistakes.filter(m => m.status === 'open').length
   const overduePayments = payments.filter(p => p.status === 'overdue').length
@@ -200,22 +200,7 @@ export default function HomeScreen() {
 
         {/* 3. Flow Tasks (Demo) ────────────────────────────────────────────────── */}
         {(() => {
-          const myProjectIds = new Set(projects.filter(p => p.ownerId === user?.id).map(p => p.id))
-          const isAssignedToMe = (t: Task) =>
-            t.assignedTo === user?.name || t.assignedTo === user?.id ||
-            t.assignee   === user?.name || t.assignee   === user?.id ||
-            t.siteEngineerName === user?.name
-          const activeFTs = tasks.filter(t => {
-            if (t.flowStage == null || t.flowStage === 'completed') return false
-            if (role === 'site_engineer') return t.flowStage === 'site_visit' && isAssignedToMe(t)
-            if (role === 'owner') return t.flowStage === 'owner_approval' || (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
-            if (role === 'production_admin') return t.flowStage === 'production_check'
-            if (role === 'production_manager') return t.flowStage === 'production_work'
-            if (role === 'production_team') return t.flowStage === 'production_check' || t.flowStage === 'production_work'
-            if (role === 'technician' || role === 'installation_incharge') return (t.flowStage === 'installation_assign' || t.flowStage === 'installation_update') && isAssignedToMe(t)
-            if (role === 'lead_manager') return myProjectIds.has(t.projectId)
-            return false
-          })
+          const activeFTs = tasks.filter(t => t.flowStage != null && t.flowStage !== 'completed')
           if (activeFTs.length === 0) return null
           return (
             <section>
