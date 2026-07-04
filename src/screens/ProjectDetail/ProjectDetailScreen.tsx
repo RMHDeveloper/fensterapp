@@ -17,6 +17,18 @@ import type { Task, TaskStatus, Project } from '../../types'
 
 const GOOGLE_REVIEW_LINK = 'https://maps.app.goo.gl/SRqthqnsFTo5UdHL9'
 
+// Handles both legacy locale-formatted strings and ISO timestamps; sorts/formats by real time, not string order.
+function parseTimestamp(val: string): number {
+  const t = new Date(val).getTime()
+  return isNaN(t) ? -Infinity : t
+}
+
+function fmtDateTime(val: string): string {
+  const d = new Date(val)
+  if (isNaN(d.getTime())) return val
+  return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 function fmtDate(val?: string | null): string {
   if (!val || val === '—' || val.trim() === '') return '—'
   // ISO date string
@@ -343,7 +355,7 @@ function handleSaveTask() {
         const allEntries = tasks
           .flatMap(t => (t.statusHistory ?? []).map(e => ({ ...e, taskTitle: t.title })))
           .filter(e => (e.note || (e.files && e.files.length > 0)) && (!allowedRoles || allowedRoles.includes(e.updatedRole)))
-          .sort((a, b) => (b.updatedAt > a.updatedAt ? 1 : -1))
+          .sort((a, b) => parseTimestamp(b.updatedAt) - parseTimestamp(a.updatedAt))
         if (allEntries.length === 0) {
           return (
             <p className="text-sm text-slate-400 italic">
@@ -381,7 +393,7 @@ function handleSaveTask() {
                       </div>
                     )}
                     <p className="text-[10px] text-slate-400 mt-1">
-                      {getActivityLabel(entry.stage, entry.status)} · {entry.updatedBy} · {entry.updatedAt}
+                      {getActivityLabel(entry.stage, entry.status)} · {entry.updatedBy} · {fmtDateTime(entry.updatedAt)}
                     </p>
                   </div>
                 </div>

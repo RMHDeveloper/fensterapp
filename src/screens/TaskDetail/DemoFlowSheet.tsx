@@ -16,6 +16,21 @@ import { filePreviewStore, voicePreviewStore, isImageFileName, resolveFileUrl } 
 import { MediaPreviewList } from '../../components/media/MediaPreviewList'
 import { getActiveManagedUsersByDisplayRole } from '../../utils/userStorage'
 import { Dialog } from '../../components/feedback/Dialog'
+import { recordUploadedFile, getQuotationVersions, subscribeToProjectFiles, type FileRow } from '../../services/fileService'
+import { getFileUrl } from '../../utils/fileStorage'
+
+function recordQuotationVersion(task: Task, fileName: string, uploadedBy: string, uploadedByRole: string) {
+  const url = fileName.startsWith('http') ? fileName : (getFileUrl(fileName) ?? fileName)
+  recordUploadedFile({
+    projectId: task.projectId,
+    taskId: task.id,
+    category: 'quotation',
+    fileName,
+    url,
+    uploadedBy,
+    uploadedByRole,
+  }).catch(err => console.error('[Fenster] quotation version record failed:', err))
+}
 
 // Map from task flowStage → project currentStage (for timeline / filter updates)
 const FLOW_TO_PROJECT_STAGE: Partial<Record<string, ProjectStage>> = {
@@ -33,6 +48,126 @@ const FLOW_TO_PROJECT_STAGE: Partial<Record<string, ProjectStage>> = {
   final_payment:       'final_payment',
   final_completion:    'final_payment',
   completed:           'completed',
+}
+
+function fmtVersionDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+/** Full quotation version history, newest first — replaces the old single "latest + previous" pair. */
+function QuotationVersionsPanel({ task }: { task: Task }) {
+  const [versions, setVersions] = useState<FileRow[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    getQuotationVersions(task.projectId, task.id).then(rows => { if (!cancelled) setVersions(rows) })
+    const unsubscribe = subscribeToProjectFiles(task.projectId, () => {
+      getQuotationVersions(task.projectId, task.id).then(rows => { if (!cancelled) setVersions(rows) })
+    })
+    return () => { cancelled = true; unsubscribe() }
+  }, [task.projectId, task.id])
+
+  // Fall back to the legacy single-file fields if no versions have been recorded in fenster_files yet
+  if (versions.length === 0) {
+    return (
+      <>
+        {task.quotationFile && (() => {
+          const qFileUrl = resolveFileUrl(task.quotationFile!)
+          return (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+              <p className="text-[10px] font-bold text-indigo-500 uppercase mb-2">Latest Quotation File</p>
+              <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2.5">
+                <FileText size={16} className="text-indigo-400 flex-shrink-0" />
+                <p className="text-xs text-slate-700 flex-1 truncate">{task.quotationFile}</p>
+                {qFileUrl && (
+                  <>
+                    <a href={qFileUrl} target="_blank" rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 active:bg-blue-100">
+                      <Eye size={12} className="text-blue-500" />
+                    </a>
+                    <a href={qFileUrl} download={task.quotationFile} target="_blank" rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 active:bg-emerald-100">
+                      <Download size={12} className="text-emerald-600" />
+                    </a>
+                  </>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+        {task.previousQuotationFile && (() => {
+          const prevUrl = resolveFileUrl(task.previousQuotationFile!)
+          return (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <p className="text-[10px] font-bold text-red-500 uppercase mb-2">Previously Rejected Quotation</p>
+              <div className="flex items-center gap-2 bg-white border border-red-100 rounded-xl px-3 py-2.5">
+                <FileText size={13} className="text-red-400 flex-shrink-0" />
+                <p className="text-xs text-red-700 flex-1 truncate">{task.previousQuotationFile}</p>
+                {prevUrl && (
+                  <>
+                    <a href={prevUrl} target="_blank" rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-red-50 border border-red-200 flex items-center justify-center flex-shrink-0 active:bg-red-100">
+                      <Eye size={11} className="text-red-500" />
+                    </a>
+                    <a href={prevUrl} download={task.previousQuotationFile} target="_blank" rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center flex-shrink-0 active:bg-emerald-100">
+                      <Download size={11} className="text-emerald-600" />
+                    </a>
+                  </>
+                )}
+              </div>
+              {task.ownerRejectionReason && (
+                <p className="text-[10px] text-red-400 mt-2 italic">Rejection reason: {task.ownerRejectionReason}</p>
+              )}
+            </div>
+          )
+        })()}
+      </>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {versions.map((v, i) => {
+        const isLatest = i === 0
+        return (
+          <div key={v.id} className={`border rounded-xl px-4 py-3 ${isLatest ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-200'}`}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isLatest ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                V{v.versionNumber ?? 1}
+              </span>
+              <p className={`text-[10px] font-bold uppercase ${isLatest ? 'text-indigo-500' : 'text-slate-400'}`}>
+                {isLatest ? 'Latest Quotation File' : 'Earlier Version'}
+              </p>
+              {isLatest && (
+                <span className="text-[8px] bg-emerald-50 text-emerald-600 font-semibold px-1.5 py-0.5 rounded-full ml-auto">New</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 bg-white border border-slate-100 rounded-xl px-3 py-2.5">
+              <FileText size={16} className={isLatest ? 'text-indigo-400 flex-shrink-0' : 'text-slate-400 flex-shrink-0'} />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-slate-700 truncate">{v.fileName}</p>
+                <p className="text-[9px] text-slate-400">{v.uploadedBy ?? '—'} · {fmtVersionDateTime(v.uploadedAt)}</p>
+              </div>
+              <a href={v.url} target="_blank" rel="noopener noreferrer"
+                className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 active:bg-blue-100">
+                <Eye size={12} className="text-blue-500" />
+              </a>
+              <a href={v.url} download={v.fileName} target="_blank" rel="noopener noreferrer"
+                className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 active:bg-emerald-100">
+                <Download size={12} className="text-emerald-600" />
+              </a>
+            </div>
+          </div>
+        )
+      })}
+      {task.ownerRejectionReason && task.flowStatus !== 'client_approved' && (
+        <p className="text-[10px] text-red-400 italic px-1">Latest rejection reason: {task.ownerRejectionReason}</p>
+      )}
+    </div>
+  )
 }
 
 interface Props {
@@ -529,7 +664,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   function save(updates: Partial<Task>, histNote?: string, histFiles?: string[]) {
     setError('')
-    const now = new Date().toLocaleString('en-IN')
+    const now = new Date().toISOString()
     const by  = user?.name ?? 'System'
     const isStageChange = !!(updates.flowStage && updates.flowStage !== stage)
     const newEntries: StatusHistoryItem[] = []
@@ -664,7 +799,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       note: `Reschedule requested: ${reschedReason}${reschedDate ? ` — New date: ${reschedDate}` : ''}${reschedTime ? ` at ${reschedTime}` : ''}`,
       updatedBy: user?.name ?? 'Site Engineer',
       updatedRole: role,
-      updatedAt: new Date().toLocaleString('en-IN'),
+      updatedAt: new Date().toISOString(),
     }
 
     // Update SAME task — do NOT create a duplicate
@@ -693,7 +828,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       note,
       updatedBy: user?.name ?? 'Sales Team',
       updatedRole: role,
-      updatedAt: new Date().toLocaleString('en-IN'),
+      updatedAt: new Date().toISOString(),
     }
 
     onUpdate({
@@ -723,7 +858,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         note,
         updatedBy: user?.name ?? 'Sales Team',
         updatedRole: role,
-        updatedAt: new Date().toLocaleString('en-IN'),
+        updatedAt: new Date().toISOString(),
       }
       ctxUpdateTask(task.linkedSiteTaskId, {
         visitDate: isApproved ? (task.requestedVisitDate ?? seTask?.visitDate) : seTask?.visitDate,
@@ -788,6 +923,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       quotationNotes: quotNotes || undefined,
       costBreakdown: breakdown,
     }, `Quotation ₹${quotAmount.toLocaleString('en-IN')} sent for owner approval`, quotFiles)
+    recordQuotationVersion(task, quotFiles[0], user?.name ?? 'Sales Team', role)
   }
 
   function submitOwnerApproval() {
@@ -834,6 +970,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       costBreakdown: breakdown,
       ownerRejectionReason: undefined,
     }, `Revised quotation ₹${quotAmount.toLocaleString('en-IN')} resent for owner approval`, quotFiles)
+    recordQuotationVersion(task, quotFiles[0], user?.name ?? 'Sales Team', role)
   }
 
   function submitSendToClient() {
@@ -893,6 +1030,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       costBreakdown: breakdown,
       clientRejectionReason: undefined,
     }, `Revised quotation ₹${quotAmount.toLocaleString('en-IN')} sent for owner approval after client rejection`, quotFiles)
+    recordQuotationVersion(task, quotFiles[0], user?.name ?? 'Sales Team', role)
   }
 
   function submitEditCostBreakdown() {
@@ -1936,59 +2074,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quotation Review</p>
 
-              {task.quotationFile && (() => {
-                const qFileUrl = resolveFileUrl(task.quotationFile!)
-                return (
-                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
-                    <p className="text-[10px] font-bold text-indigo-500 uppercase mb-2">Latest Quotation File</p>
-                    <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2.5">
-                      <FileText size={16} className="text-indigo-400 flex-shrink-0" />
-                      <p className="text-xs text-slate-700 flex-1 truncate">{task.quotationFile}</p>
-                      {qFileUrl && (
-                        <>
-                          <a href={qFileUrl} target="_blank" rel="noopener noreferrer"
-                            className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 active:bg-blue-100">
-                            <Eye size={12} className="text-blue-500" />
-                          </a>
-                          <a href={qFileUrl} download={task.quotationFile} target="_blank" rel="noopener noreferrer"
-                            className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 active:bg-emerald-100">
-                            <Download size={12} className="text-emerald-600" />
-                          </a>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )
-              })()}
-
-              {/* Previously rejected quotation shown right below latest — for comparison */}
-              {task.previousQuotationFile && (() => {
-                const prevUrl = resolveFileUrl(task.previousQuotationFile!)
-                return (
-                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                    <p className="text-[10px] font-bold text-red-500 uppercase mb-2">Previously Rejected Quotation</p>
-                    <div className="flex items-center gap-2 bg-white border border-red-100 rounded-xl px-3 py-2.5">
-                      <FileText size={13} className="text-red-400 flex-shrink-0" />
-                      <p className="text-xs text-red-700 flex-1 truncate">{task.previousQuotationFile}</p>
-                      {prevUrl && (
-                        <>
-                          <a href={prevUrl} target="_blank" rel="noopener noreferrer"
-                            className="w-7 h-7 rounded-lg bg-red-50 border border-red-200 flex items-center justify-center flex-shrink-0 active:bg-red-100">
-                            <Eye size={11} className="text-red-500" />
-                          </a>
-                          <a href={prevUrl} download={task.previousQuotationFile} target="_blank" rel="noopener noreferrer"
-                            className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center flex-shrink-0 active:bg-emerald-100">
-                            <Download size={11} className="text-emerald-600" />
-                          </a>
-                        </>
-                      )}
-                    </div>
-                    {task.ownerRejectionReason && (
-                      <p className="text-[10px] text-red-400 mt-2 italic">Rejection reason: {task.ownerRejectionReason}</p>
-                    )}
-                  </div>
-                )
-              })()}
+              <QuotationVersionsPanel task={task} />
 
               {task.quotationAmount && (
                 <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">

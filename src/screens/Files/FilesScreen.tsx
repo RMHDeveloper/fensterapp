@@ -40,6 +40,11 @@ const CATEGORY_COLOR: Record<FileCategory | 'all', string> = {
   proof:        'bg-red-50 text-red-700',
   voice_note:   'bg-purple-50 text-purple-700',
   other:        'bg-slate-100 text-slate-600',
+  project_file:    'bg-slate-100 text-slate-600',
+  project_doc:     'bg-indigo-50 text-indigo-700',
+  measurement_doc: 'bg-cyan-50 text-cyan-700',
+  production_doc:  'bg-amber-50 text-amber-700',
+  installation_doc:'bg-purple-50 text-purple-700',
 }
 
 export default function FilesScreen() {
