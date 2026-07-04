@@ -18,6 +18,7 @@ import { getActiveManagedUsersByDisplayRole } from '../../utils/userStorage'
 import { Dialog } from '../../components/feedback/Dialog'
 import { recordUploadedFile, getQuotationVersions, subscribeToProjectFiles, type FileRow } from '../../services/fileService'
 import { getFileUrl } from '../../utils/fileStorage'
+import { getAppSettings } from '../../utils/appSettings'
 
 function recordQuotationVersion(task: Task, fileName: string, uploadedBy: string, uploadedByRole: string) {
   const url = fileName.startsWith('http') ? fileName : (getFileUrl(fileName) ?? fileName)
@@ -39,8 +40,8 @@ const FLOW_TO_PROJECT_STAGE: Partial<Record<string, ProjectStage>> = {
   site_review:         'quotation_preparation',
   owner_approval:      'quotation_sent_owner',
   send_to_client:      'owner_approved',
-  advance_payment:     'client_approved',
-  production_assign:   'production_admin_check',
+  advance_payment:     'advance_payment',
+  production_assign:   'advance_payment',
   production_check:    'production_admin_check',
   production_work:     'production_manager_work',
   installation_assign: 'ready_to_dispatch',
@@ -406,6 +407,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const role                                 = user?.role ?? 'lead_manager'
   const todayStr                             = new Date().toISOString().slice(0, 10)
   const project                              = projects.find(p => p.id === task.projectId)
+  const [{ productionRate, installationRate }] = useState(getAppSettings)
 
   // Merge managed users with defaults for assignment dropdowns
   const engineerOptions = [
@@ -574,7 +576,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setLocPin(task.locationPin ?? { latitude: '', longitude: '', mapLink: '' })
     setSeNote('')
     setQuotAmt(task.quotationAmount ? String(task.quotationAmount) : '')
-    setQuotFiles(task.quotationFile ? [task.quotationFile] : [])
+    // Don't pre-load the old file in revision mode — force a fresh upload so quotFiles[0] is always the new file
+    const isRevision = (task.flowStage === 'owner_approval' && task.flowStatus === 'rejected')
+                    || task.flowStatus === 'client_rejected'
+    setQuotFiles((!isRevision && task.quotationFile) ? [task.quotationFile] : [])
     setQuotProduct(task.quotationProductType ?? 'Window')
     setQuotNotes(task.quotationNotes ?? '')
     setOwnerRejReason(task.ownerRejectionReason ?? '')
@@ -652,7 +657,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         ? (task as Task & { packChecklist?: { id: string; label: string; done: boolean }[] }).packChecklist!
         : DEFAULT_PACK_CHECKLIST.map(d => ({ ...d }))
     )
-  }, [isOpen, task.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, task.id, task.flowStatus]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null
 
@@ -715,6 +720,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       // Handle same-stage status changes that imply a project stage change
       if (!newProjectStage) {
         if (stage === 'owner_approval' && updates.flowStatus === 'rejected') newProjectStage = 'owner_disapproved'
+        if (stage === 'send_to_client' && updates.flowStatus === 'waiting_response') newProjectStage = 'sent_to_client'
+        if (stage === 'send_to_client' && updates.flowStatus === 'client_approved') newProjectStage = 'client_approved'
         if (stage === 'send_to_client' && updates.flowStatus === 'client_rejected') newProjectStage = 'sent_to_client'
         if (stage === 'production_check' && updates.flowStatus === 'not_available') newProjectStage = 'production_admin_check'
         if (stage === 'production_work' && (updates.flowStatus === 'in_progress' || updates.flowStatus === 'overdue')) newProjectStage = 'production_manager_work'
@@ -902,8 +909,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     const quotAmount = Number(quotAmt)
     const sqft  = costSqft ? Number(costSqft) : 0
     const matC  = costMaterial ? Number(costMaterial) : 0
-    const prodC = sqft > 0 ? sqft * 100 : 0
-    const instC = sqft > 0 ? sqft * 25  : 0
+    const prodC = sqft > 0 ? sqft * productionRate : 0
+    const instC = sqft > 0 ? sqft * installationRate : 0
     const transC= costTransAmt ? Number(costTransAmt) : 0
     const hasCosts = matC > 0 || prodC > 0 || instC > 0 || transC > 0
     const breakdown: CostBreakdown | undefined = hasCosts ? {
@@ -947,8 +954,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     const quotAmount = Number(quotAmt)
     const sqft  = costSqft ? Number(costSqft) : 0
     const matC  = costMaterial ? Number(costMaterial) : 0
-    const prodC = sqft > 0 ? sqft * 100 : 0
-    const instC = sqft > 0 ? sqft * 25  : 0
+    const prodC = sqft > 0 ? sqft * productionRate : 0
+    const instC = sqft > 0 ? sqft * installationRate : 0
     const transC= costTransAmt ? Number(costTransAmt) : 0
     const hasCosts = matC > 0 || prodC > 0 || instC > 0 || transC > 0
     const breakdown: CostBreakdown | undefined = hasCosts ? {
@@ -1008,8 +1015,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     const quotAmount = Number(quotAmt)
     const sqft  = costSqft ? Number(costSqft) : 0
     const matC  = costMaterial ? Number(costMaterial) : 0
-    const prodC = sqft > 0 ? sqft * 100 : 0
-    const instC = sqft > 0 ? sqft * 25  : 0
+    const prodC = sqft > 0 ? sqft * productionRate : 0
+    const instC = sqft > 0 ? sqft * installationRate : 0
     const transC = costTransAmt ? Number(costTransAmt) : 0
     const hasCosts = matC > 0 || prodC > 0 || instC > 0 || transC > 0
     const breakdown: CostBreakdown | undefined = hasCosts ? {
@@ -1038,8 +1045,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     const quotAmount = Number(quotAmt)
     const sqft  = costSqft ? Number(costSqft) : 0
     const matC  = costMaterial ? Number(costMaterial) : 0
-    const prodC = sqft > 0 ? sqft * 100 : 0
-    const instC = sqft > 0 ? sqft * 25  : 0
+    const prodC = sqft > 0 ? sqft * productionRate : 0
+    const instC = sqft > 0 ? sqft * installationRate : 0
     const transC = costTransAmt ? Number(costTransAmt) : 0
     const breakdown: CostBreakdown = {
       quotationAmount: quotAmount,
@@ -1922,7 +1929,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               </div>
 
               <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx"
-                files={quotFiles} onChange={setQuotFiles}
+                files={quotFiles} onChange={setQuotFiles} maxFiles={1}
                 helperText="Upload quotation PDF or document — required" />
 
               <div>
@@ -1955,34 +1962,39 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                     placeholder="e.g. 120 — drives production & installation cost" className={inp} />
                 </div>
 
-                {costSqft && Number(costSqft) > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
-                      <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹100 × sq.ft)</span></span>
-                      <span className="text-sm font-extrabold text-blue-700">₹{(Number(costSqft) * 100).toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
-                      <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹25 × sq.ft)</span></span>
-                      <span className="text-sm font-extrabold text-violet-700">₹{(Number(costSqft) * 25).toLocaleString('en-IN')}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {(costMaterial || costSqft || costTransAmt) && (
-                (() => {
+                {(costSqft || costMaterial || costTransAmt) && (() => {
                   const sqft  = Number(costSqft) || 0
-                  const totalC = (Number(costMaterial)||0) + sqft * 100 + sqft * 25 + (Number(costTransAmt)||0)
+                  const matC  = Number(costMaterial) || 0
+                  const prodC = sqft * productionRate
+                  const instC = sqft * installationRate
+                  const transC = Number(costTransAmt) || 0
+                  const total = matC + prodC + instC + transC
                   return (
-                    <div className="bg-slate-50 rounded-xl px-4 py-3">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500">Total Costs</span>
-                        <span className="font-semibold text-slate-700">₹{totalC.toLocaleString('en-IN')}</span>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                        <span className="text-xs font-semibold text-slate-600">Material Cost</span>
+                        <span className="text-sm font-extrabold text-slate-700">₹{matC.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+                        <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹{productionRate} × sq.ft)</span></span>
+                        <span className="text-sm font-extrabold text-blue-700">₹{prodC.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
+                        <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹{installationRate} × sq.ft)</span></span>
+                        <span className="text-sm font-extrabold text-violet-700">₹{instC.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                        <span className="text-xs font-semibold text-amber-700">Transport Cost</span>
+                        <span className="text-sm font-extrabold text-amber-700">₹{transC.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-slate-100 rounded-xl px-4 py-2.5">
+                        <span className="text-xs font-bold text-slate-700">Total Costs</span>
+                        <span className="text-sm font-extrabold text-slate-800">₹{total.toLocaleString('en-IN')}</span>
                       </div>
                     </div>
                   )
-                })()
-              )}
+                })()}
+              </div>
 
               <button type="button" onClick={submitSiteReview}
                 className="w-full py-4 rounded-2xl bg-violet-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
@@ -2155,14 +2167,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           )}
 
           {/* DEMO CONTROL: Owner Approval */}
-          {displayStage === 'owner_approval' && canDemoOverride && flowStatus !== 'rejected' && !demoOverride && (
+          {displayStage === 'owner_approval' && canDemoOverride && role !== 'owner' && flowStatus !== 'rejected' && !demoOverride && (
             <DemoControlCard
               waitingFor="MD/ED"
               description="MD/ED needs to approve or reject the quotation. For demo, approve or reject it yourself."
               onOverride={() => setDemoOverride(true)}
             />
           )}
-          {displayStage === 'owner_approval' && canDemoOverride && flowStatus !== 'rejected' && demoOverride && (
+          {displayStage === 'owner_approval' && canDemoOverride && role !== 'owner' && flowStatus !== 'rejected' && demoOverride && (
             <div className="space-y-3">
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
@@ -2255,7 +2267,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   placeholder="e.g. 160000" className={inp} />
               </div>
 
-              <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx" files={quotFiles} onChange={setQuotFiles} helperText="Upload revised quotation document" />
+              <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx" files={quotFiles} onChange={setQuotFiles} maxFiles={1} helperText="Upload revised quotation document" />
 
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pt-1">Cost Breakdown {req}</p>
 
@@ -2280,20 +2292,38 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   placeholder="e.g. 120 — drives production & installation cost" className={inp} />
               </div>
 
-              {costSqft && Number(costSqft) > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
-                    <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹100 × sq.ft)</span></span>
-                    <span className="text-sm font-extrabold text-blue-700">₹{(Number(costSqft) * 100).toLocaleString('en-IN')}</span>
+              {(costSqft || costMaterial || costTransAmt) && (() => {
+                const sqft  = Number(costSqft) || 0
+                const matC  = Number(costMaterial) || 0
+                const prodC = sqft * productionRate
+                const instC = sqft * installationRate
+                const transC = Number(costTransAmt) || 0
+                const total = matC + prodC + instC + transC
+                return (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                      <span className="text-xs font-semibold text-slate-600">Material Cost</span>
+                      <span className="text-sm font-extrabold text-slate-700">₹{matC.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+                      <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹{productionRate} × sq.ft)</span></span>
+                      <span className="text-sm font-extrabold text-blue-700">₹{prodC.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
+                      <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹{installationRate} × sq.ft)</span></span>
+                      <span className="text-sm font-extrabold text-violet-700">₹{instC.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                      <span className="text-xs font-semibold text-amber-700">Transport Cost</span>
+                      <span className="text-sm font-extrabold text-amber-700">₹{transC.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-slate-100 rounded-xl px-4 py-2.5">
+                      <span className="text-xs font-bold text-slate-700">Total Costs</span>
+                      <span className="text-sm font-extrabold text-slate-800">₹{total.toLocaleString('en-IN')}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
-                    <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹25 × sq.ft)</span></span>
-                    <span className="text-sm font-extrabold text-violet-700">₹{(Number(costSqft) * 25).toLocaleString('en-IN')}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Profit display — only meaningful when owner reviews; this form is for non-owners */}
+                )
+              })()}
 
               <div>
                 <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
@@ -2374,7 +2404,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       </div>
 
                       <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx"
-                        files={quotFiles} onChange={setQuotFiles} helperText="Upload revised quotation document" />
+                        files={quotFiles} onChange={setQuotFiles} maxFiles={1} helperText="Upload revised quotation document" />
 
                       <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cost Breakdown (optional)</p>
 
@@ -2399,18 +2429,38 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           placeholder="e.g. 120" className={inp} />
                       </div>
 
-                      {costSqft && Number(costSqft) > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
-                            <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹100 × sq.ft)</span></span>
-                            <span className="text-sm font-extrabold text-blue-700">₹{(Number(costSqft) * 100).toLocaleString('en-IN')}</span>
+                      {(costSqft || costMaterial || costTransAmt) && (() => {
+                        const sqft  = Number(costSqft) || 0
+                        const matC  = Number(costMaterial) || 0
+                        const prodC = sqft * productionRate
+                        const instC = sqft * installationRate
+                        const transC = Number(costTransAmt) || 0
+                        const total = matC + prodC + instC + transC
+                        return (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-slate-600">Material Cost</span>
+                              <span className="text-sm font-extrabold text-slate-700">₹{matC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹{productionRate} × sq.ft)</span></span>
+                              <span className="text-sm font-extrabold text-blue-700">₹{prodC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹{installationRate} × sq.ft)</span></span>
+                              <span className="text-sm font-extrabold text-violet-700">₹{instC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-amber-700">Transport Cost</span>
+                              <span className="text-sm font-extrabold text-amber-700">₹{transC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-slate-100 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-bold text-slate-700">Total Costs</span>
+                              <span className="text-sm font-extrabold text-slate-800">₹{total.toLocaleString('en-IN')}</span>
+                            </div>
                           </div>
-                          <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
-                            <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹25 × sq.ft)</span></span>
-                            <span className="text-sm font-extrabold text-violet-700">₹{(Number(costSqft) * 25).toLocaleString('en-IN')}</span>
-                          </div>
-                        </div>
-                      )}
+                        )
+                      })()}
 
                       <div>
                         <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
@@ -2468,11 +2518,38 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           onChange={e => setCostSqft(e.target.value.replace(/[^0-9.]/g, ''))}
                           placeholder={String(task.costBreakdown?.numberOfSqft ?? '')} className={inp} />
                       </div>
-                      {costSqft && Number(costSqft) > 0 && (
-                        <div className="space-y-1">
-                          <p className="text-xs text-slate-500">Production: ₹{(Number(costSqft)*100).toLocaleString('en-IN')} · Installation: ₹{(Number(costSqft)*25).toLocaleString('en-IN')}</p>
-                        </div>
-                      )}
+                      {(costSqft || costMaterial || costTransAmt) && (() => {
+                        const sqft  = Number(costSqft) || 0
+                        const matC  = Number(costMaterial) || 0
+                        const prodC = sqft * productionRate
+                        const instC = sqft * installationRate
+                        const transC = Number(costTransAmt) || 0
+                        const total = matC + prodC + instC + transC
+                        return (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-slate-600">Material Cost</span>
+                              <span className="text-sm font-extrabold text-slate-700">₹{matC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹{productionRate} × sq.ft)</span></span>
+                              <span className="text-sm font-extrabold text-blue-700">₹{prodC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹{installationRate} × sq.ft)</span></span>
+                              <span className="text-sm font-extrabold text-violet-700">₹{instC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-amber-700">Transport Cost</span>
+                              <span className="text-sm font-extrabold text-amber-700">₹{transC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-slate-100 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-bold text-slate-700">Total Costs</span>
+                              <span className="text-sm font-extrabold text-slate-800">₹{total.toLocaleString('en-IN')}</span>
+                            </div>
+                          </div>
+                        )
+                      })()}
                       <div>
                         <label className={lbl}>Transport Cost (₹)</label>
                         <input type="text" inputMode="numeric" value={costTransAmt}
@@ -2640,14 +2717,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               sub="Sales Team is preparing and sending the job sheet to Production Incharge" />
           )}
 
-          {displayStage === 'production_assign' && role !== 'lead_manager' && role !== 'owner' && !demoOverride && canDemoOverride && (
-            <DemoControlCard
-              waitingFor="Sales Team"
-              description="LM needs to upload the job sheet and send it to Admin. For demo, do it yourself."
-              onOverride={() => setDemoOverride(true)}
-            />
-          )}
-
           {displayStage === 'production_assign' && (role === 'lead_manager' || role === 'owner' || demoOverride) && (
             <>
               {demoOverride && (
@@ -2664,7 +2733,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <div className="space-y-2">
                 <label className={lbl}>Job Sheet {req}</label>
                 <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx,.xls"
-                  files={jobSheetFiles} onChange={setJobSheetFiles} helperText="Upload job sheet file" />
+                  files={jobSheetFiles} onChange={setJobSheetFiles} maxFiles={1} helperText="Upload job sheet file" />
                 <p className="text-[11px] text-slate-400 text-center">— OR type job sheet details below —</p>
                 <textarea rows={3} value={jobSheetText} onChange={e => setJobSheetText(e.target.value)}
                   placeholder="Type job sheet details: product specs, dimensions, quantities…"
@@ -2673,12 +2742,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <div>
                 <label className={lbl}>Glass Sheet <span className="text-slate-300 font-normal">(optional)</span></label>
-                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={glassSheetFiles} onChange={setGlassSheetFiles} />
+                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={glassSheetFiles} onChange={setGlassSheetFiles} maxFiles={1} />
               </div>
 
               <div>
                 <label className={lbl}>Cutting Sheet <span className="text-slate-300 font-normal">(optional)</span></label>
-                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={cuttingSheetFiles} onChange={setCuttingSheetFiles} />
+                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={cuttingSheetFiles} onChange={setCuttingSheetFiles} maxFiles={1} />
               </div>
 
               <div>
@@ -3200,7 +3269,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             </div>
           )}
 
-          {displayStage === 'production_work' && role !== 'production_manager' && flowStatus === 'overdue' && (
+          {displayStage === 'production_work' && (role === 'lead_manager' || role === 'owner') && flowStatus === 'overdue' && (
             <>
               <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-4 space-y-1">
                 <p className="text-xs font-bold text-red-600 uppercase">Production Overdue Report</p>
@@ -3557,7 +3626,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               12. FINAL PAYMENT — collect balance; Complete Project only when balance = 0
           ════════════════════════════════════════════════════════════════ */}
-          {displayStage === 'final_payment' && (
+          {displayStage === 'final_payment' && (role === 'lead_manager' || role === 'owner') && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Final Collection</p>
 
@@ -3765,7 +3834,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               12b. FINAL COMPLETION — after full paid
           ════════════════════════════════════════════════════════════════ */}
-          {displayStage === 'final_completion' && (
+          {displayStage === 'final_completion' && (role === 'lead_manager' || role === 'owner') && (
             <>
               <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-4 space-y-1">
                 <div className="flex items-center gap-2">

@@ -35,28 +35,37 @@ const STAGE_MSG: Record<string, string> = {
 }
 
 export default function TodayTasksScreen() {
-  const navigate               = useNavigate()
-  const { tasks, updateTask }  = useAppData()
-  const { user }               = useAuth()
-  const [flowTask, setFlowTask]= useState<Task | null>(null)
-  const [snack, setSnack]      = useState({ open: false, msg: '' })
+  const navigate                          = useNavigate()
+  const { tasks, projects, updateTask }   = useAppData()
+  const { user }                          = useAuth()
+  const [flowTaskId, setFlowTaskId]       = useState<string | null>(null)
+  const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
+  const [snack, setSnack]                 = useState({ open: false, msg: '' })
 
   const role = user?.role ?? 'lead_manager'
+
+  // Projects owned by this lead_manager (by ID)
+  const myProjectIds = new Set(projects.filter(p => p.ownerId === user?.id).map(p => p.id))
+
+  // Helper: is a regular or flow task assigned to the current user?
+  const isAssignedToMe = (t: Task) =>
+    t.assignedTo === user?.name || t.assignedTo === user?.id ||
+    t.assignee   === user?.name || t.assignee   === user?.id ||
+    t.siteEngineerName === user?.name
 
   // All tasks with a flowStage
   const flowTasks = tasks.filter(t => t.flowStage != null)
 
-  // Filter active flow tasks by role
+  // Filter active flow tasks by role — with per-user scoping
   const activeFTs = flowTasks.filter(t => {
     if (t.flowStage === 'completed') return false
 
     if (role === 'site_engineer') {
-      // SE only sees site_visit tasks — and only if visitDate is today or past (not future)
       if (t.flowStage !== 'site_visit') return false
-      return !isDateFuture(t.visitDate)
+      if (isDateFuture(t.visitDate)) return false
+      return isAssignedToMe(t)
     }
     if (role === 'owner') {
-      // Owner sees tasks pending their approval and reschedule approvals on site_visit tasks
       return t.flowStage === 'owner_approval' ||
         (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
     }
@@ -70,22 +79,31 @@ export default function TodayTasksScreen() {
       return t.flowStage === 'production_check' || t.flowStage === 'production_work'
     }
     if (role === 'technician' || role === 'installation_incharge') {
-      return t.flowStage === 'installation_assign' || t.flowStage === 'installation_update'
+      if (t.flowStage !== 'installation_assign' && t.flowStage !== 'installation_update') return false
+      return isAssignedToMe(t)
     }
     if (role === 'lead_manager') {
-      // Hide reschedule_review tasks that have already been reviewed (legacy tasks)
       if (t.flowStage === 'reschedule_review' && (t.flowStatus === 'approved' || t.flowStatus === 'rejected')) return false
-      // LM sees all flow tasks
-      return true
+      return myProjectIds.has(t.projectId)
     }
     return false // viewer sees no active flow tasks
   })
 
-  const completedFTs = flowTasks.filter(t => t.flowStage === 'completed')
+  // Completed flow tasks — owner sees all, LM sees only their projects'
+  const completedFTs = role === 'owner'
+    ? flowTasks.filter(t => t.flowStage === 'completed')
+    : role === 'lead_manager'
+    ? flowTasks.filter(t => t.flowStage === 'completed' && myProjectIds.has(t.projectId))
+    : []
 
-  // Regular tasks (no flowStage) for today
+  // Regular tasks (no flowStage) for today — per-user scoping
   const regular = sortRegular(
-    tasks.filter(t => !t.flowStage && isTaskForToday(t))
+    tasks.filter(t => {
+      if (t.flowStage || !isTaskForToday(t)) return false
+      if (role === 'viewer') return false
+      if (role === 'owner') return true
+      return isAssignedToMe(t) || !t.assignee
+    })
   )
   const overdueR   = regular.filter(t => t.status === 'overdue')
   const startedR   = regular.filter(t => t.status === 'in_progress')
@@ -97,7 +115,7 @@ export default function TodayTasksScreen() {
     updateTask(flowTask.id, updates)
     const nextStage = (updates.flowStage ?? flowTask.flowStage) as string
     setSnack({ open: true, msg: STAGE_MSG[nextStage] ?? 'Status updated!' })
-    setFlowTask(null)
+    setFlowTaskId(null)
   }
 
   return (
@@ -115,7 +133,7 @@ export default function TodayTasksScreen() {
                'Active Projects'}
             </p>
             {activeFTs.map(t => (
-              <FlowTaskCard key={t.id} task={t} onClick={() => setFlowTask(t)} />
+              <FlowTaskCard key={t.id} task={t} onClick={() => setFlowTaskId(t.id)} />
             ))}
           </div>
         )}
@@ -217,7 +235,7 @@ export default function TodayTasksScreen() {
       {flowTask && (
         <DemoFlowSheet
           isOpen={!!flowTask}
-          onClose={() => setFlowTask(null)}
+          onClose={() => setFlowTaskId(null)}
           task={flowTask}
           onUpdate={handleFlowUpdate}
         />

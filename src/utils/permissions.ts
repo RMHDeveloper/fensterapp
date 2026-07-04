@@ -24,11 +24,15 @@ export function getDefaultRoute(role: UserRole): string {
 
 export function canUpdateTask(role: UserRole, taskType: string): boolean {
   switch (role) {
-    case 'owner':           return true
-    case 'lead_manager':    return ['call', 'other', 'payment', 'delivery', 'site_visit'].includes(taskType)
-    case 'site_engineer':   return taskType === 'site_visit'
-    case 'production_team': return taskType === 'production' || taskType === 'qc_check'
-    case 'viewer':          return false
-    default:                return false
+    case 'owner':              return true
+    case 'lead_manager':       return ['call', 'other', 'payment', 'delivery', 'site_visit', 'production'].includes(taskType)
+    case 'site_engineer':      return taskType === 'site_visit'
+    case 'production_admin':   return taskType === 'production' || taskType === 'qc_check'
+    case 'production_manager': return taskType === 'production' || taskType === 'qc_check'
+    case 'production_team':    return taskType === 'production' || taskType === 'qc_check'
+    case 'technician':         return taskType === 'installation'
+    case 'installation_incharge': return taskType === 'installation'
+    case 'viewer':             return false
+    default:                   return false
   }
 }

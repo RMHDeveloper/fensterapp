@@ -211,7 +211,8 @@ export default function ProjectDetailScreen() {
 
   const [showAddTask,     setShowAddTask]     = useState(false)
   const [snack,           setSnack]           = useState({ open: false, msg: '' })
-  const [flowTask,        setFlowTask]        = useState<Task | null>(null)
+  const [flowTaskId,      setFlowTaskId]      = useState<string | null>(null)
+  const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
   const [editDateType,    setEditDateType]    = useState<'start' | 'due' | null>(null)
   const [editDateValue,   setEditDateValue]   = useState('')
   const [showEditClient,  setShowEditClient]  = useState(false)
@@ -262,7 +263,7 @@ function handleSaveTask() {
     if (!flowTask) return
     updateTask(flowTask.id, updates)
     setSnack({ open: true, msg: 'Status updated!' })
-    setFlowTask(null)
+    setFlowTaskId(null)
   }
 
   const projectFiles = collectProjectFiles(tasks)
@@ -721,7 +722,7 @@ function handleSaveTask() {
             {activeFlowTask.clientName && (
               <p className="text-xs text-slate-500">{activeFlowTask.clientName}{activeFlowTask.location ? ` · ${activeFlowTask.location}` : ''}</p>
             )}
-            <button onClick={() => setFlowTask(activeFlowTask)}
+            <button onClick={() => setFlowTaskId(activeFlowTask.id)}
               className="w-full py-3 rounded-xl bg-blue-600 text-white text-sm font-bold active:bg-blue-700">
               Update Status →
             </button>
@@ -790,7 +791,7 @@ function handleSaveTask() {
       {flowTask && (
         <DemoFlowSheet
           isOpen={!!flowTask}
-          onClose={() => setFlowTask(null)}
+          onClose={() => setFlowTaskId(null)}
           task={flowTask}
           onUpdate={handleFlowUpdate}
         />

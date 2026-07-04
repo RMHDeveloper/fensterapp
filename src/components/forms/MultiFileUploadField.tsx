@@ -12,15 +12,17 @@ interface Props {
   required?: boolean
   error?: string
   helperText?: string
+  maxFiles?: number
 }
 
 function isImageName(name: string) { return /\.(jpg|jpeg|png|gif|webp)$/i.test(name) }
 function isPdfName(name: string)   { return /\.pdf$/i.test(name) }
 
-export function MultiFileUploadField({ label, files, onChange, accept = 'image/*', required, error, helperText }: Props) {
+export function MultiFileUploadField({ label, files, onChange, accept = 'image/*', required, error, helperText, maxFiles }: Props) {
   const inputRef  = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const isImageAccept = accept.includes('image') || accept.includes('.jpg') || accept.includes('.png')
+  const atMax = maxFiles != null && files.length >= maxFiles
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [previewName, setPreviewName] = useState<string>('')
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -77,7 +79,7 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          disabled={uploading}
+          disabled={uploading || atMax}
           className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed
             text-sm font-semibold transition-colors active:opacity-70 disabled:opacity-50 disabled:cursor-not-allowed
             ${error || uploadError
@@ -93,7 +95,7 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
           <button
             type="button"
             onClick={() => cameraRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || atMax}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 bg-slate-50 text-sm font-semibold active:opacity-70 disabled:opacity-50"
           >
             <Camera size={15} />
@@ -101,6 +103,9 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
           </button>
         )}
       </div>
+      {atMax && (
+        <p className="text-[11px] text-amber-600 font-semibold mt-1">Remove the current file to upload a different one.</p>
+      )}
 
       <input
         ref={inputRef}

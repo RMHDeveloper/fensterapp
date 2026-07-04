@@ -39,7 +39,7 @@ const lbl = 'text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block
 export default function UserManagementScreen() {
   const { user: authUser } = useAuth()
 
-  if (!authUser?.displayRole?.includes('MD')) {
+  if (authUser?.role !== 'owner') {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center px-8 text-center">
         <div>

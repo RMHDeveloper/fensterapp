@@ -17,6 +17,7 @@ import { getAllLeads, upsertLead } from '../services/leadService'
 import { getAllPayments, upsertPayment } from '../services/paymentService'
 import { getAllMistakes, upsertMistake } from '../services/mistakeService'
 import { getAllProduction, upsertProduction } from '../services/productionService'
+import { runMigrations } from '../utils/migrate'
 
 interface AppDataContextValue {
   tasks:              Task[]
@@ -48,6 +49,8 @@ interface AppDataContextValue {
 const AppDataContext = createContext<AppDataContextValue | null>(null)
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
+  runMigrations()
+
   const [tasks,      setTasks]      = useState<Task[]>([])
   const [production, setProduction] = useState<ProductionItem[]>([])
   const [leads,      setLeads]      = useState<Lead[]>([])

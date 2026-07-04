@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Bell, LogOut, RefreshCw, ChevronRight, UserCog, Users, UserPlus, Pencil, Camera } from 'lucide-react'
+import { Bell, LogOut, RefreshCw, ChevronRight, UserCog, Users, UserPlus, Pencil, Camera, SlidersHorizontal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useAppData } from '../../context/AppDataContext'
 import { loadManagedUsers, saveManagedUsers } from '../../utils/userStorage'
 import { storeFile } from '../../utils/fileStorage'
+import { migrateFromLocalStorage, hasLocalStorageData } from '../../utils/migrateFromLocalStorage'
 import { ROLE_LABELS, ROLE_DESCRIPTIONS } from '../../data/permissions'
+import { getAppSettings, saveAppSettings } from '../../utils/appSettings'
 import { Dialog } from '../../components/feedback/Dialog'
 import { Snackbar } from '../../components/feedback/Snackbar'
 import { BottomSheet } from '../../components/feedback/BottomSheet'
@@ -38,9 +40,34 @@ export default function SettingsScreen() {
 
   const [showLogout,    setShowLogout]    = useState(false)
   const [showReset,     setShowReset]     = useState(false)
+  const [migrating,     setMigrating]     = useState(false)
   const [showSwitcher,  setShowSwitcher]  = useState(false)
   const [notifications, setNotifications] = useState(true)
   const [snack, setSnack] = useState({ open: false, msg: '' })
+
+  // Cost rates state (owner-only)
+  const [showRates,    setShowRates]    = useState(false)
+  const [editProdRate, setEditProdRate] = useState('')
+  const [editInstRate, setEditInstRate] = useState('')
+
+  function openRates() {
+    const s = getAppSettings()
+    setEditProdRate(String(s.productionRate))
+    setEditInstRate(String(s.installationRate))
+    setShowRates(v => !v)
+  }
+
+  function saveRates() {
+    const prod = Number(editProdRate)
+    const inst = Number(editInstRate)
+    if (!prod || !inst || prod <= 0 || inst <= 0) {
+      setSnack({ open: true, msg: 'Enter valid rates greater than 0.' })
+      return
+    }
+    saveAppSettings({ productionRate: prod, installationRate: inst })
+    setShowRates(false)
+    setSnack({ open: true, msg: 'Cost rates saved.' })
+  }
 
   // Profile edit state
   const [showEditProfile, setShowEditProfile] = useState(false)
@@ -77,12 +104,17 @@ export default function SettingsScreen() {
 
       updateProfile(updates)
 
-      // Update password in managed user storage if user is managed
-      if (editPass && user?.email) {
+      // Persist name/password changes to managed user cache + Supabase
+      if (user?.email && (updates.name || editPass)) {
         const managed = loadManagedUsers()
         const idx = managed.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase())
         if (idx !== -1) {
-          managed[idx] = { ...managed[idx], password: editPass }
+          managed[idx] = {
+            ...managed[idx],
+            ...(updates.name ? { fullName: updates.name } : {}),
+            ...(editPass     ? { password: editPass }     : {}),
+            updatedAt: new Date().toISOString(),
+          }
           saveManagedUsers(managed)
         }
       }
@@ -107,6 +139,23 @@ export default function SettingsScreen() {
     resetAllData()
     setSnack({ open: true, msg: 'All data cleared.' })
     navigate('/projects', { replace: true })
+  }
+
+  async function handleMigrate() {
+    setMigrating(true)
+    try {
+      const r = await migrateFromLocalStorage()
+      const total = r.projects + r.tasks + r.leads + r.payments + r.production + r.mistakes + r.users
+      if (r.errors.length) {
+        setSnack({ open: true, msg: `Migration errors: ${r.errors.join(', ')}` })
+      } else {
+        setSnack({ open: true, msg: `Migrated ${total} records to Supabase.` })
+      }
+    } catch (err) {
+      setSnack({ open: true, msg: err instanceof Error ? err.message : 'Migration failed.' })
+    } finally {
+      setMigrating(false)
+    }
   }
 
   function handleSwitchRole(role: UserRole) {
@@ -213,6 +262,62 @@ export default function SettingsScreen() {
           </div>
         </div>
 
+        {/* Cost Rates — owner only (MD & ED) */}
+        {user?.role === 'owner' && (
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-2">Quotation Settings</p>
+            <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+              <button
+                onClick={openRates}
+                className="w-full flex items-center gap-3 px-4 py-3.5 active:bg-slate-50 text-left"
+              >
+                <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <SlidersHorizontal size={16} className="text-emerald-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-700">Cost Rates (per sq.ft)</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {(() => { const s = getAppSettings(); return `Production ₹${s.productionRate} · Installation ₹${s.installationRate}` })()}
+                  </p>
+                </div>
+                <ChevronRight size={15} className={`text-slate-300 flex-shrink-0 transition-transform ${showRates ? 'rotate-90' : ''}`} />
+              </button>
+
+              {showRates && (
+                <div className="border-t border-slate-100 px-4 py-4 space-y-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Production Rate (₹ / sq.ft)</label>
+                    <input
+                      type="text" inputMode="numeric"
+                      value={editProdRate}
+                      onChange={e => setEditProdRate(e.target.value.replace(/[^0-9]/g, ''))}
+                      placeholder="e.g. 100"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-green-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Installation Rate (₹ / sq.ft)</label>
+                    <input
+                      type="text" inputMode="numeric"
+                      value={editInstRate}
+                      onChange={e => setEditInstRate(e.target.value.replace(/[^0-9]/g, ''))}
+                      placeholder="e.g. 25"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-green-500"
+                    />
+                  </div>
+                  <button
+                    onClick={saveRates}
+                    className="w-full py-3 rounded-xl text-[#065F2D] font-bold text-sm"
+                    style={{ background: '#9DCD3A' }}
+                  >
+                    Save Rates
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Prototype Role Switcher — MD-only debug section */}
         {user?.role === 'owner' && user?.displayRole?.includes('MD') && <div>
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-2">Prototype</p>
@@ -258,6 +363,23 @@ export default function SettingsScreen() {
                 ))}
               </div>
             )}
+
+            {hasLocalStorageData() && (<>
+              <div className="h-px bg-slate-100 mx-4" />
+              <button
+                onClick={handleMigrate}
+                disabled={migrating}
+                className="w-full flex items-center gap-3 px-4 py-3.5 active:bg-slate-50 text-left disabled:opacity-60"
+              >
+                <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <RefreshCw size={16} className={`text-blue-600 ${migrating ? 'animate-spin' : ''}`} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-700">Migrate data to Supabase</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Push existing browser data to the database</p>
+                </div>
+              </button>
+            </>)}
 
             <div className="h-px bg-slate-100 mx-4" />
             <button

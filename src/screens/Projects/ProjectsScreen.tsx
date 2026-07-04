@@ -151,7 +151,7 @@ export default function ProjectsScreen() {
   function matchesRoleVisibility(p: Project): boolean {
     const role = user?.role
     if (!role || role === 'owner') return true
-    if (role === 'lead_manager') return !p.ownerId || p.ownerId === user!.id
+    if (role === 'lead_manager') return p.ownerId === user!.id
     if (role === 'site_engineer') {
       return allTasks.some(t =>
         t.projectId === p.id &&

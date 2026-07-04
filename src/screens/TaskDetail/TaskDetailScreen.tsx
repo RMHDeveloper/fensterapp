@@ -40,6 +40,9 @@ export default function TaskDetailScreen() {
   const [snack, setSnack]           = useState({ open: false, msg: '' })
 
   const isViewer = user?.role === 'viewer'
+  const canEdit  = user?.role === 'owner' || user?.role === 'lead_manager' ||
+    task.assignedTo === user?.name || task.assignedTo === user?.id ||
+    task.assignee   === user?.name || task.assignee   === user?.id
   const isDone   = status === 'completed'
   const hasPhone = task.type === 'payment' || task.type === 'call'
 
@@ -299,7 +302,7 @@ export default function TaskDetailScreen() {
       </div>
 
       {/* Compact sticky bar — 2 buttons */}
-      {!isViewer && (
+      {!isViewer && canEdit && (
         <div className="fixed bottom-16 lg:bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[390px] bg-white border-t border-slate-200 px-4 py-3 z-30">
           {isDone ? (
             <div className="bg-emerald-50 text-emerald-700 rounded-xl py-3 text-sm font-extrabold text-center border border-emerald-200">

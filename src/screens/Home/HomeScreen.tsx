@@ -41,7 +41,8 @@ export default function HomeScreen() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { tasks, leads, payments, projects, mistakes, updateTask } = useAppData()
-  const [flowTask, setFlowTask] = useState<Task | null>(null)
+  const [flowTaskId, setFlowTaskId] = useState<string | null>(null)
+  const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
 
   const role            = user?.role ?? 'viewer'
   const todayTasks      = tasks.filter(t => t.dueDate === 'Today' || t.status === 'overdue' || t.status === 'in_progress')
@@ -104,9 +105,9 @@ export default function HomeScreen() {
     ],
     viewer: [
       { icon: FolderOpen,   iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: activeProjects.length, label: 'Projects', link: '/projects' },
-      { icon: Users,        iconColor: 'text-purple-600', iconBg: 'bg-purple-100', value: leads.length,          label: 'Leads',    link: '/leads'    },
       { icon: BarChart2,    iconColor: 'text-pink-600',   iconBg: 'bg-pink-100',   value: 12,                    label: 'Reports',  link: '/reports'  },
       { icon: FolderOpen,   iconColor: 'text-slate-600',  iconBg: 'bg-slate-100',  value: 8,                     label: 'Files',    link: '/files'    },
+      { icon: CheckCircle2, iconColor: 'text-emerald-600',iconBg: 'bg-emerald-100',value: doneCount,             label: 'Done',     link: '/tasks'    },
     ],
   }
 
@@ -199,7 +200,22 @@ export default function HomeScreen() {
 
         {/* 3. Flow Tasks (Demo) ────────────────────────────────────────────────── */}
         {(() => {
-          const activeFTs = tasks.filter(t => t.flowStage != null && t.flowStage !== 'completed')
+          const myProjectIds = new Set(projects.filter(p => p.ownerId === user?.id).map(p => p.id))
+          const isAssignedToMe = (t: Task) =>
+            t.assignedTo === user?.name || t.assignedTo === user?.id ||
+            t.assignee   === user?.name || t.assignee   === user?.id ||
+            t.siteEngineerName === user?.name
+          const activeFTs = tasks.filter(t => {
+            if (t.flowStage == null || t.flowStage === 'completed') return false
+            if (role === 'site_engineer') return t.flowStage === 'site_visit' && isAssignedToMe(t)
+            if (role === 'owner') return t.flowStage === 'owner_approval' || (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
+            if (role === 'production_admin') return t.flowStage === 'production_check'
+            if (role === 'production_manager') return t.flowStage === 'production_work'
+            if (role === 'production_team') return t.flowStage === 'production_check' || t.flowStage === 'production_work'
+            if (role === 'technician' || role === 'installation_incharge') return (t.flowStage === 'installation_assign' || t.flowStage === 'installation_update') && isAssignedToMe(t)
+            if (role === 'lead_manager') return myProjectIds.has(t.projectId)
+            return false
+          })
           if (activeFTs.length === 0) return null
           return (
             <section>
@@ -218,7 +234,7 @@ export default function HomeScreen() {
                 </button>
               </div>
               {activeFTs.slice(0, 3).map(t => (
-                <FlowTaskCard key={t.id} task={t} onClick={() => setFlowTask(t)} />
+                <FlowTaskCard key={t.id} task={t} onClick={() => setFlowTaskId(t.id)} />
               ))}
             </section>
           )
@@ -322,11 +338,11 @@ export default function HomeScreen() {
       {flowTask && (
         <DemoFlowSheet
           isOpen={!!flowTask}
-          onClose={() => setFlowTask(null)}
+          onClose={() => setFlowTaskId(null)}
           task={flowTask}
           onUpdate={(updates) => {
-            updateTask(flowTask.id, updates)
-            setFlowTask(null)
+            updateTask(flowTask!.id, updates)
+            setFlowTaskId(null)
           }}
         />
       )}
