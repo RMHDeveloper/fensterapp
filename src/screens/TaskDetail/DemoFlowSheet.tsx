@@ -909,8 +909,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       })
     }
 
-    // Mark LM review task as reviewed (keep flowStage, change flowStatus so filter hides it)
-    try { console.debug('[Fenster] submitReviseQuotation saving', { latestQuot, currentTaskQuotation: task.quotationFile }) } catch {}
     save({
       flowStage: 'reschedule_review' as FlowStage,
       flowStatus: isApproved ? 'approved' : 'rejected',
@@ -923,7 +921,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     // measurement files are optional
     const hasPin = (locPin.latitude && locPin.longitude) || locPin.mapLink.trim()
     if (!hasPin)                 { setError('Add site location pin before completing.'); return }
-    try { console.debug('[Fenster] submitResendUpdatedQuotation saving', { latestQuot, currentTaskQuotation: task.quotationFile }) } catch {}
     save({
       flowStage: 'site_review', flowStatus: 'ready', status: 'pending',
       title: 'Review Site Visit & Create Quotation',
