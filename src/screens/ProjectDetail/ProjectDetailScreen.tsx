@@ -17,6 +17,18 @@ import type { Task, TaskStatus, Project } from '../../types'
 
 const GOOGLE_REVIEW_LINK = 'https://maps.app.goo.gl/SRqthqnsFTo5UdHL9'
 
+// Handles both legacy locale-formatted strings and ISO timestamps; sorts/formats by real time, not string order.
+function parseTimestamp(val: string): number {
+  const t = new Date(val).getTime()
+  return isNaN(t) ? -Infinity : t
+}
+
+function fmtDateTime(val: string): string {
+  const d = new Date(val)
+  if (isNaN(d.getTime())) return val
+  return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 function fmtDate(val?: string | null): string {
   if (!val || val === '—' || val.trim() === '') return '—'
   // ISO date string
@@ -71,11 +83,32 @@ function collectProjectFiles(tasks: Task[]) {
 
 const FLOW_STAGE_LABEL: Record<string, string> = {
   site_assign: 'Site Assignment', site_visit: 'Site Visit', reschedule_review: 'Reschedule Review',
-  site_review: 'Quotation', owner_approval: 'MD/ED Approval', send_to_client: 'Send to Client',
+  site_review: 'Quotation Uploaded', owner_approval: 'MD/ED Approval', send_to_client: 'Sent to Client',
   production_assign: 'Production Setup', production_check: 'Availability Check',
-  advance_payment: 'Advance Payment', production_work: 'Production Work',
-  installation_assign: 'Installation Setup', installation_update: 'Installation',
-  final_payment: 'Final Payment', final_completion: 'Complete Project', completed: 'Completed',
+  advance_payment: 'Advance Payment Collected', production_work: 'Production Work',
+  installation_assign: 'Installation Assignment', installation_update: 'Installation',
+  final_payment: 'Payment Collected', final_completion: 'Project Complete', completed: 'Project Completed',
+}
+
+const ACTIVITY_STATUS_LABEL: Record<string, Record<string, string>> = {
+  site_visit:          { completed: 'Site Visit Completed', reschedule_requested: 'Reschedule Requested', reschedule_approved: 'Reschedule Approved', reschedule_rejected: 'Reschedule Rejected' },
+  site_review:         { completed: 'Quotation Uploaded' },
+  owner_approval:      { completed: 'MD/ED Approved', rejected: 'MD/ED Rejected Quotation' },
+  send_to_client:      { waiting_response: 'Quotation Sent to Client', client_approved: 'Client Approved', client_rejected: 'Client Rejected', completed: 'Sent to Client' },
+  advance_payment:     { completed: 'Advance Payment Collected' },
+  production_assign:   { completed: 'Job Sheet Uploaded' },
+  production_check:    { completed: 'Material Check Completed', not_available: 'Material Not Available' },
+  production_work:     { in_progress: 'Production In Progress', completed: 'Production Completed', overdue: 'Production Overdue Reported', date_updated: 'Production Date Updated', ready_to_pack: 'Ready to Dispatch' },
+  installation_assign: { completed: 'Installation Assigned' },
+  installation_update: { completed: 'Installation Completed', not_completed: 'Installation Not Completed', mistake: 'Installation Mistake Reported', assigned: 'Installation Assigned' },
+  final_payment:       { partial_paid: 'Partial Payment Collected', full_paid: 'Balance Payment Collected', completed: 'Project Completed' },
+  final_completion:    { completed: 'Project Completed' },
+  completed:           { completed: 'Project Completed' },
+}
+
+function getActivityLabel(stage: string, status?: string): string {
+  if (status && ACTIVITY_STATUS_LABEL[stage]?.[status]) return ACTIVITY_STATUS_LABEL[stage][status]
+  return FLOW_STAGE_LABEL[stage] ?? stage.replace(/_/g, ' ')
 }
 
 // ── Timeline stages in order ─────────────────────────────────────────────────
@@ -178,7 +211,8 @@ export default function ProjectDetailScreen() {
 
   const [showAddTask,     setShowAddTask]     = useState(false)
   const [snack,           setSnack]           = useState({ open: false, msg: '' })
-  const [flowTask,        setFlowTask]        = useState<Task | null>(null)
+  const [flowTaskId,      setFlowTaskId]      = useState<string | null>(null)
+  const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
   const [editDateType,    setEditDateType]    = useState<'start' | 'due' | null>(null)
   const [editDateValue,   setEditDateValue]   = useState('')
   const [showEditClient,  setShowEditClient]  = useState(false)
@@ -229,7 +263,7 @@ function handleSaveTask() {
     if (!flowTask) return
     updateTask(flowTask.id, updates)
     setSnack({ open: true, msg: 'Status updated!' })
-    setFlowTask(null)
+    setFlowTaskId(null)
   }
 
   const projectFiles = collectProjectFiles(tasks)
@@ -245,9 +279,19 @@ function handleSaveTask() {
       id: 'payment',
       title: 'Payment Summary',
       subtitle: (() => {
-        if (payment) return `₹${(payment.received / 1000).toFixed(0)}K received of ₹${(payment.totalAmount / 1000).toFixed(0)}K`
+        if (payment) {
+          const bal = payment.pending ?? (payment.totalAmount - payment.received)
+          return bal > 0
+            ? `₹${(payment.received / 1000).toFixed(0)}K received · ₹${(bal / 1000).toFixed(0)}K balance`
+            : `₹${(payment.received / 1000).toFixed(0)}K received · Fully paid`
+        }
         const q = project.costBreakdown?.quotationAmount ?? project.quotationAmount ?? flowTaskQuotation
-        return q ? `₹${(q / 1000).toFixed(0)}K quoted` : 'No payment record'
+        const advTask = tasks.find(t => t.paidAmount && t.paidAmount > 0)
+        const paid = advTask?.paidAmount ?? 0
+        const bal = q ? Math.max(0, q - paid) : 0
+        if (q && bal > 0) return `₹${(paid / 1000).toFixed(0)}K paid · ₹${(bal / 1000).toFixed(0)}K balance`
+        if (q) return paid > 0 ? 'Fully paid' : `₹${(q / 1000).toFixed(0)}K quoted`
+        return 'No payment record'
       })(),
       children: (() => {
         if (payment) return (
@@ -312,7 +356,7 @@ function handleSaveTask() {
         const allEntries = tasks
           .flatMap(t => (t.statusHistory ?? []).map(e => ({ ...e, taskTitle: t.title })))
           .filter(e => (e.note || (e.files && e.files.length > 0)) && (!allowedRoles || allowedRoles.includes(e.updatedRole)))
-          .sort((a, b) => (b.updatedAt > a.updatedAt ? 1 : -1))
+          .sort((a, b) => parseTimestamp(b.updatedAt) - parseTimestamp(a.updatedAt))
         if (allEntries.length === 0) {
           return (
             <p className="text-sm text-slate-400 italic">
@@ -336,7 +380,9 @@ function handleSaveTask() {
                     <div className="w-2 h-2 rounded-full bg-blue-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-bold text-blue-500 uppercase mb-0.5">{entry.taskTitle}</p>
+                    <p className="text-[10px] font-bold text-blue-500 uppercase mb-0.5">
+                      {getActivityLabel(entry.stage, entry.status)}
+                    </p>
                     {entry.note && <p className="text-xs text-slate-700 leading-relaxed">{entry.note}</p>}
                     {entry.files && entry.files.length > 0 && (
                       <div className="mt-1 space-y-0.5">
@@ -348,7 +394,7 @@ function handleSaveTask() {
                       </div>
                     )}
                     <p className="text-[10px] text-slate-400 mt-1">
-                      {FLOW_STAGE_LABEL[entry.stage] ?? entry.stage.replace(/_/g, ' ')} · {entry.updatedBy} · {entry.updatedAt}
+                      {getActivityLabel(entry.stage, entry.status)} · {entry.updatedBy} · {fmtDateTime(entry.updatedAt)}
                     </p>
                   </div>
                 </div>
@@ -524,14 +570,15 @@ function handleSaveTask() {
             )}
             <p className="text-blue-300 text-xs mt-0.5 truncate">{project.name}</p>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              {(user?.role === 'owner' || user?.role === 'lead_manager') && (() => {
+              {(() => {
                 const amt = getProjectAmount(project, flowTaskQuotation)
                 const balTask = tasks.find(t => t.balanceAmount && t.balanceAmount > 0)
                 const balance = balTask?.balanceAmount ?? 0
+                const showBalance = user?.role === 'owner'
                 return amt != null ? (
                   <span className="text-emerald-300 text-sm font-extrabold">
                     · ₹{amt.toLocaleString('en-IN')}
-                    {balance > 0 && <span className="text-amber-300 text-xs font-semibold"> (Balance ₹{balance.toLocaleString('en-IN')})</span>}
+                    {showBalance && balance > 0 && <span className="text-amber-300 text-xs font-semibold"> (Balance ₹{balance.toLocaleString('en-IN')})</span>}
                   </span>
                 ) : null
               })()}
@@ -628,25 +675,21 @@ function handleSaveTask() {
 
       {/* Quick actions */}
       <div className="px-4 py-4 space-y-2.5">
-        <div className="flex gap-2 justify-center flex-wrap">
+        <div className="flex gap-2">
           <button onClick={handleCallClient}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-semibold active:scale-95 transition-transform bg-teal-50 text-teal-700 border-teal-100">
-            <Phone size={13} /> Call Client
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-semibold active:scale-95 transition-transform bg-teal-50 text-teal-700 border-teal-100">
+            <Phone size={13} /> Call
           </button>
-          {project.clientPhone && (
-            <a
-              href={`https://wa.me/91${project.clientPhone.replace(/\D/g, '').replace(/^0/, '')}`}
-              target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-semibold active:scale-95 transition-transform bg-emerald-50 text-emerald-700 border-emerald-100">
-              <MessageCircle size={13} /> WhatsApp
-            </a>
-          )}
-          {['installation','installation_assigned','installation_in_progress','installation_not_completed','installation_mistake','final_payment','payment_pending','partial_paid','remaining_payment_pending','final_completion','completed'].includes(project?.currentStage ?? '') && (
-            <a href={GOOGLE_REVIEW_LINK} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-semibold active:scale-95 transition-transform bg-amber-50 text-amber-700 border-amber-100">
-              <Star size={13} /> Google Review
-            </a>
-          )}
+          <a
+            href={`https://wa.me/91${(project.clientPhone ?? '').replace(/\D/g, '').replace(/^0/, '')}`}
+            target="_blank" rel="noopener noreferrer"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-semibold active:scale-95 transition-transform bg-emerald-50 text-emerald-700 border-emerald-100">
+            <MessageCircle size={13} /> WhatsApp
+          </a>
+          <a href={GOOGLE_REVIEW_LINK} target="_blank" rel="noopener noreferrer"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-semibold active:scale-95 transition-transform bg-amber-50 text-amber-700 border-amber-100">
+            <Star size={13} /> Review
+          </a>
         </div>
 
         {/* Google Maps link — shown for site engineers to navigate to job site */}
@@ -665,8 +708,8 @@ function handleSaveTask() {
         )}
       </div>
 
-      {/* Current Action Needed — LM demo banner */}
-      {activeFlowTask && user?.role === 'lead_manager' && (
+      {/* Current Action Needed — LM / owner banner */}
+      {activeFlowTask && (user?.role === 'lead_manager' || user?.role === 'owner') && (
         <div className="px-4 mb-3">
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2.5">
             <div className="flex items-center justify-between gap-2">
@@ -679,7 +722,7 @@ function handleSaveTask() {
             {activeFlowTask.clientName && (
               <p className="text-xs text-slate-500">{activeFlowTask.clientName}{activeFlowTask.location ? ` · ${activeFlowTask.location}` : ''}</p>
             )}
-            <button onClick={() => setFlowTask(activeFlowTask)}
+            <button onClick={() => setFlowTaskId(activeFlowTask.id)}
               className="w-full py-3 rounded-xl bg-blue-600 text-white text-sm font-bold active:bg-blue-700">
               Update Status →
             </button>
@@ -748,7 +791,7 @@ function handleSaveTask() {
       {flowTask && (
         <DemoFlowSheet
           isOpen={!!flowTask}
-          onClose={() => setFlowTask(null)}
+          onClose={() => setFlowTaskId(null)}
           task={flowTask}
           onUpdate={handleFlowUpdate}
         />

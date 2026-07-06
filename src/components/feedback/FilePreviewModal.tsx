@@ -37,17 +37,16 @@ export function FilePreviewModal({ src, name, onClose }: Props) {
       <div className="flex items-center gap-2 px-4 flex-shrink-0 bg-black/90"
         style={{ height: 56 }}>
         <p className="text-white text-xs font-semibold truncate flex-1 opacity-80">{name}</p>
+        <button type="button" onClick={handleDownload}
+          className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center active:bg-white/30"
+          title="Download">
+          <Download size={15} className="text-white" />
+        </button>
         {isPdf && (
-          <>
-            <button type="button" onClick={handleDownload}
-              className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center active:bg-white/30">
-              <Download size={15} className="text-white" />
-            </button>
-            <button type="button" onClick={handlePrint}
-              className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center active:bg-white/30">
-              <Printer size={15} className="text-white" />
-            </button>
-          </>
+          <button type="button" onClick={handlePrint}
+            className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center active:bg-white/30">
+            <Printer size={15} className="text-white" />
+          </button>
         )}
         <button type="button" onClick={onClose}
           className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center active:bg-white/30">

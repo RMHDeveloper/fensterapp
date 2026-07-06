@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   X, CheckCircle2, AlertTriangle, Camera, Clock, Send, PhoneCall,
-  Package, Wrench, CreditCard,
+  Package, Wrench, CreditCard, Eye, Download, FileText,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useAppData } from '../../context/AppDataContext'
@@ -12,10 +12,49 @@ import { TimePickerField } from '../../components/forms/TimePickerField'
 import { NoteWithFilesField } from '../../components/forms/NoteWithFilesField'
 import type { Task, Project, LocationPin, StatusHistoryItem, FlowStage, CostBreakdown, ProjectStage } from '../../types'
 import { PROJECT_STAGE_LABEL, PROJECT_STAGE_PROGRESS } from '../../types'
-import { filePreviewStore, voicePreviewStore, isImageFileName } from '../../utils/sessionStore'
+import { filePreviewStore, voicePreviewStore, isImageFileName, resolveFileUrl } from '../../utils/sessionStore'
 import { MediaPreviewList } from '../../components/media/MediaPreviewList'
 import { getActiveManagedUsersByDisplayRole } from '../../utils/userStorage'
 import { Dialog } from '../../components/feedback/Dialog'
+import { recordUploadedFile, getQuotationVersions, subscribeToProjectFiles, type FileRow } from '../../services/fileService'
+import { getFileUrl } from '../../utils/fileStorage'
+import { getAppSettings } from '../../utils/appSettings'
+
+function recordQuotationVersion(task: Task, fileName: string, uploadedBy: string, uploadedByRole: string) {
+  const url = fileName.startsWith('http') ? fileName : (getFileUrl(fileName) ?? fileName)
+  const displayName = fileName.startsWith('http')
+    ? decodeURIComponent(fileName.split('/').pop() ?? fileName)
+    : fileName
+  recordUploadedFile({
+    projectId: task.projectId,
+    taskId: task.id,
+    category: 'quotation',
+    fileName: displayName,
+    url,
+    uploadedBy,
+    uploadedByRole,
+  }).catch(err => console.error('[Fenster] quotation version record failed:', err))
+}
+
+function isSameQuotationFile(a?: string, b?: string) {
+  // Treat empty as different
+  if (!a || !b) return false
+  const resolve = (s: string) => {
+    if (s.startsWith('http')) return s.trim()
+    const url = getFileUrl(s)
+    return (url ?? s).trim()
+  }
+  try {
+    const ra = resolve(a)
+    const rb = resolve(b)
+    if (ra === rb) return true
+    // Fallback: compare filename (basename) after decoding
+    const base = (u: string) => decodeURIComponent((u.split('/').pop() ?? '').split('?')[0])
+    return base(ra) !== '' && base(ra) === base(rb)
+  } catch {
+    return a.trim() === b.trim()
+  }
+}
 
 // Map from task flowStage → project currentStage (for timeline / filter updates)
 const FLOW_TO_PROJECT_STAGE: Partial<Record<string, ProjectStage>> = {
@@ -24,8 +63,8 @@ const FLOW_TO_PROJECT_STAGE: Partial<Record<string, ProjectStage>> = {
   site_review:         'quotation_preparation',
   owner_approval:      'quotation_sent_owner',
   send_to_client:      'owner_approved',
-  advance_payment:     'client_approved',
-  production_assign:   'production_admin_check',
+  advance_payment:     'advance_payment',
+  production_assign:   'advance_payment',
   production_check:    'production_admin_check',
   production_work:     'production_manager_work',
   installation_assign: 'ready_to_dispatch',
@@ -33,6 +72,131 @@ const FLOW_TO_PROJECT_STAGE: Partial<Record<string, ProjectStage>> = {
   final_payment:       'final_payment',
   final_completion:    'final_payment',
   completed:           'completed',
+}
+
+function fmtVersionDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+/** Full quotation version history, newest first — replaces the old single "latest + previous" pair. */
+function QuotationVersionsPanel({ task }: { task: Task }) {
+  const [versions, setVersions] = useState<FileRow[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    getQuotationVersions(task.projectId, task.id).then(rows => { if (!cancelled) setVersions(rows) })
+    const unsubscribe = subscribeToProjectFiles(task.projectId, () => {
+      getQuotationVersions(task.projectId, task.id).then(rows => { if (!cancelled) setVersions(rows) })
+    })
+    return () => { cancelled = true; unsubscribe() }
+  }, [task.projectId, task.id, task.quotationFile])
+
+  // Fall back to the legacy single-file fields if no versions have been recorded in fenster_files yet
+  if (versions.length === 0) {
+    return (
+      <>
+        {task.quotationFile && (() => {
+          const qFileUrl = resolveFileUrl(task.quotationFile!)
+          return (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+              <p className="text-[10px] font-bold text-indigo-500 uppercase mb-2">Latest Quotation File</p>
+              <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2.5">
+                <FileText size={16} className="text-indigo-400 flex-shrink-0" />
+                <p className="text-xs text-slate-700 flex-1 truncate">{task.quotationFile}</p>
+                {qFileUrl && (
+                  <>
+                    <a href={qFileUrl} target="_blank" rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 active:bg-blue-100">
+                      <Eye size={12} className="text-blue-500" />
+                    </a>
+                    <a href={qFileUrl} download={task.quotationFile} target="_blank" rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 active:bg-emerald-100">
+                      <Download size={12} className="text-emerald-600" />
+                    </a>
+                  </>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+        {task.previousQuotationFile && (() => {
+          const prevUrl = resolveFileUrl(task.previousQuotationFile!)
+          return (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <p className="text-[10px] font-bold text-red-500 uppercase mb-2">Previously Rejected Quotation</p>
+              <div className="flex items-center gap-2 bg-white border border-red-100 rounded-xl px-3 py-2.5">
+                <FileText size={13} className="text-red-400 flex-shrink-0" />
+                <p className="text-xs text-red-700 flex-1 truncate">{task.previousQuotationFile}</p>
+                {prevUrl && (
+                  <>
+                    <a href={prevUrl} target="_blank" rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-red-50 border border-red-200 flex items-center justify-center flex-shrink-0 active:bg-red-100">
+                      <Eye size={11} className="text-red-500" />
+                    </a>
+                    <a href={prevUrl} download={task.previousQuotationFile} target="_blank" rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center flex-shrink-0 active:bg-emerald-100">
+                      <Download size={11} className="text-emerald-600" />
+                    </a>
+                  </>
+                )}
+              </div>
+              {task.ownerRejectionReason && (
+                <p className="text-[10px] text-red-400 mt-2 italic">Rejection reason: {task.ownerRejectionReason}</p>
+              )}
+            </div>
+          )
+        })()}
+        <div className="mt-2 text-[10px] text-slate-400">
+          <p className="font-semibold">Debug (task fields):</p>
+          <p className="truncate">task.quotationFile: {String(task.quotationFile)}</p>
+          <p className="truncate">task.previousQuotationFile: {String(task.previousQuotationFile)}</p>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {versions.map((v, i) => {
+        const isLatest = i === 0
+        return (
+          <div key={v.id} className={`border rounded-xl px-4 py-3 ${isLatest ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-200'}`}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isLatest ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                V{v.versionNumber ?? 1}
+              </span>
+              <p className={`text-[10px] font-bold uppercase ${isLatest ? 'text-indigo-500' : 'text-slate-400'}`}>
+                {isLatest ? 'Latest Quotation File' : 'Earlier Version'}
+              </p>
+              {isLatest && (
+                <span className="text-[8px] bg-emerald-50 text-emerald-600 font-semibold px-1.5 py-0.5 rounded-full ml-auto">New</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 bg-white border border-slate-100 rounded-xl px-3 py-2.5">
+              <FileText size={16} className={isLatest ? 'text-indigo-400 flex-shrink-0' : 'text-slate-400 flex-shrink-0'} />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-slate-700 truncate">{v.fileName}</p>
+                <p className="text-[9px] text-slate-400">{v.uploadedBy ?? '—'} · {fmtVersionDateTime(v.uploadedAt)}</p>
+              </div>
+              <a href={v.url} target="_blank" rel="noopener noreferrer"
+                className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 active:bg-blue-100">
+                <Eye size={12} className="text-blue-500" />
+              </a>
+              <a href={v.url} download={v.fileName} target="_blank" rel="noopener noreferrer"
+                className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 active:bg-emerald-100">
+                <Download size={12} className="text-emerald-600" />
+              </a>
+            </div>
+          </div>
+        )
+      })}
+      {task.ownerRejectionReason && task.flowStatus !== 'client_approved' && (
+        <p className="text-[10px] text-red-400 italic px-1">Latest rejection reason: {task.ownerRejectionReason}</p>
+      )}
+    </div>
+  )
 }
 
 interface Props {
@@ -77,17 +241,30 @@ function WaitingView({ icon: Icon, color, title, sub }: WaitingViewProps) {
   )
 }
 
-// ─── DemoControlCard defined OUTSIDE — prevents remount focus bug ─────────────
+// ─── Override Control card (LO) / Take Control button (Owner) ────────────────
 
-interface DemoControlCardProps { waitingFor: string; description: string; onOverride: () => void }
-function DemoControlCard({ waitingFor, description, onOverride }: DemoControlCardProps) {
+interface DemoControlCardProps {
+  waitingFor: string
+  description: string
+  onOverride: () => void
+  variant?: 'override' | 'owner'
+}
+function DemoControlCard({ waitingFor, description, onOverride, variant = 'override' }: DemoControlCardProps) {
+  if (variant === 'owner') {
+    return (
+      <button type="button" onClick={onOverride}
+        className="w-full py-3 rounded-xl bg-slate-800 text-white text-sm font-bold active:opacity-90 flex items-center justify-center gap-2">
+        Take Control →
+      </button>
+    )
+  }
   return (
     <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 space-y-2.5">
       <div className="flex items-center gap-2">
         <div className="w-5 h-5 bg-amber-200 rounded-md flex items-center justify-center flex-shrink-0">
           <AlertTriangle size={11} className="text-amber-700" />
         </div>
-        <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">Demo Control</p>
+        <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">Override Control</p>
       </div>
       <p className="text-xs text-amber-700">
         <span className="font-semibold">{waitingFor}</span> needs to update this step.
@@ -95,7 +272,7 @@ function DemoControlCard({ waitingFor, description, onOverride }: DemoControlCar
       <p className="text-[11px] text-amber-600">{description}</p>
       <button type="button" onClick={onOverride}
         className="w-full py-3 rounded-xl bg-amber-600 text-white text-sm font-bold active:opacity-90">
-        Update This Step Yourself →
+        Override This Step →
       </button>
     </div>
   )
@@ -269,7 +446,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const { user, can }                        = useAuth()
   const { updateTask: ctxUpdateTask, updateProject, tasks, projects } = useAppData()
   const role                                 = user?.role ?? 'lead_manager'
+  const todayStr                             = new Date().toISOString().slice(0, 10)
   const project                              = projects.find(p => p.id === task.projectId)
+  const [{ productionRate, installationRate }] = useState(getAppSettings)
 
   // Merge managed users with defaults for assignment dropdowns
   const engineerOptions = [
@@ -284,6 +463,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   const [sel,   setSel]   = useState('')
   const [error, setError] = useState('')
+  const [showLossWarn, setShowLossWarn] = useState(false)
+  const lossConfirmCb = useRef<(() => void) | null>(null)
 
   // ── SITE ASSIGN ─────────────────────────────────────────────────────────────
   const [engineerName,   setEngineerName]   = useState('Kavya M')
@@ -342,7 +523,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [advPaidAmt,       setAdvPaidAmt]       = useState('')
   const [advBalAmt,        setAdvBalAmt]        = useState('')
   const [advNote,          setAdvNote]          = useState('')
-  const [advPayScreenshot, setAdvPayScreenshot] = useState<string[]>([])
+  const [advPayScreenshot,   setAdvPayScreenshot]   = useState<string[]>([])
+  const [finalPayScreenshot, setFinalPayScreenshot] = useState<string[]>([])
 
   // ── PRODUCTION WORK ───────────────────────────────────────────────────────
   const [overdueNote,    setOverdueNote]    = useState('')
@@ -376,8 +558,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [ownerNavStage, setOwnerNavStage] = useState<string | null>(null)
 
   // ── FINAL PAYMENT ─────────────────────────────────────────────────────────
-  const [finalPaidAmt, setFinalPaidAmt] = useState('')
-  const [finalBalAmt,  setFinalBalAmt]  = useState('')
+  const [finalPayType,   setFinalPayType]   = useState('')   // 'partial' | 'full'
+  const [finalPaidAmt,   setFinalPaidAmt]   = useState('')
+  const [finalBalAmt,    setFinalBalAmt]    = useState('')
+  const [extraChargeAmt, setExtraChargeAmt] = useState('')
   const [actualMaterial,     setActualMaterial]     = useState('')
   const [actualProduction,   setActualProduction]   = useState('')
   const [actualInstallation, setActualInstallation] = useState('')
@@ -400,7 +584,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   // ── PHASE 8: Production Incharge availability checklist ──────────────────────
   const [availChecklist, setAvailChecklist] = useState<AvailItem[]>(DEFAULT_AVAIL)
 
-  // ── PHASE 9: Production Incharge 6-step checklist ──────────────────────────
+  // ── PHASE 9: Production Manager 6-step checklist ──────────────────────────
   const [prodChecklist, setProdChecklist] = useState([
     { id: 'cutting',    label: 'Profile Cutting', done: false },
     { id: 'routing',    label: 'Routing',         done: false },
@@ -410,21 +594,35 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     { id: 'glazing',    label: 'Glazing',         done: false },
   ])
 
+  // ── Ready to Pack checklist ────────────────────────────────────────────────
+  const DEFAULT_PACK_CHECKLIST = [
+    { id: 'profiles',  label: 'All profile pieces cut and ready', done: false },
+    { id: 'glass',     label: 'Glass pieces confirmed and packed', done: false },
+    { id: 'hardware',  label: 'Hardware (locks, handles) packed',  done: false },
+    { id: 'rubber',    label: 'Rubber seals included',             done: false },
+    { id: 'jobsheet',  label: 'Job sheet/delivery note included',  done: false },
+    { id: 'labels',    label: 'Items labelled correctly',          done: false },
+  ]
+  const [packChecklist, setPackChecklist] = useState(DEFAULT_PACK_CHECKLIST.map(d => ({ ...d })))
+
   // ── Reset on open / task change ───────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return
     setSel(''); setError(''); setLmReschedNote(''); setDemoOverride(false); setShowEditCost(false)
     setEngineerName(task.siteEngineerName ?? 'Kavya M')
-    setVisitDate(task.visitDate ?? ''); setVisitTime(task.visitTime ?? '')
+    setVisitDate(task.visitDate ?? todayStr); setVisitTime(task.visitTime ?? '')
     setAssignNote(''); setAssignLocation(task.location ?? '')
-    setReschedDate(''); setReschedTime(''); setReschedReason('')
+    setReschedDate(todayStr); setReschedTime(''); setReschedReason('')
     setSitePhotos(task.sitePhotos ?? [])
     setMeasFiles(task.measurementFiles ?? [])
     setMeasDetails(task.measurementDetails ?? '')
     setLocPin(task.locationPin ?? { latitude: '', longitude: '', mapLink: '' })
     setSeNote('')
     setQuotAmt(task.quotationAmount ? String(task.quotationAmount) : '')
-    setQuotFiles(task.quotationFile ? [task.quotationFile] : [])
+    // Don't pre-load the old file in revision mode — force a fresh upload so quotFiles[0] is always the new file
+    const isRevision = (task.flowStage === 'owner_approval' && task.flowStatus === 'rejected')
+                    || task.flowStatus === 'client_rejected'
+    setQuotFiles((!isRevision && task.quotationFile) ? [task.quotationFile] : [])
     setQuotProduct(task.quotationProductType ?? 'Window')
     setQuotNotes(task.quotationNotes ?? '')
     setOwnerRejReason(task.ownerRejectionReason ?? '')
@@ -441,10 +639,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setAdvBalAmt(task.balanceAmount ? String(task.balanceAmount) : '')
     setAdvNote('')
     setOverdueNote(task.productionOverdueReason ?? '')
-    setOverdueFiles([]); setOverdueNewDate(task.productionNewDate ?? '')
-    setLmNewDate(''); setLmNote('')
+    setOverdueFiles([]); setOverdueNewDate(task.productionNewDate ?? todayStr)
+    setLmNewDate(todayStr); setLmNote('')
     setInstPerson(task.installationPerson ?? '')
-    setInstDate(task.installationDate ?? '')
+    setInstDate(task.installationDate ?? todayStr)
     setInstFiles([]); setInstNote(task.installationNote ?? '')
     setProductCost(task.productCost ? String(task.productCost) : '')
     setInstCost(task.installationCost ? String(task.installationCost) : '')
@@ -455,8 +653,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setInstCompletedPhotos([])
     setExtraSheets([])
     setOwnerNavStage(null)
+    setFinalPayType('')
     setFinalPaidAmt(task.paidAmount ? String(task.paidAmount) : '')
     setFinalBalAmt(task.balanceAmount ? String(task.balanceAmount) : '')
+    setFinalPayScreenshot([])
+    setExtraChargeAmt('')
     const cb = task.costBreakdown
     setActualMaterial(cb?.materialCost ? String(cb.materialCost) : '')
     setActualProduction(cb?.productionCost ? String(cb.productionCost) : '')
@@ -493,18 +694,25 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             { id: 'glazing',    label: 'Glazing',         done: false },
           ]
     )
-  }, [isOpen, task.id]) // eslint-disable-line react-hooks/exhaustive-deps
+    // Pack checklist — restore from task if saved
+    setPackChecklist(
+      (task as Task & { packChecklist?: { id: string; label: string; done: boolean }[] }).packChecklist?.length
+        ? (task as Task & { packChecklist?: { id: string; label: string; done: boolean }[] }).packChecklist!
+        : DEFAULT_PACK_CHECKLIST.map(d => ({ ...d }))
+    )
+  }, [isOpen, task.id, task.flowStatus, task.flowStage, task.quotationFile]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null
 
-  const stage      = task.flowStage ?? 'site_assign'
-  const flowStatus = task.flowStatus ?? 'ready'
+  const stage        = task.flowStage ?? 'site_assign'
+  const displayStage = (role === 'owner' && ownerNavStage) ? ownerNavStage : stage
+  const flowStatus   = task.flowStatus ?? 'ready'
 
   function pick(v: string) { setSel(v); setError('') }
 
   function save(updates: Partial<Task>, histNote?: string, histFiles?: string[]) {
     setError('')
-    const now = new Date().toLocaleString('en-IN')
+    const now = new Date().toISOString()
     const by  = user?.name ?? 'System'
     const isStageChange = !!(updates.flowStage && updates.flowStage !== stage)
     const newEntries: StatusHistoryItem[] = []
@@ -541,6 +749,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       })
     }
 
+    try { console.debug('[Fenster] save -> onUpdate', { updates, newEntries, taskId: task.id }) } catch {}
     onUpdate({
       ...updates,
       statusHistory: [...(task.statusHistory ?? []), ...newEntries],
@@ -555,6 +764,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       // Handle same-stage status changes that imply a project stage change
       if (!newProjectStage) {
         if (stage === 'owner_approval' && updates.flowStatus === 'rejected') newProjectStage = 'owner_disapproved'
+        if (stage === 'send_to_client' && updates.flowStatus === 'waiting_response') newProjectStage = 'sent_to_client'
+        if (stage === 'send_to_client' && updates.flowStatus === 'client_approved') newProjectStage = 'client_approved'
         if (stage === 'send_to_client' && updates.flowStatus === 'client_rejected') newProjectStage = 'sent_to_client'
         if (stage === 'production_check' && updates.flowStatus === 'not_available') newProjectStage = 'production_admin_check'
         if (stage === 'production_work' && (updates.flowStatus === 'in_progress' || updates.flowStatus === 'overdue')) newProjectStage = 'production_manager_work'
@@ -573,11 +784,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     onClose()
   }
 
-  // After client approval, LM loses access to cost breakdown
   const STAGES_POST_CLIENT: string[] = ['advance_payment','production_assign','production_check','production_work','installation_assign','installation_update','final_payment','final_completion','completed']
-  const canSeeCosts  = role === 'owner' || (role === 'lead_manager' && !STAGES_POST_CLIENT.includes(stage))
+  // MD/ED, Admin, and LO can see cost breakdown; profit only for MD/ED and Admin
+  const canSeeCosts  = role === 'owner' || role === 'lead_manager' || role === 'production_admin'
   const canEditCosts = role === 'owner'
-  const canSeeProfit = can('view_profit')
+  const canSeeProfit = role === 'owner' || role === 'production_admin'
 
   function ContextStrip() {
     return (
@@ -639,7 +850,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       note: `Reschedule requested: ${reschedReason}${reschedDate ? ` — New date: ${reschedDate}` : ''}${reschedTime ? ` at ${reschedTime}` : ''}`,
       updatedBy: user?.name ?? 'Site Engineer',
       updatedRole: role,
-      updatedAt: new Date().toLocaleString('en-IN'),
+      updatedAt: new Date().toISOString(),
     }
 
     // Update SAME task — do NOT create a duplicate
@@ -668,7 +879,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       note,
       updatedBy: user?.name ?? 'Sales Team',
       updatedRole: role,
-      updatedAt: new Date().toLocaleString('en-IN'),
+      updatedAt: new Date().toISOString(),
     }
 
     onUpdate({
@@ -698,7 +909,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         note,
         updatedBy: user?.name ?? 'Sales Team',
         updatedRole: role,
-        updatedAt: new Date().toLocaleString('en-IN'),
+        updatedAt: new Date().toISOString(),
       }
       ctxUpdateTask(task.linkedSiteTaskId, {
         visitDate: isApproved ? (task.requestedVisitDate ?? seTask?.visitDate) : seTask?.visitDate,
@@ -711,7 +922,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       })
     }
 
-    // Mark LM review task as reviewed (keep flowStage, change flowStatus so filter hides it)
     save({
       flowStage: 'reschedule_review' as FlowStage,
       flowStatus: isApproved ? 'approved' : 'rejected',
@@ -742,10 +952,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     const quotAmount = Number(quotAmt)
     const sqft  = costSqft ? Number(costSqft) : 0
     const matC  = costMaterial ? Number(costMaterial) : 0
-    const prodC = sqft > 0 ? sqft * 100 : 0
-    const instC = sqft > 0 ? sqft * 25  : 0
+    const prodC = sqft > 0 ? sqft * productionRate : 0
+    const instC = sqft > 0 ? sqft * installationRate : 0
     const transC= costTransAmt ? Number(costTransAmt) : 0
+    const totalC = matC + prodC + instC + transC
     const hasCosts = matC > 0 || prodC > 0 || instC > 0 || transC > 0
+    if (hasCosts && totalC > quotAmount) {
+      lossConfirmCb.current = () => submitSiteReview()
+      setShowLossWarn(true)
+      return
+    }
+    setShowLossWarn(false)
     const breakdown: CostBreakdown | undefined = hasCosts ? {
       quotationAmount: quotAmount,
       numberOfSqft:    sqft > 0 ? sqft : undefined,
@@ -753,16 +970,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       productionCost:  prodC,
       installationCost:instC,
       transportCost:   transC,
-      profit:          quotAmount - (matC + prodC + instC + transC),
+      profit:          quotAmount - totalC,
     } : undefined
+    const latestQuot = quotFiles[quotFiles.length - 1] ?? quotFiles[0]
     save({
       flowStage: 'owner_approval', flowStatus: 'waiting', status: 'pending',
       title: 'Approve Quotation',
       quotationAmount: quotAmount,
-      quotationFile: quotFiles[0],
+      quotationFile: latestQuot,
       quotationNotes: quotNotes || undefined,
       costBreakdown: breakdown,
+      previousQuotationFile: undefined,
     }, `Quotation ₹${quotAmount.toLocaleString('en-IN')} sent for owner approval`, quotFiles)
+    recordQuotationVersion(task, latestQuot, user?.name ?? 'Sales Team', role)
   }
 
   function submitOwnerApproval() {
@@ -783,13 +1003,25 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   function submitReviseQuotation() {
     if (!quotAmt)               { setError('Enter the quotation amount.'); return }
     if (quotFiles.length === 0) { setError('Upload the quotation file.'); return }
+    const latestQuot = quotFiles[quotFiles.length - 1] ?? quotFiles[0]
+    if (isSameQuotationFile(latestQuot, task.quotationFile)) {
+      setError('Upload a fresh revised quotation file before resending.')
+      return
+    }
     const quotAmount = Number(quotAmt)
     const sqft  = costSqft ? Number(costSqft) : 0
     const matC  = costMaterial ? Number(costMaterial) : 0
-    const prodC = sqft > 0 ? sqft * 100 : 0
-    const instC = sqft > 0 ? sqft * 25  : 0
+    const prodC = sqft > 0 ? sqft * productionRate : 0
+    const instC = sqft > 0 ? sqft * installationRate : 0
     const transC= costTransAmt ? Number(costTransAmt) : 0
+    const totalC = matC + prodC + instC + transC
     const hasCosts = matC > 0 || prodC > 0 || instC > 0 || transC > 0
+    if (hasCosts && totalC > quotAmount) {
+      lossConfirmCb.current = () => submitReviseQuotation()
+      setShowLossWarn(true)
+      return
+    }
+    setShowLossWarn(false)
     const breakdown: CostBreakdown | undefined = hasCosts ? {
       quotationAmount: quotAmount,
       numberOfSqft:    sqft > 0 ? sqft : undefined,
@@ -797,30 +1029,37 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       productionCost:  prodC,
       installationCost:instC,
       transportCost:   transC,
-      profit:          quotAmount - (matC + prodC + instC + transC),
+      profit:          quotAmount - totalC,
     } : undefined
     save({
       flowStage: 'owner_approval', flowStatus: 'waiting', status: 'pending',
       title: 'Approve Quotation',
       quotationAmount: quotAmount,
-      quotationFile: quotFiles[0],
+      quotationFile: latestQuot,
       quotationNotes: quotNotes || undefined,
       costBreakdown: breakdown,
       ownerRejectionReason: undefined,
+      previousQuotationFile: undefined,
     }, `Revised quotation ₹${quotAmount.toLocaleString('en-IN')} resent for owner approval`, quotFiles)
+    recordQuotationVersion(task, latestQuot, user?.name ?? 'Sales Team', role)
   }
 
   function submitSendToClient() {
     if (!sel) return
     if (sel === 'client_approved') {
-      save({
-        flowStage: 'advance_payment', flowStatus: 'ready', status: 'pending',
-        title: 'Collect Advance Payment',
-      }, 'Client approved — collect advance payment')
+      save({ flowStatus: 'client_approved', status: 'in_progress', title: 'Order Confirmed — Collect Advance Payment' },
+        'Client approved — order confirmed')
     } else {
       save({ flowStatus: 'client_rejected', status: 'overdue', clientRejectionReason: clientRejReason || undefined },
         `Client rejected${clientRejReason ? ': ' + clientRejReason : ''}`)
     }
+  }
+
+  function submitOrderConfirmed() {
+    save({
+      flowStage: 'advance_payment', flowStatus: 'ready', status: 'pending',
+      title: 'Collect Advance Payment',
+    }, 'Order confirmed — moving to advance payment')
   }
 
   function submitClientRejectionAction() {
@@ -837,11 +1076,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   function submitResendUpdatedQuotation() {
     if (!quotAmt)               { setError('Enter the revised quotation amount.'); return }
     if (quotFiles.length === 0) { setError('Upload the revised quotation file.'); return }
+    const latestQuot = quotFiles[quotFiles.length - 1] ?? quotFiles[0]
+    if (isSameQuotationFile(latestQuot, task.quotationFile)) {
+      setError('Upload a fresh revised quotation file before resending.')
+      return
+    }
     const quotAmount = Number(quotAmt)
     const sqft  = costSqft ? Number(costSqft) : 0
     const matC  = costMaterial ? Number(costMaterial) : 0
-    const prodC = sqft > 0 ? sqft * 100 : 0
-    const instC = sqft > 0 ? sqft * 25  : 0
+    const prodC = sqft > 0 ? sqft * productionRate : 0
+    const instC = sqft > 0 ? sqft * installationRate : 0
     const transC = costTransAmt ? Number(costTransAmt) : 0
     const hasCosts = matC > 0 || prodC > 0 || instC > 0 || transC > 0
     const breakdown: CostBreakdown | undefined = hasCosts ? {
@@ -857,11 +1101,13 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       flowStage: 'owner_approval', flowStatus: 'waiting', status: 'pending',
       title: 'Approve Quotation',
       quotationAmount: quotAmount,
-      quotationFile: quotFiles[0],
+      quotationFile: latestQuot,
       quotationNotes: quotNotes || undefined,
       costBreakdown: breakdown,
       clientRejectionReason: undefined,
+      previousQuotationFile: undefined,
     }, `Revised quotation ₹${quotAmount.toLocaleString('en-IN')} sent for owner approval after client rejection`, quotFiles)
+    recordQuotationVersion(task, latestQuot, user?.name ?? 'Sales Team', role)
   }
 
   function submitEditCostBreakdown() {
@@ -869,8 +1115,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     const quotAmount = Number(quotAmt)
     const sqft  = costSqft ? Number(costSqft) : 0
     const matC  = costMaterial ? Number(costMaterial) : 0
-    const prodC = sqft > 0 ? sqft * 100 : 0
-    const instC = sqft > 0 ? sqft * 25  : 0
+    const prodC = sqft > 0 ? sqft * productionRate : 0
+    const instC = sqft > 0 ? sqft * installationRate : 0
     const transC = costTransAmt ? Number(costTransAmt) : 0
     const breakdown: CostBreakdown = {
       quotationAmount: quotAmount,
@@ -927,25 +1173,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       return
     }
 
-    if (orderedMandatory.length > 0) {
-      const orderedLabel = orderedMandatory.map(i => i.label).join(', ')
-      save({
-        flowStatus: 'materials_ordered', status: 'pending',
-        notAvailableReason: undefined,
-        availabilityChecklist: savedChecklist,
-      }, `Admin ordered: ${orderedLabel} — waiting for delivery`)
-      return
-    }
-
+    // If mandatory items are ordered (not blocked), proceed to production_work
+    const orderedLabel = orderedMandatory.map(i => i.label).join(', ')
     const glassItem = availChecklist.find(i => i.id === 'glass')
-    const glassNote = glassItem?.status === 'not_available' ? ' (Glass not available — noted)' : glassItem?.status === 'order' ? ' (Glass being ordered)' : ''
-    const glassOrdered = glassItem?.status === 'order' ? ` — ordering glass` : ''
+    const glassNote = glassItem?.status === 'not_available' ? ' (Glass noted as not available)' : glassItem?.status === 'order' ? ' (Glass being ordered)' : ''
+    const orderedNote = orderedMandatory.length > 0 ? ` — ordering: ${orderedLabel}` : ''
     save({
       flowStage: 'production_work', flowStatus: 'ready', status: 'pending',
       title: 'Start Production Work',
       notAvailableReason: undefined,
       availabilityChecklist: savedChecklist,
-    }, `Materials checked${glassNote}${glassOrdered} — starting production`)
+    }, `Materials checked${glassNote}${orderedNote} — starting production`)
   }
 
   function submitNotAvailLmAction() {
@@ -990,8 +1228,24 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     save({
       flowStage: 'installation_assign', flowStatus: 'ready', status: 'pending',
       title: 'Assign Installation',
+      productionChecklist: prodChecklist,
       productionOverdueReason: undefined, productionNewDate: undefined,
-    }, 'Production completed — Ready to Dispatch')
+    }, 'All production steps completed — Ready to Dispatch')
+  }
+
+  function submitSavePackProgress() {
+    const doneCt = packChecklist.filter(i => i.done).length
+    if (doneCt === 0) { setError('Tick at least one item before saving.'); return }
+    const pct = Math.round((doneCt / packChecklist.length) * 100)
+    const updates = { flowStatus: 'ready_to_pack', status: 'pending', packChecklist } as unknown as Partial<Task>
+    save(updates, `Packing progress saved: ${doneCt}/${packChecklist.length} items (${pct}%)`)
+  }
+
+  function submitReadyToDispatch() {
+    save({
+      flowStage: 'installation_assign', flowStatus: 'ready', status: 'pending',
+      title: 'Assign Installation',
+    }, 'All items packed — Ready to Dispatch')
   }
 
   function submitProductionProgress() {
@@ -1120,12 +1374,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   }
 
   // ── DEMO OVERRIDE helpers ──────────────────────────────────────────────────
-  const canDemoOverride = role === 'lead_manager'
+  const canDemoOverride = role === 'lead_manager' || role === 'owner'
 
   function demoSave(updates: Partial<Task>, histNote?: string, histFiles?: string[]) {
-    const note = histNote
-      ? `${histNote} (Demo override by Sales Team)`
-      : '(Demo override by Sales Team)'
+    const by   = role === 'owner' ? 'MD/ED' : 'Sales Team'
+    const note = histNote ? `${histNote} (Override by ${by})` : `(Override by ${by})`
     save(updates, note, histFiles)
   }
 
@@ -1187,32 +1440,24 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       return
     }
 
-    if (orderedMandatory.length > 0) {
-      const orderedLabel = orderedMandatory.map(i => i.label).join(', ')
-      demoSave({
-        flowStatus: 'materials_ordered', status: 'pending',
-        notAvailableReason: undefined,
-        availabilityChecklist: savedChecklist,
-      }, `Admin ordered: ${orderedLabel} — waiting for delivery`)
-      return
-    }
-
     const glassItem = availChecklist.find(i => i.id === 'glass')
-    const glassNote = glassItem?.status === 'order' ? ' (Glass being ordered)' : glassItem?.status === 'not_available' ? ' (Glass noted)' : ''
+    const glassNote2 = glassItem?.status === 'order' ? ' (Glass being ordered)' : glassItem?.status === 'not_available' ? ' (Glass noted)' : ''
+    const orderedNote2 = orderedMandatory.length > 0 ? ` — ordering: ${orderedMandatory.map(i => i.label).join(', ')}` : ''
     demoSave({
       flowStage: 'production_work', flowStatus: 'ready', status: 'pending',
       title: 'Start Production Work',
       notAvailableReason: undefined,
       availabilityChecklist: savedChecklist,
-    }, `Materials checked${glassNote} — starting production`)
+    }, `Materials checked${glassNote2}${orderedNote2} — starting production`)
   }
 
   function submitDemoProductionWork() {
     demoSave({
       flowStage: 'installation_assign', flowStatus: 'ready', status: 'pending',
       title: 'Assign Installation',
+      productionChecklist: prodChecklist,
       productionOverdueReason: undefined, productionNewDate: undefined,
-    }, 'Production completed — Ready to Dispatch')
+    }, 'All production steps completed — Ready to Dispatch')
   }
 
   function submitDemoProductionWorkOverdue() {
@@ -1235,10 +1480,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       <div className="relative bg-white rounded-t-3xl max-h-[94vh] overflow-y-auto">
 
         {/* Header */}
-        <div className={`sticky top-0 z-10 ${STAGE_BG[stage] ?? 'bg-blue-600'} px-5 py-4 rounded-t-3xl flex items-center justify-between`}>
+        <div className={`sticky top-0 z-10 ${STAGE_BG[displayStage] ?? 'bg-blue-600'} px-5 py-4 rounded-t-3xl flex items-center justify-between`}>
           <div>
             <p className="text-white/70 text-[10px] font-bold uppercase tracking-wider">{task.projectName}</p>
-            <h2 className="text-white text-base font-extrabold leading-tight">{task.title}</h2>
+            <h2 className="text-white text-base font-extrabold leading-tight">
+              {ownerNavStage ? STAGE_LABEL[ownerNavStage] ?? task.title : task.title}
+            </h2>
           </div>
           <button type="button" onClick={onClose} className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
             <X size={16} className="text-white" />
@@ -1256,10 +1503,93 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             </div>
           )}
 
+          {/* ── Stage Hand-off Summary (3 specific transitions only) ──────── */}
+          {(() => {
+            // 1. Production Admin → Production Manager: show what admin verified
+            if (displayStage === 'production_work') {
+              const items: string[] = []
+              if (task.jobSheet) items.push('Job Sheet: Uploaded ✓')
+              else if (task.jobSheetDetails) items.push(`Job Sheet: ${task.jobSheetDetails.slice(0, 60)}`)
+              if (task.glassSheet)   items.push('Glass Sheet: Uploaded ✓')
+              if (task.cuttingSheet) items.push('Cutting Sheet: Uploaded ✓')
+              if (task.additionalDocs?.length) items.push(`${task.additionalDocs.length} additional doc(s)`)
+              if (task.productionSheetNote) items.push(`LO Notes: ${task.productionSheetNote.slice(0, 80)}`)
+              if (task.availabilityChecklist?.length)
+                task.availabilityChecklist.forEach(i => {
+                  items.push(`${i.label}: ${i.available ? '✓ Available' : i.ordered ? '⏳ Ordered' : '✗ N/A'}`)
+                })
+              if (items.length === 0) return null
+              return (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-1.5">
+                  <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Production Admin Update</p>
+                  {items.map((item, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-amber-300 text-xs mt-0.5">·</span>
+                      <p className="text-xs text-amber-800">{item}</p>
+                    </div>
+                  ))}
+                </div>
+              )
+            }
+
+            // 2. Production Manager → Lead Owner: show PM completion summary
+            if (displayStage === 'installation_assign') {
+              const items: string[] = []
+              items.push('All production steps completed ✓')
+              items.push('Ready to Dispatch ✓')
+              if (task.productionChecklist?.length) {
+                task.productionChecklist.forEach(step => {
+                  items.push(`${step.label}: ${step.done ? '✓ Done' : '— Pending'}`)
+                })
+              }
+              if (task.availabilityChecklist?.length) {
+                const allConfirmed = task.availabilityChecklist.every(i => i.available || i.ordered)
+                items.push(`Materials: ${allConfirmed ? 'All confirmed' : 'Verify with production'}`)
+              }
+              if (items.length === 0) return null
+              return (
+                <div className="bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 space-y-1.5">
+                  <p className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Production Manager Update</p>
+                  {items.map((item, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-teal-300 text-xs mt-0.5">·</span>
+                      <p className="text-xs text-teal-800">{item}</p>
+                    </div>
+                  ))}
+                </div>
+              )
+            }
+
+            // 3. Production availability check → Installation team
+            if (displayStage === 'installation_update') {
+              const items: string[] = []
+              if (task.availabilityChecklist?.length)
+                task.availabilityChecklist.forEach(i => {
+                  items.push(`${i.label}: ${i.available ? '✓ Available' : i.ordered ? '⏳ Ordered' : '✗ N/A'}`)
+                })
+              if (task.jobSheet)   items.push('Job Sheet: Available ✓')
+              if (task.glassSheet) items.push('Glass Sheet: Available ✓')
+              if (items.length === 0) return null
+              return (
+                <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 space-y-1.5">
+                  <p className="text-[10px] font-bold text-purple-500 uppercase tracking-wider">Production Availability Check</p>
+                  {items.map((item, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-purple-300 text-xs mt-0.5">·</span>
+                      <p className="text-xs text-purple-800">{item}</p>
+                    </div>
+                  ))}
+                </div>
+              )
+            }
+
+            return null
+          })()}
+
           {/* ═══════════════════════════════════════════════════════════════
               1. SITE ASSIGN
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'site_assign' && (
+          {displayStage === 'site_assign' && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Assign Site Engineer</p>
 
@@ -1306,7 +1636,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               2a. SITE VISIT — Site Engineer
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'site_visit' && role === 'site_engineer' && (
+          {displayStage === 'site_visit' && (role === 'site_engineer' || role === 'owner') && (
             <>
               {/* Customer contact card — call + maps */}
               <CustomerDetailsCard task={task} project={project} />
@@ -1378,27 +1708,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <>
                   <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Site Visit Status</p>
 
-                  <Opt value="reschedule" label="Reschedule"  sub="Cannot visit as planned — request new date"   accent="border-amber-200"   sel={sel} onPick={pick} />
                   <Opt value="completed"  label="Completed"   sub="Visit done — upload photos and measurements"   accent="border-emerald-200" sel={sel} onPick={pick} />
-
-                  {sel === 'reschedule' && (
-                    <div className="space-y-3">
-                      <div>
-                        <label className={lbl}><span className="flex items-center gap-1.5"><CalIcon /> New Date</span></label>
-                        <input type="date" value={reschedDate} onChange={e => setReschedDate(e.target.value)} className={inp} />
-                      </div>
-                      <TimePickerField label="New Time" value={reschedTime} onChange={setReschedTime} />
-                      <div>
-                        <label className={lbl}>Reason {req}</label>
-                        <textarea rows={3} value={reschedReason} onChange={e => setReschedReason(e.target.value)}
-                          placeholder="Why is rescheduling needed?" className={`${inp} resize-none`} />
-                      </div>
-                      <button type="button" onClick={submitReschedule}
-                        className="w-full py-4 rounded-2xl bg-amber-600 text-white text-sm font-extrabold active:opacity-90">
-                        Send Reschedule Request to Sales Team
-                      </button>
-                    </div>
-                  )}
 
                   {sel === 'completed' && (
                     <div className="space-y-4">
@@ -1449,6 +1759,29 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       </button>
                     </div>
                   )}
+
+                  <div className="border-t border-slate-100 pt-2">
+                    <Opt value="reschedule" label="Reschedule"  sub="Cannot visit as planned — request new date"   accent="border-amber-200"   sel={sel} onPick={pick} />
+                  </div>
+
+                  {sel === 'reschedule' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className={lbl}><span className="flex items-center gap-1.5"><CalIcon /> New Date</span></label>
+                        <input type="date" value={reschedDate} onChange={e => setReschedDate(e.target.value)} className={inp} />
+                      </div>
+                      <TimePickerField label="New Time" value={reschedTime} onChange={setReschedTime} />
+                      <div>
+                        <label className={lbl}>Reason {req}</label>
+                        <textarea rows={3} value={reschedReason} onChange={e => setReschedReason(e.target.value)}
+                          placeholder="Why is rescheduling needed?" className={`${inp} resize-none`} />
+                      </div>
+                      <button type="button" onClick={submitReschedule}
+                        className="w-full py-4 rounded-2xl bg-amber-600 text-white text-sm font-extrabold active:opacity-90">
+                        Send Reschedule Request to Sales Team
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </>
@@ -1457,7 +1790,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               2b. SITE VISIT — Sales Team view
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'site_visit' && role !== 'site_engineer' && (
+          {displayStage === 'site_visit' && role !== 'site_engineer' && role !== 'owner' && (
             flowStatus === 'reschedule_requested' ? (
               <>
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-4 space-y-2">
@@ -1522,19 +1855,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           )}
 
           {/* DEMO CONTROL: Site Visit */}
-          {stage === 'site_visit' && canDemoOverride && flowStatus !== 'reschedule_requested' && !demoOverride && (
+          {displayStage === 'site_visit' && canDemoOverride && role !== 'owner' && flowStatus !== 'reschedule_requested' && !demoOverride && (
             <DemoControlCard
               waitingFor="Site Engineer"
               description="Site Engineer needs to complete the site visit. For demo, submit it directly."
               onOverride={() => setDemoOverride(true)}
             />
           )}
-          {stage === 'site_visit' && canDemoOverride && flowStatus !== 'reschedule_requested' && demoOverride && (
+          {displayStage === 'site_visit' && canDemoOverride && role !== 'owner' && flowStatus !== 'reschedule_requested' && demoOverride && (
             <div className="space-y-4">
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                  <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as Site Engineer</p>
+                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Site Engineer</p>
                 </div>
                 <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
               </div>
@@ -1585,7 +1918,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <button type="button" onClick={submitDemoSiteVisitComplete}
                 className="w-full py-4 rounded-2xl bg-amber-600 text-white text-sm font-extrabold active:opacity-90">
-                ✓ Submit Site Visit (Demo Override) →
+                ✓ Submit Site Visit (Override) →
               </button>
             </div>
           )}
@@ -1593,7 +1926,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               RESCHEDULE REVIEW — LM approves or rejects SE reschedule
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'reschedule_review' && (
+          {displayStage === 'reschedule_review' && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Reschedule Request</p>
 
@@ -1653,80 +1986,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               3. SITE REVIEW — LM creates quotation
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'site_review' && (
+          {displayStage === 'site_review' && (
             <>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Site Visit Summary</p>
-
-              {task.sitePhotos && task.sitePhotos.length > 0 && (
-                <div className="bg-teal-50 rounded-xl px-4 py-3">
-                  <MediaPreviewList
-                    files={task.sitePhotos}
-                    title={`Site Photos (${task.sitePhotos.length})`}
-                  />
-                </div>
-              )}
-              {task.measurementFiles && task.measurementFiles.length > 0 && (
-                <div className="bg-violet-50 rounded-xl px-4 py-3">
-                  <MediaPreviewList
-                    files={task.measurementFiles}
-                    title={`Measurement Files (${task.measurementFiles.length})`}
-                  />
-                </div>
-              )}
-              {task.measurementDetails && (
-                <div className="bg-slate-50 rounded-xl px-4 py-3">
-                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Measurements</p>
-                  <p className="text-xs text-slate-700 whitespace-pre-wrap">{task.measurementDetails}</p>
-                </div>
-              )}
-              {task.locationPin && (task.locationPin.latitude || task.locationPin.mapLink) && (
-                <div className="bg-emerald-50 rounded-xl px-4 py-3 space-y-2">
-                  <p className="text-[10px] text-emerald-500 font-bold uppercase mb-1">Site Location</p>
-                  {(() => {
-                    const readable = getReadableLocation(task)
-                    const mapUrl   = getSiteMapUrl(task)
-                    return (
-                      <>
-                        {readable
-                          ? <p className="text-sm font-semibold text-slate-700">{readable}</p>
-                          : <p className="text-sm text-slate-500 italic">Site location pinned</p>
-                        }
-                        {mapUrl && (
-                          <MapButton url={mapUrl}
-                            className="flex items-center justify-center gap-2 bg-green-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold active:bg-green-700 w-full min-h-[44px]" />
-                        )}
-                      </>
-                    )
-                  })()}
-                </div>
-              )}
-
-              {task.measurementType && (
-                <div className="bg-slate-50 rounded-xl px-4 py-2.5">
-                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-0.5">Measurement Type</p>
-                  <p className="text-xs font-semibold text-slate-700">{task.measurementType}</p>
-                </div>
-              )}
-
-              {(!!task.specialNoteProduction?.length || !!task.specialNoteInstallation?.length) && (
-                <div className="bg-purple-50 rounded-xl px-4 py-3 space-y-2">
-                  <p className="text-[10px] text-purple-500 font-bold uppercase">Voice Notes</p>
-                  {!!task.specialNoteProduction?.length && (
-                    <div className="space-y-1">
-                      <p className="text-[10px] text-purple-400 font-semibold">To Production</p>
-                      <MediaPreviewList files={task.specialNoteProduction} />
-                    </div>
-                  )}
-                  {!!task.specialNoteInstallation?.length && (
-                    <div className="space-y-1">
-                      <p className="text-[10px] text-purple-400 font-semibold">To Installation</p>
-                      <MediaPreviewList files={task.specialNoteInstallation} />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pt-1">Create Quotation</p>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Create Quotation</p>
 
               <div>
                 <label className={lbl}>Quotation Amount (₹) {req}</label>
@@ -1736,7 +1998,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               </div>
 
               <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx"
-                files={quotFiles} onChange={setQuotFiles}
+                files={quotFiles} onChange={setQuotFiles} maxFiles={1}
                 helperText="Upload quotation PDF or document — required" />
 
               <div>
@@ -1769,48 +2031,161 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                     placeholder="e.g. 120 — drives production & installation cost" className={inp} />
                 </div>
 
-                {costSqft && Number(costSqft) > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
-                      <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹100 × sq.ft)</span></span>
-                      <span className="text-sm font-extrabold text-blue-700">₹{(Number(costSqft) * 100).toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
-                      <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹25 × sq.ft)</span></span>
-                      <span className="text-sm font-extrabold text-violet-700">₹{(Number(costSqft) * 25).toLocaleString('en-IN')}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {(costMaterial || costSqft || costTransAmt) && (
-                (() => {
-                  const sqft  = Number(costSqft) || 0
-                  const totalC = (Number(costMaterial)||0) + sqft * 100 + sqft * 25 + (Number(costTransAmt)||0)
+                {(costSqft || costMaterial || costTransAmt) && (() => {
+                  const sqft       = Number(costSqft) || 0
+                  const matC       = Number(costMaterial) || 0
+                  const prodC      = sqft * productionRate
+                  const instC      = sqft * installationRate
+                  const transC     = Number(costTransAmt) || 0
+                  const totalC     = matC + prodC + instC + transC
+                  const quotAmount = Number(quotAmt) || 0
+                  const isLoss     = quotAmount > 0 && totalC > quotAmount
+                  const profit     = quotAmount - totalC
                   return (
-                    <div className="bg-slate-50 rounded-xl px-4 py-3">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500">Total Costs</span>
-                        <span className="font-semibold text-slate-700">₹{totalC.toLocaleString('en-IN')}</span>
+                    <div className="space-y-1.5">
+                      {matC > 0 && (
+                        <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                          <span className="text-xs font-semibold text-slate-600">Material Cost</span>
+                          <span className="text-sm font-extrabold text-slate-700">₹{matC.toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
+                      {sqft > 0 && role === 'owner' && (
+                        <>
+                          <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+                            <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹{productionRate} × sq.ft)</span></span>
+                            <span className="text-sm font-extrabold text-blue-700">₹{prodC.toLocaleString('en-IN')}</span>
+                          </div>
+                          <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
+                            <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹{installationRate} × sq.ft)</span></span>
+                            <span className="text-sm font-extrabold text-violet-700">₹{instC.toLocaleString('en-IN')}</span>
+                          </div>
+                        </>
+                      )}
+                      {transC > 0 && (
+                        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                          <span className="text-xs font-semibold text-amber-700">Transport Cost</span>
+                          <span className="text-sm font-extrabold text-amber-700">₹{transC.toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
+                      <div className={`rounded-xl px-4 py-2.5 space-y-1.5 ${isLoss ? 'bg-red-50 border border-red-200' : 'bg-slate-100'}`}>
+                        <div className="flex justify-between text-xs">
+                          <span className="font-bold text-slate-700">Total Costs</span>
+                          <span className={`font-extrabold ${isLoss ? 'text-red-600' : 'text-slate-800'}`}>
+                            ₹{totalC.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        {quotAmount > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className={isLoss ? 'text-red-500 font-semibold' : 'text-emerald-600 font-semibold'}>
+                              {isLoss ? 'Loss' : 'Profit'}
+                            </span>
+                            <span className={`font-bold ${isLoss ? 'text-red-600' : 'text-emerald-600'}`}>
+                              ₹{Math.abs(profit).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        )}
+                        {isLoss && (
+                          <p className="text-[11px] text-red-600 font-semibold pt-0.5">
+                            ⚠ Quotation is lower than estimated cost — this project will run at a loss.
+                          </p>
+                        )}
                       </div>
                     </div>
                   )
-                })()
-              )}
+                })()}
+              </div>
 
               <button type="button" onClick={submitSiteReview}
                 className="w-full py-4 rounded-2xl bg-violet-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
                 <Send size={15} /> Send Quotation for Approval
               </button>
+
+              {/* ── Site Visit Summary (below send button) ── */}
+              {(task.siteEngineerName || task.visitDate || task.sitePhotos?.length || task.measurementDetails || task.locationPin) && (
+                <div className="border-t border-slate-100 pt-3 space-y-3">
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Site Visit Summary</p>
+
+                  {(task.siteEngineerName || task.visitDate) && (
+                    <div className="bg-cyan-50 border border-cyan-200 rounded-xl px-4 py-3 space-y-0.5">
+                      <p className="text-[10px] font-bold text-cyan-500 uppercase mb-1">Site Engineer Details</p>
+                      {task.siteEngineerName && <p className="text-sm font-bold text-cyan-800">{task.siteEngineerName}</p>}
+                      {task.visitDate && <p className="text-xs text-cyan-600">Visit Date: {task.visitDate}{task.visitTime ? ` at ${task.visitTime}` : ''}</p>}
+                      {task.note && <p className="text-xs text-cyan-500 italic mt-0.5">"{task.note}"</p>}
+                    </div>
+                  )}
+                  {task.sitePhotos && task.sitePhotos.length > 0 && (
+                    <div className="bg-teal-50 rounded-xl px-4 py-3">
+                      <MediaPreviewList files={task.sitePhotos} title={`Site Photos (${task.sitePhotos.length})`} />
+                    </div>
+                  )}
+                  {task.measurementFiles && task.measurementFiles.length > 0 && (
+                    <div className="bg-violet-50 rounded-xl px-4 py-3">
+                      <MediaPreviewList files={task.measurementFiles} title={`Measurement Files (${task.measurementFiles.length})`} />
+                    </div>
+                  )}
+                  {task.measurementDetails && (
+                    <div className="bg-slate-50 rounded-xl px-4 py-3">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Measurements</p>
+                      <p className="text-xs text-slate-700 whitespace-pre-wrap">{task.measurementDetails}</p>
+                    </div>
+                  )}
+                  {task.locationPin && (task.locationPin.latitude || task.locationPin.mapLink) && (
+                    <div className="bg-emerald-50 rounded-xl px-4 py-3 space-y-2">
+                      <p className="text-[10px] text-emerald-500 font-bold uppercase mb-1">Site Location</p>
+                      {(() => {
+                        const readable = getReadableLocation(task)
+                        const mapUrl   = getSiteMapUrl(task)
+                        return (
+                          <>
+                            {readable
+                              ? <p className="text-sm font-semibold text-slate-700">{readable}</p>
+                              : <p className="text-sm text-slate-500 italic">Site location pinned</p>
+                            }
+                            {mapUrl && (
+                              <MapButton url={mapUrl}
+                                className="flex items-center justify-center gap-2 bg-green-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold active:bg-green-700 w-full min-h-[44px]" />
+                            )}
+                          </>
+                        )
+                      })()}
+                    </div>
+                  )}
+                  {task.measurementType && (
+                    <div className="bg-slate-50 rounded-xl px-4 py-2.5">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase mb-0.5">Measurement Type</p>
+                      <p className="text-xs font-semibold text-slate-700">{task.measurementType}</p>
+                    </div>
+                  )}
+                  {(!!task.specialNoteProduction?.length || !!task.specialNoteInstallation?.length) && (
+                    <div className="bg-purple-50 rounded-xl px-4 py-3 space-y-2">
+                      <p className="text-[10px] text-purple-500 font-bold uppercase">Voice Notes</p>
+                      {!!task.specialNoteProduction?.length && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-purple-400 font-semibold">To Production</p>
+                          <MediaPreviewList files={task.specialNoteProduction} />
+                        </div>
+                      )}
+                      {!!task.specialNoteInstallation?.length && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-purple-400 font-semibold">To Installation</p>
+                          <MediaPreviewList files={task.specialNoteInstallation} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
 
           {/* ═══════════════════════════════════════════════════════════════
               4a. OWNER APPROVAL — Owner only
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'owner_approval' && role === 'owner' && (
+          {displayStage === 'owner_approval' && role === 'owner' && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quotation Review</p>
+
+              <QuotationVersionsPanel task={task} />
 
               {task.quotationAmount && (
                 <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
@@ -1879,30 +2254,31 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   {sel === 'approved' ? '✓ Approve Quotation' : 'Reject Quotation'}
                 </button>
               )}
+
             </>
           )}
 
           {/* 4b. OWNER APPROVAL — LM waiting */}
-          {stage === 'owner_approval' && role !== 'owner' && flowStatus !== 'rejected' && !demoOverride && (
+          {displayStage === 'owner_approval' && role !== 'owner' && flowStatus !== 'rejected' && !demoOverride && (
             <WaitingView icon={Clock} color="bg-purple-50 border border-purple-200 text-purple-700"
               title="Waiting for MD/ED Approval"
               sub={`Quotation ₹${task.quotationAmount?.toLocaleString('en-IN') ?? '—'} sent for MD/ED review`} />
           )}
 
-          {/* DEMO CONTROL: Owner Approval */}
-          {stage === 'owner_approval' && canDemoOverride && flowStatus !== 'rejected' && !demoOverride && (
+          {/* OVERRIDE CONTROL: Owner Approval — LM only (owner has their own form above) */}
+          {displayStage === 'owner_approval' && canDemoOverride && role !== 'owner' && flowStatus !== 'rejected' && !demoOverride && (
             <DemoControlCard
               waitingFor="MD/ED"
-              description="MD/ED needs to approve or reject the quotation. For demo, approve or reject it yourself."
+              description="MD/ED needs to approve or reject the quotation. You can override and process it yourself."
               onOverride={() => setDemoOverride(true)}
             />
           )}
-          {stage === 'owner_approval' && canDemoOverride && flowStatus !== 'rejected' && demoOverride && (
+          {displayStage === 'owner_approval' && canDemoOverride && role !== 'owner' && flowStatus !== 'rejected' && demoOverride && (
             <div className="space-y-3">
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                  <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as MD/ED</p>
+                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as MD/ED</p>
                 </div>
                 <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
               </div>
@@ -1968,14 +2344,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               {sel && (
                 <button type="button" onClick={submitDemoOwnerApproval}
                   className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${sel === 'approved' ? 'bg-amber-600' : 'bg-red-600'}`}>
-                  {sel === 'approved' ? '✓ Approve Quotation (Demo Override)' : 'Reject Quotation (Demo Override)'}
+                  {sel === 'approved' ? '✓ Approve Quotation (Override)' : 'Reject Quotation (Override)'}
                 </button>
               )}
             </div>
           )}
 
           {/* 4c. OWNER APPROVAL — LM revision after rejection */}
-          {stage === 'owner_approval' && role !== 'owner' && flowStatus === 'rejected' && (
+          {displayStage === 'owner_approval' && role !== 'owner' && flowStatus === 'rejected' && (
             <>
               <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-4 space-y-1">
                 <p className="text-xs font-bold text-red-600 uppercase">MD/ED Rejected</p>
@@ -1990,7 +2366,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   placeholder="e.g. 160000" className={inp} />
               </div>
 
-              <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx" files={quotFiles} onChange={setQuotFiles} helperText="Upload revised quotation document" />
+              <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx" files={quotFiles} onChange={setQuotFiles} maxFiles={1} helperText="Upload revised quotation document" />
 
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pt-1">Cost Breakdown {req}</p>
 
@@ -2015,20 +2391,38 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   placeholder="e.g. 120 — drives production & installation cost" className={inp} />
               </div>
 
-              {costSqft && Number(costSqft) > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
-                    <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹100 × sq.ft)</span></span>
-                    <span className="text-sm font-extrabold text-blue-700">₹{(Number(costSqft) * 100).toLocaleString('en-IN')}</span>
+              {(costSqft || costMaterial || costTransAmt) && (() => {
+                const sqft  = Number(costSqft) || 0
+                const matC  = Number(costMaterial) || 0
+                const prodC = sqft * productionRate
+                const instC = sqft * installationRate
+                const transC = Number(costTransAmt) || 0
+                const total = matC + prodC + instC + transC
+                return (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                      <span className="text-xs font-semibold text-slate-600">Material Cost</span>
+                      <span className="text-sm font-extrabold text-slate-700">₹{matC.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+                      <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹{productionRate} × sq.ft)</span></span>
+                      <span className="text-sm font-extrabold text-blue-700">₹{prodC.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
+                      <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹{installationRate} × sq.ft)</span></span>
+                      <span className="text-sm font-extrabold text-violet-700">₹{instC.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                      <span className="text-xs font-semibold text-amber-700">Transport Cost</span>
+                      <span className="text-sm font-extrabold text-amber-700">₹{transC.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-slate-100 rounded-xl px-4 py-2.5">
+                      <span className="text-xs font-bold text-slate-700">Total Costs</span>
+                      <span className="text-sm font-extrabold text-slate-800">₹{total.toLocaleString('en-IN')}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
-                    <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹25 × sq.ft)</span></span>
-                    <span className="text-sm font-extrabold text-violet-700">₹{(Number(costSqft) * 25).toLocaleString('en-IN')}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Profit display — only meaningful when owner reviews; this form is for non-owners */}
+                )
+              })()}
 
               <div>
                 <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
@@ -2040,13 +2434,38 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 className="w-full py-4 rounded-2xl bg-violet-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
                 <Send size={15} /> Resend Quotation for Approval
               </button>
+
+              {/* ── Site Visit Summary below resend button ── */}
+              {(task.siteEngineerName || task.visitDate || task.sitePhotos?.length || task.measurementDetails) && (
+                <div className="border-t border-slate-100 pt-3 space-y-3">
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Site Visit Summary</p>
+                  {(task.siteEngineerName || task.visitDate) && (
+                    <div className="bg-cyan-50 border border-cyan-200 rounded-xl px-4 py-3 space-y-0.5">
+                      <p className="text-[10px] font-bold text-cyan-500 uppercase mb-1">Site Engineer Details</p>
+                      {task.siteEngineerName && <p className="text-sm font-bold text-cyan-800">{task.siteEngineerName}</p>}
+                      {task.visitDate && <p className="text-xs text-cyan-600">Visit Date: {task.visitDate}{task.visitTime ? ` at ${task.visitTime}` : ''}</p>}
+                    </div>
+                  )}
+                  {task.sitePhotos && task.sitePhotos.length > 0 && (
+                    <div className="bg-teal-50 rounded-xl px-4 py-3">
+                      <MediaPreviewList files={task.sitePhotos} title={`Site Photos (${task.sitePhotos.length})`} />
+                    </div>
+                  )}
+                  {task.measurementDetails && (
+                    <div className="bg-slate-50 rounded-xl px-4 py-3">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Measurements</p>
+                      <p className="text-xs text-slate-700 whitespace-pre-wrap">{task.measurementDetails}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
 
           {/* ═══════════════════════════════════════════════════════════════
               5. SEND TO CLIENT — two-step: send → mark sent → client response
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'send_to_client' && (
+          {displayStage === 'send_to_client' && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Send Quotation to Client</p>
 
@@ -2084,7 +2503,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       </div>
 
                       <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx"
-                        files={quotFiles} onChange={setQuotFiles} helperText="Upload revised quotation document" />
+                        files={quotFiles} onChange={setQuotFiles} maxFiles={1} helperText="Upload revised quotation document" />
 
                       <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cost Breakdown (optional)</p>
 
@@ -2109,18 +2528,38 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           placeholder="e.g. 120" className={inp} />
                       </div>
 
-                      {costSqft && Number(costSqft) > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
-                            <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹100 × sq.ft)</span></span>
-                            <span className="text-sm font-extrabold text-blue-700">₹{(Number(costSqft) * 100).toLocaleString('en-IN')}</span>
+                      {(costSqft || costMaterial || costTransAmt) && (() => {
+                        const sqft  = Number(costSqft) || 0
+                        const matC  = Number(costMaterial) || 0
+                        const prodC = sqft * productionRate
+                        const instC = sqft * installationRate
+                        const transC = Number(costTransAmt) || 0
+                        const total = matC + prodC + instC + transC
+                        return (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-slate-600">Material Cost</span>
+                              <span className="text-sm font-extrabold text-slate-700">₹{matC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹{productionRate} × sq.ft)</span></span>
+                              <span className="text-sm font-extrabold text-blue-700">₹{prodC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹{installationRate} × sq.ft)</span></span>
+                              <span className="text-sm font-extrabold text-violet-700">₹{instC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-amber-700">Transport Cost</span>
+                              <span className="text-sm font-extrabold text-amber-700">₹{transC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-slate-100 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-bold text-slate-700">Total Costs</span>
+                              <span className="text-sm font-extrabold text-slate-800">₹{total.toLocaleString('en-IN')}</span>
+                            </div>
                           </div>
-                          <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
-                            <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹25 × sq.ft)</span></span>
-                            <span className="text-sm font-extrabold text-violet-700">₹{(Number(costSqft) * 25).toLocaleString('en-IN')}</span>
-                          </div>
-                        </div>
-                      )}
+                        )
+                      })()}
 
                       <div>
                         <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
@@ -2178,11 +2617,38 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           onChange={e => setCostSqft(e.target.value.replace(/[^0-9.]/g, ''))}
                           placeholder={String(task.costBreakdown?.numberOfSqft ?? '')} className={inp} />
                       </div>
-                      {costSqft && Number(costSqft) > 0 && (
-                        <div className="space-y-1">
-                          <p className="text-xs text-slate-500">Production: ₹{(Number(costSqft)*100).toLocaleString('en-IN')} · Installation: ₹{(Number(costSqft)*25).toLocaleString('en-IN')}</p>
-                        </div>
-                      )}
+                      {(costSqft || costMaterial || costTransAmt) && (() => {
+                        const sqft  = Number(costSqft) || 0
+                        const matC  = Number(costMaterial) || 0
+                        const prodC = sqft * productionRate
+                        const instC = sqft * installationRate
+                        const transC = Number(costTransAmt) || 0
+                        const total = matC + prodC + instC + transC
+                        return (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-slate-600">Material Cost</span>
+                              <span className="text-sm font-extrabold text-slate-700">₹{matC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹{productionRate} × sq.ft)</span></span>
+                              <span className="text-sm font-extrabold text-blue-700">₹{prodC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹{installationRate} × sq.ft)</span></span>
+                              <span className="text-sm font-extrabold text-violet-700">₹{instC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-semibold text-amber-700">Transport Cost</span>
+                              <span className="text-sm font-extrabold text-amber-700">₹{transC.toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-slate-100 rounded-xl px-4 py-2.5">
+                              <span className="text-xs font-bold text-slate-700">Total Costs</span>
+                              <span className="text-sm font-extrabold text-slate-800">₹{total.toLocaleString('en-IN')}</span>
+                            </div>
+                          </div>
+                        )
+                      })()}
                       <div>
                         <label className={lbl}>Transport Cost (₹)</label>
                         <input type="text" inputMode="numeric" value={costTransAmt}
@@ -2196,8 +2662,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                     </div>
                   )}
 
-                  {/* Step 1: Send buttons */}
-                  {flowStatus !== 'waiting_response' && (() => {
+                  {/* Step 1: Send buttons — hidden after client has already responded */}
+                  {flowStatus !== 'waiting_response' && flowStatus !== 'client_approved' && (() => {
                     const clientName = task.clientName ?? 'Sir/Madam'
                     const projName   = task.projectName ?? 'your project'
                     const phone      = (task.clientPhone ?? '6379859299').replace(/\D/g, '').replace(/^0/, '')
@@ -2267,7 +2733,71 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       {sel && (
                         <button type="button" onClick={submitSendToClient}
                           className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${sel === 'client_approved' ? 'bg-emerald-600' : 'bg-red-600'}`}>
-                          {sel === 'client_approved' ? '✓ Client Approved — Collect Advance Payment' : 'Mark Client Rejected'}
+                          {sel === 'client_approved' ? '✓ Mark Client Approved' : 'Mark Client Rejected'}
+                        </button>
+                      )}
+                    </>
+                  )}
+
+                  {/* Step 3: Client approved — show advance payment form inline */}
+                  {flowStatus === 'client_approved' && (
+                    <>
+                      <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+                        <CheckCircle2 size={14} className="text-emerald-600 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs font-bold text-emerald-700">Client Approved — Order Confirmed!</p>
+                          <p className="text-[11px] text-emerald-600 mt-0.5">Collect advance payment below to proceed to production.</p>
+                        </div>
+                      </div>
+                      {task.quotationAmount && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                          <p className="text-[10px] text-slate-400 font-bold uppercase">Total Project Value</p>
+                          <p className="text-xl font-extrabold text-slate-800">₹{task.quotationAmount.toLocaleString('en-IN')}</p>
+                        </div>
+                      )}
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Advance Payment</p>
+                      <Opt value="advance_paid" label="Advance Paid" sub="Client paid advance — start production" accent="border-emerald-200" sel={sel} onPick={pick} />
+                      <Opt value="partial_paid" label="Partial Paid" sub="Partial amount received"                accent="border-amber-200"   sel={sel} onPick={pick} />
+                      <Opt value="full_paid"    label="Full Paid"    sub="Complete payment received"              accent="border-green-200"   sel={sel} onPick={pick} />
+                      {(sel === 'advance_paid' || sel === 'partial_paid' || sel === 'full_paid') && (
+                        <div className="space-y-3">
+                          {task.quotationAmount && (
+                            <div className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-2.5">
+                              <span className="text-xs text-slate-500">Quotation Total</span>
+                              <span className="text-sm font-bold text-slate-700">₹{task.quotationAmount.toLocaleString('en-IN')}</span>
+                            </div>
+                          )}
+                          <div>
+                            <label className={lbl}>Paid Amount (₹) {req}</label>
+                            <input type="text" inputMode="numeric" value={advPaidAmt}
+                              onChange={e => {
+                                const paid = e.target.value.replace(/[^0-9]/g, '')
+                                setAdvPaidAmt(paid)
+                                const total = task.quotationAmount ?? 0
+                                if (paid && total) setAdvBalAmt(String(Math.max(0, total - Number(paid))))
+                                else setAdvBalAmt('')
+                              }}
+                              placeholder="e.g. 50000" className={inp} />
+                          </div>
+                          <div>
+                            <label className={lbl}>Balance Amount (₹) <span className="text-slate-300 font-normal">(auto-calculated)</span></label>
+                            <input type="text" inputMode="numeric" value={advBalAmt}
+                              onChange={e => setAdvBalAmt(e.target.value.replace(/[^0-9]/g, ''))}
+                              placeholder="Auto-calculated from quotation total"
+                              className={`${inp} ${advBalAmt ? 'bg-amber-50 border-amber-200' : ''}`} />
+                          </div>
+                          <div>
+                            <label className={lbl}>Payment Note <span className="text-slate-300 font-normal">(optional)</span></label>
+                            <textarea rows={2} value={advNote} onChange={e => setAdvNote(e.target.value)}
+                              placeholder="Payment method, reference number…" className={`${inp} resize-none`} />
+                          </div>
+                          <MultiFileUploadField label="Payment Screenshot" accept="image/*,.pdf" files={advPayScreenshot} onChange={setAdvPayScreenshot} helperText="Optional — upload payment proof" />
+                        </div>
+                      )}
+                      {sel && (
+                        <button type="button" onClick={submitAdvancePayment}
+                          className="w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 bg-emerald-600">
+                          ✓ {sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production
                         </button>
                       )}
                     </>
@@ -2280,27 +2810,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               6. PRODUCTION ASSIGN — LM uploads job sheet to Admin
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'production_assign' && role !== 'lead_manager' && role !== 'owner' && !demoOverride && (
+          {displayStage === 'production_assign' && role !== 'lead_manager' && role !== 'owner' && !demoOverride && (
             <WaitingView icon={Package} color="bg-orange-50 border border-orange-200 text-orange-700"
               title="Waiting for Job Sheet"
               sub="Sales Team is preparing and sending the job sheet to Production Incharge" />
           )}
 
-          {stage === 'production_assign' && role !== 'lead_manager' && role !== 'owner' && !demoOverride && canDemoOverride && (
-            <DemoControlCard
-              waitingFor="Sales Team"
-              description="LM needs to upload the job sheet and send it to Admin. For demo, do it yourself."
-              onOverride={() => setDemoOverride(true)}
-            />
-          )}
-
-          {stage === 'production_assign' && (role === 'lead_manager' || role === 'owner' || demoOverride) && (
+          {displayStage === 'production_assign' && (role === 'lead_manager' || role === 'owner' || demoOverride) && (
             <>
               {demoOverride && (
                 <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                    <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as Sales Team</p>
+                    <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Sales Team</p>
                   </div>
                   <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
                 </div>
@@ -2310,7 +2832,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <div className="space-y-2">
                 <label className={lbl}>Job Sheet {req}</label>
                 <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx,.xls"
-                  files={jobSheetFiles} onChange={setJobSheetFiles} helperText="Upload job sheet file" />
+                  files={jobSheetFiles} onChange={setJobSheetFiles} maxFiles={1} helperText="Upload job sheet file" />
                 <p className="text-[11px] text-slate-400 text-center">— OR type job sheet details below —</p>
                 <textarea rows={3} value={jobSheetText} onChange={e => setJobSheetText(e.target.value)}
                   placeholder="Type job sheet details: product specs, dimensions, quantities…"
@@ -2319,12 +2841,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <div>
                 <label className={lbl}>Glass Sheet <span className="text-slate-300 font-normal">(optional)</span></label>
-                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={glassSheetFiles} onChange={setGlassSheetFiles} />
+                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={glassSheetFiles} onChange={setGlassSheetFiles} maxFiles={1} />
               </div>
 
               <div>
                 <label className={lbl}>Cutting Sheet <span className="text-slate-300 font-normal">(optional)</span></label>
-                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={cuttingSheetFiles} onChange={setCuttingSheetFiles} />
+                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={cuttingSheetFiles} onChange={setCuttingSheetFiles} maxFiles={1} />
               </div>
 
               <div>
@@ -2366,7 +2888,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               7a. PRODUCTION CHECK — Production Incharge
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'production_check' && role === 'production_admin' && flowStatus !== 'not_available' && (
+          {displayStage === 'production_check' && (role === 'production_admin' || role === 'owner') && flowStatus !== 'not_available' && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Material Availability Check</p>
 
@@ -2438,7 +2960,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           )}
 
           {/* 7b. PRODUCTION CHECK — LM / other roles waiting */}
-          {stage === 'production_check' && role !== 'production_admin' && flowStatus !== 'not_available' && !demoOverride && (
+          {displayStage === 'production_check' && role !== 'production_admin' && role !== 'owner' && flowStatus !== 'not_available' && !demoOverride && (
             <WaitingView icon={Package} color="bg-amber-50 border border-amber-200 text-amber-700"
               title={flowStatus === 'materials_ordered'
                 ? `Admin Ordered — Waiting for Delivery`
@@ -2449,19 +2971,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           )}
 
           {/* DEMO CONTROL: Production Check */}
-          {stage === 'production_check' && canDemoOverride && flowStatus !== 'not_available' && !demoOverride && (
+          {displayStage === 'production_check' && canDemoOverride && role !== 'owner' && flowStatus !== 'not_available' && !demoOverride && (
             <DemoControlCard
               waitingFor="Production Incharge"
               description="Production Incharge needs to check material availability (Profile/Glass/Hardware). For demo, confirm it yourself."
               onOverride={() => setDemoOverride(true)}
             />
           )}
-          {stage === 'production_check' && canDemoOverride && flowStatus !== 'not_available' && demoOverride && (
+          {displayStage === 'production_check' && canDemoOverride && role !== 'owner' && flowStatus !== 'not_available' && demoOverride && (
             <div className="space-y-3">
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                  <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as Production Incharge</p>
+                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Production Incharge</p>
                 </div>
                 <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
               </div>
@@ -2515,19 +3037,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 return allMandOk ? (
                   <button type="button" onClick={submitDemoProductionCheck}
                     className="w-full py-4 rounded-2xl bg-amber-600 text-white text-sm font-extrabold active:opacity-90">
-                    ✓ Confirm — Start Production (Demo Override)
+                    ✓ Confirm — Start Production (Override)
                   </button>
                 ) : (
                   <button type="button" onClick={submitDemoProductionCheck}
                     className="w-full py-4 rounded-2xl bg-red-600 text-white text-sm font-extrabold active:opacity-90">
-                    Report Not Available (Demo Override)
+                    Report Not Available (Override)
                   </button>
                 )
               })()}
             </div>
           )}
 
-          {stage === 'production_check' && flowStatus === 'not_available' && (
+          {displayStage === 'production_check' && flowStatus === 'not_available' && (
             <>
               <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-4 space-y-2">
                 <p className="text-xs font-bold text-red-600 uppercase">Materials Not Available</p>
@@ -2552,13 +3074,13 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               8. ADVANCE PAYMENT — LM only
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'advance_payment' && role !== 'lead_manager' && role !== 'owner' && (
+          {displayStage === 'advance_payment' && role !== 'lead_manager' && role !== 'owner' && (
             <WaitingView icon={CreditCard} color="bg-emerald-50 border border-emerald-200 text-emerald-700"
               title="Waiting for Advance Payment"
               sub={flowStatus === 'pending' ? 'Sales Team collecting advance payment from client' : `Advance received — production starting soon`} />
           )}
 
-          {stage === 'advance_payment' && (role === 'lead_manager' || role === 'owner') && (
+          {displayStage === 'advance_payment' && (role === 'lead_manager' || role === 'owner') && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Advance Payment</p>
 
@@ -2580,7 +3102,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 </div>
               )}
 
-              <Opt value="pending"      label="Pending"      sub="No payment received yet"                accent="border-slate-200"   sel={sel} onPick={pick} />
               <Opt value="advance_paid" label="Advance Paid" sub="Client paid advance — start production" accent="border-emerald-200" sel={sel} onPick={pick} />
               <Opt value="partial_paid" label="Partial Paid" sub="Partial amount received"                accent="border-amber-200"   sel={sel} onPick={pick} />
               <Opt value="full_paid"    label="Full Paid"    sub="Complete payment received"              accent="border-green-200"   sel={sel} onPick={pick} />
@@ -2623,8 +3144,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               {sel && (
                 <button type="button" onClick={submitAdvancePayment}
-                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${sel === 'pending' ? 'bg-slate-500' : 'bg-emerald-600'}`}>
-                  {sel === 'pending' ? 'Keep as Pending' : `✓ ${sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production`}
+                  className="w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 bg-emerald-600">
+                  ✓ {sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production
                 </button>
               )}
             </>
@@ -2633,28 +3154,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               9a. PRODUCTION WORK — Production Incharge (6-step checklist)
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'production_work' && role === 'production_manager' && flowStatus !== 'overdue' && (
+          {displayStage === 'production_work' && (role === 'production_manager' || role === 'owner') && flowStatus !== 'overdue' && flowStatus !== 'ready_to_pack' && (
             <>
-              {task.availabilityChecklist && task.availabilityChecklist.length > 0 && (
-                <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Material Status</p>
-                  <div className="flex flex-wrap gap-2">
-                    {task.availabilityChecklist.map(item => {
-                      const statusColor = item.available
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : item.ordered
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : 'bg-red-50 text-red-700 border-red-200'
-                      const statusLabel = item.available ? 'Available' : item.ordered ? 'Ordered' : 'N/A'
-                      return (
-                        <span key={item.id} className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border ${statusColor}`}>
-                          {item.label}: {statusLabel}
-                        </span>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Production Checklist</p>
 
               {task.paidAmount != null && (
@@ -2718,6 +3219,28 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 </button>
               )}
 
+              {/* Material status from Production Incharge check — shown at bottom */}
+              {task.availabilityChecklist && task.availabilityChecklist.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Material Status (from Production Incharge)</p>
+                  <div className="flex flex-wrap gap-2">
+                    {task.availabilityChecklist.map(item => {
+                      const statusColor = item.available
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : item.ordered
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-red-50 text-red-700 border-red-200'
+                      const statusLabel = item.available ? 'Available' : item.ordered ? 'Ordered' : 'N/A'
+                      return (
+                        <span key={item.id} className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border ${statusColor}`}>
+                          {item.label}: {statusLabel}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Overdue option */}
               <div className="space-y-3 pt-2 border-t border-slate-100">
                 <p className="text-[11px] text-slate-400 font-semibold">Report delay:</p>
@@ -2742,32 +3265,32 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             </>
           )}
 
-          {stage === 'production_work' && role === 'production_manager' && flowStatus === 'overdue' && (
+          {displayStage === 'production_work' && role === 'production_manager' && flowStatus === 'overdue' && (
             <WaitingView icon={Clock} color="bg-red-50 border border-red-200 text-red-700"
               title="Overdue Report Submitted" sub="Waiting for Sales Team to update the schedule" />
           )}
 
           {/* 9b. PRODUCTION WORK — LM / other roles waiting / overdue update */}
-          {stage === 'production_work' && role !== 'production_manager' && flowStatus !== 'overdue' && !demoOverride && (
+          {displayStage === 'production_work' && role !== 'production_manager' && role !== 'owner' && flowStatus !== 'overdue' && flowStatus !== 'ready_to_pack' && !demoOverride && (
             <WaitingView icon={Package} color="bg-blue-50 border border-blue-200 text-blue-700"
               title="Production Work In Progress"
-              sub={task.productionNewDate ? `Updated deadline: ${task.productionNewDate}` : 'Production Incharge is working on it'} />
+              sub={task.productionNewDate ? `Updated deadline: ${task.productionNewDate}` : 'Production Manager is working on it'} />
           )}
 
           {/* DEMO CONTROL: Production Work */}
-          {stage === 'production_work' && canDemoOverride && flowStatus !== 'overdue' && !demoOverride && (
+          {displayStage === 'production_work' && canDemoOverride && role !== 'owner' && flowStatus !== 'overdue' && flowStatus !== 'ready_to_pack' && !demoOverride && (
             <DemoControlCard
               waitingFor="Production Incharge"
               description="Production Incharge needs to complete all 6 production steps and mark Ready to Dispatch. For demo, complete it yourself."
               onOverride={() => setDemoOverride(true)}
             />
           )}
-          {stage === 'production_work' && canDemoOverride && flowStatus !== 'overdue' && demoOverride && (
+          {displayStage === 'production_work' && canDemoOverride && role !== 'owner' && flowStatus !== 'overdue' && flowStatus !== 'ready_to_pack' && demoOverride && (
             <div className="space-y-3">
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                  <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as Production Incharge</p>
+                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Production Manager</p>
                 </div>
                 <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
               </div>
@@ -2818,7 +3341,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               {prodChecklist.every(i => i.done) ? (
                 <button type="button" onClick={submitDemoProductionWork}
                   className="w-full py-4 rounded-2xl bg-amber-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
-                  <Package size={15} /> Ready to Dispatch (Demo Override) →
+                  <Package size={15} /> Ready to Dispatch (Override) →
                 </button>
               ) : (
                 <div className="space-y-3 pt-2 border-t border-slate-100">
@@ -2836,7 +3359,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       </div>
                       <button type="button" onClick={submitDemoProductionWorkOverdue}
                         className="w-full py-4 rounded-2xl bg-red-600 text-white text-sm font-extrabold active:opacity-90">
-                        Submit Overdue Report (Demo Override)
+                        Submit Overdue Report (Override)
                       </button>
                     </div>
                   )}
@@ -2845,40 +3368,132 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             </div>
           )}
 
-          {stage === 'production_work' && role !== 'production_manager' && flowStatus === 'overdue' && (
+          {displayStage === 'production_work' && (role === 'lead_manager' || role === 'owner') && flowStatus === 'overdue' && (
             <>
               <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-4 space-y-1">
-                <p className="text-xs font-bold text-red-600 uppercase">Production Overdue</p>
+                <p className="text-xs font-bold text-red-600 uppercase">Production Overdue Report</p>
                 <p className="text-sm text-red-700">{task.productionOverdueReason}</p>
-                {task.productionNewDate && <p className="text-xs text-red-500">PM's new date: {task.productionNewDate}</p>}
+                {task.productionNewDate && (
+                  <p className="text-xs text-red-500 font-semibold">PM requested new date: {task.productionNewDate}</p>
+                )}
               </div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Update Schedule</p>
-              <div>
-                <label className={lbl}>New Date to Send to Production {req}</label>
-                <input type="date" value={lmNewDate} onChange={e => setLmNewDate(e.target.value)} className={inp} />
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Approve or Disapprove</p>
+              <Opt value="approve_overdue"    label="Approve New Date" sub="Accept PM's new expected date and continue production" accent="border-emerald-200" sel={sel} onPick={pick} />
+              <Opt value="disapprove_overdue" label="Disapprove"       sub="Reject the delay — send back to PM with reason"       accent="border-red-200"     sel={sel} onPick={pick} />
+              {sel === 'approve_overdue' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className={lbl}>Confirmed Date {req}</label>
+                    <input type="date" value={lmNewDate} onChange={e => setLmNewDate(e.target.value)} className={inp}
+                      defaultValue={task.productionNewDate ?? ''} />
+                  </div>
+                  <div>
+                    <label className={lbl}>Note <span className="text-slate-300 font-normal">(optional)</span></label>
+                    <textarea rows={2} value={lmNote} onChange={e => setLmNote(e.target.value)}
+                      placeholder="Any instructions for the team…" className={`${inp} resize-none`} />
+                  </div>
+                  <button type="button" onClick={submitLmOverdueUpdate}
+                    className="w-full py-4 rounded-2xl bg-emerald-600 text-white text-sm font-extrabold active:opacity-90">
+                    ✓ Approve New Date &amp; Continue Production
+                  </button>
+                </div>
+              )}
+              {sel === 'disapprove_overdue' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className={lbl}>Reason for Disapproval {req}</label>
+                    <textarea rows={2} value={lmNote} onChange={e => setLmNote(e.target.value)}
+                      placeholder="Why is the delay not accepted?" className={`${inp} border-red-200 resize-none focus:border-red-400`} />
+                  </div>
+                  <button type="button"
+                    onClick={() => {
+                      if (!lmNote.trim()) { setError('Add a reason for disapproving.'); return }
+                      save({ flowStatus: 'in_progress', status: 'in_progress', note: `Overdue disapproved: ${lmNote}` },
+                        `Overdue disapproved by ${user?.name ?? 'Sales Team'}: ${lmNote}`)
+                    }}
+                    className="w-full py-4 rounded-2xl bg-red-600 text-white text-sm font-extrabold active:opacity-90">
+                    Send Back to Production Manager
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════════
+              9c. READY TO PACK — LO confirms all materials before dispatch
+          ════════════════════════════════════════════════════════════════ */}
+          {displayStage === 'production_work' && flowStatus === 'ready_to_pack' && role === 'production_manager' && (
+            <WaitingView icon={Package} color="bg-emerald-50 border border-emerald-200 text-emerald-700"
+              title="Sent to Sales Team for Packing Confirmation"
+              sub="Waiting for Sales Team to confirm all materials are ready to pack" />
+          )}
+
+          {displayStage === 'production_work' && flowStatus === 'ready_to_pack' && (role === 'lead_manager' || role === 'owner') && (
+            <>
+              <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+                <Package size={14} className="text-emerald-600 flex-shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-emerald-700">Production Completed — Ready to Pack</p>
+                  <p className="text-[11px] text-emerald-600 mt-0.5">Tick each item as packed. Save progress anytime. Dispatch unlocks when all done.</p>
+                </div>
               </div>
-              <div>
-                <label className={lbl}>Note <span className="text-slate-300 font-normal">(optional)</span></label>
-                <textarea rows={2} value={lmNote} onChange={e => setLmNote(e.target.value)}
-                  placeholder="Instructions for production team…" className={`${inp} resize-none`} />
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Packing Checklist</p>
+
+              <div className="space-y-2">
+                {packChecklist.map((item, idx) => (
+                  <button key={item.id} type="button"
+                    onClick={() => { const n = [...packChecklist]; n[idx] = { ...item, done: !item.done }; setPackChecklist(n) }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all active:scale-[0.98] ${item.done ? 'bg-emerald-50 border-emerald-300' : 'border-slate-200 bg-white'}`}>
+                    <div className={`w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center ${item.done ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300'}`}>
+                      {item.done && <CheckCircle2 size={11} className="text-white" />}
+                    </div>
+                    <p className={`text-sm font-semibold ${item.done ? 'text-emerald-700' : 'text-slate-800'}`}>{item.label}</p>
+                    {item.done && <span className="ml-auto text-[10px] text-emerald-500 font-bold">✓</span>}
+                  </button>
+                ))}
               </div>
-              <button type="button" onClick={submitLmOverdueUpdate}
-                className="w-full py-4 rounded-2xl bg-blue-600 text-white text-sm font-extrabold active:opacity-90">
-                Update Date &amp; Send Back to Production
-              </button>
+
+              {(() => {
+                const doneCt = packChecklist.filter(i => i.done).length
+                const pct = Math.round((doneCt / packChecklist.length) * 100)
+                const allDone = doneCt === packChecklist.length
+                return (
+                  <>
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex justify-between text-xs">
+                        <span className="font-semibold text-slate-600">Packing Progress</span>
+                        <span className="font-bold text-slate-800">{doneCt}/{packChecklist.length} · {pct}%</span>
+                      </div>
+                      <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                    {!allDone && doneCt > 0 && (
+                      <button type="button" onClick={submitSavePackProgress}
+                        className="w-full py-3.5 rounded-2xl bg-blue-600 text-white text-sm font-extrabold active:opacity-90">
+                        Save Progress ({doneCt}/{packChecklist.length} done)
+                      </button>
+                    )}
+                    <button type="button" disabled={!allDone} onClick={submitReadyToDispatch}
+                      className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2 ${allDone ? 'bg-rose-600' : 'bg-slate-200 text-slate-400'}`}>
+                      <Package size={15} /> {allDone ? '✓ All Packed — Ready to Dispatch' : `Dispatch (${doneCt}/${packChecklist.length} done)`}
+                    </button>
+                  </>
+                )
+              })()}
             </>
           )}
 
           {/* ═══════════════════════════════════════════════════════════════
               10. INSTALLATION ASSIGN — LM only
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'installation_assign' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && (
+          {displayStage === 'installation_assign' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && (
             <WaitingView icon={Wrench} color="bg-rose-50 border border-rose-200 text-rose-700"
               title="Ready to Dispatch"
               sub="Installation Incharge will assign the installer and schedule the date" />
           )}
 
-          {stage === 'installation_assign' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && canDemoOverride && (
+          {displayStage === 'installation_assign' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && canDemoOverride && (
             <DemoControlCard
               waitingFor="Installation Incharge"
               description="Installation Incharge assigns the installer and date. For demo, do it yourself."
@@ -2886,17 +3501,40 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             />
           )}
 
-          {stage === 'installation_assign' && (role === 'technician' || role === 'installation_incharge' || role === 'owner' || demoOverride) && (
+          {displayStage === 'installation_assign' && (role === 'technician' || role === 'installation_incharge' || role === 'owner' || demoOverride) && (
             <>
               {demoOverride && (
                 <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                    <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as Installation Incharge</p>
+                    <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Installation Incharge</p>
                   </div>
                   <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
                 </div>
               )}
+
+              {/* Packing status summary from previous step */}
+              {(() => {
+                const saved = (task as Task & { packChecklist?: { id: string; label: string; done: boolean }[] }).packChecklist
+                if (!saved?.length) return null
+                const doneItems = saved.filter(i => i.done)
+                const allDone = doneItems.length === saved.length
+                return (
+                  <div className={`rounded-xl px-4 py-2.5 space-y-1 ${allDone ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
+                    <p className={`text-[10px] font-bold uppercase ${allDone ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      Packing Status: {doneItems.length}/{saved.length} items
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {saved.map(i => (
+                        <span key={i.id} className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg ${i.done ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                          {i.done ? '✓' : '✗'} {i.label.split(' ').slice(0, 2).join(' ')}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
+
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Assign Installation</p>
 
               <div>
@@ -2957,14 +3595,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           ════════════════════════════════════════════════════════════════ */}
 
           {/* 11a. waiting view for non-incharge roles */}
-          {stage === 'installation_update' && flowStatus !== 'mistake' && role !== 'technician' && role !== 'installation_incharge' && !demoOverride && (
+          {displayStage === 'installation_update' && flowStatus !== 'mistake' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && (
             <WaitingView icon={Wrench} color="bg-rose-50 border border-rose-200 text-rose-700"
               title={`Installation ${flowStatus === 'not_completed' ? 'Not Completed' : 'In Progress'}`}
               sub={task.installationPerson ? `Installer: ${task.installationPerson}${task.installationDate ? ` · ${task.installationDate}` : ''}` : 'Waiting for installation incharge to update'} />
           )}
 
           {/* DEMO CONTROL for installation update */}
-          {stage === 'installation_update' && flowStatus !== 'mistake' && role !== 'technician' && role !== 'installation_incharge' && !demoOverride && canDemoOverride && (
+          {displayStage === 'installation_update' && flowStatus !== 'mistake' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && canDemoOverride && (
             <DemoControlCard
               waitingFor="Installation Incharge"
               description="Installation Incharge needs to report installation result. For demo, update it yourself."
@@ -2972,19 +3610,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             />
           )}
 
-          {stage === 'installation_update' && flowStatus !== 'mistake' && (role === 'technician' || role === 'installation_incharge' || demoOverride) && (
+          {displayStage === 'installation_update' && flowStatus !== 'mistake' && (role === 'technician' || role === 'installation_incharge' || role === 'owner' || demoOverride) && (
             <>{demoOverride && (
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                  <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as Installation Incharge</p>
+                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Installation Incharge</p>
                 </div>
                 <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
               </div>
             )}</>
           )}
 
-          {stage === 'installation_update' && flowStatus !== 'mistake' && (role === 'technician' || role === 'installation_incharge' || demoOverride) && (
+          {displayStage === 'installation_update' && flowStatus !== 'mistake' && (role === 'technician' || role === 'installation_incharge' || role === 'owner' || demoOverride) && (
             <>
               {task.installationPerson && (
                 <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
@@ -3053,7 +3691,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               11b. INSTALLATION MISTAKE REVIEW — LM
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'installation_update' && flowStatus === 'mistake' && (
+          {displayStage === 'installation_update' && flowStatus === 'mistake' && (
             <>
               <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-4 space-y-2">
                 <p className="text-xs font-bold text-red-600 uppercase">Installation Mistake Reported</p>
@@ -3067,7 +3705,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Review Action</p>
 
-              <Opt value="send_back_prod_admin"    label="Send Back to Production Incharge"    sub="Material or profile issue — recheck availability"   accent="border-amber-200"  sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
+              <Opt value="send_back_prod_admin"    label="Send Back to Production Admin"    sub="Material or profile issue — recheck availability"   accent="border-amber-200"  sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
               <Opt value="send_back_prod_manager"  label="Send Back to Production Incharge"  sub="Rework required — send back to production"           accent="border-orange-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
               <Opt value="reassign_installation"   label="Reassign Installation"            sub="Send new installation team"                          accent="border-blue-200"   sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
               <Opt value="mark_resolved"           label="Mark Resolved"                    sub="Issue is resolved — proceed to final payment"        accent="border-emerald-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
@@ -3075,7 +3713,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               {instMistakeReviewAction && (
                 <button type="button" onClick={submitInstallationMistakeReview}
                   className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${instMistakeReviewAction === 'mark_resolved' ? 'bg-emerald-600' : instMistakeReviewAction === 'reassign_installation' ? 'bg-blue-600' : 'bg-orange-600'}`}>
-                  {instMistakeReviewAction === 'send_back_prod_admin' ? 'Send to Production Incharge' :
+                  {instMistakeReviewAction === 'send_back_prod_admin' ? 'Send to Production Admin' :
                    instMistakeReviewAction === 'send_back_prod_manager' ? 'Send to Production Incharge' :
                    instMistakeReviewAction === 'reassign_installation' ? 'Reassign Installation' :
                    '✓ Mark Resolved — Proceed to Payment'}
@@ -3085,16 +3723,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           )}
 
           {/* ═══════════════════════════════════════════════════════════════
-              12. FINAL PAYMENT — LM (balance collection only)
+              12. FINAL PAYMENT — collect balance; Complete Project only when balance = 0
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'final_payment' && (
+          {displayStage === 'final_payment' && (role === 'lead_manager' || role === 'owner') && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Final Collection</p>
 
               {(() => {
                 const total   = task.quotationAmount ?? 0
                 const paid    = task.paidAmount ?? 0
-                const balance = Math.max(0, total - paid)
+                const balance = task.balanceAmount != null ? task.balanceAmount : Math.max(0, total - paid)
+                const allPaid = balance <= 0
                 return (
                   <>
                     <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 space-y-1.5">
@@ -3104,46 +3743,184 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       </div>
                       {paid > 0 && (
                         <div className="flex justify-between text-xs">
-                          <span className="text-emerald-600">Already Paid</span>
+                          <span className="text-emerald-600">Total Paid</span>
                           <span className="font-bold text-emerald-700">₹{paid.toLocaleString('en-IN')}</span>
                         </div>
                       )}
-                      <div className="flex justify-between text-sm border-t border-green-200 pt-1.5">
-                        <span className="font-extrabold text-green-700">Balance Due</span>
-                        <span className="font-extrabold text-green-800">₹{balance.toLocaleString('en-IN')}</span>
+                      <div className={`flex justify-between text-sm border-t border-green-200 pt-1.5`}>
+                        <span className={`font-extrabold ${allPaid ? 'text-emerald-700' : 'text-red-600'}`}>{allPaid ? 'Fully Paid ✓' : 'Balance Due'}</span>
+                        <span className={`font-extrabold ${allPaid ? 'text-emerald-700' : 'text-red-600'}`}>{allPaid ? 'Nil' : `₹${balance.toLocaleString('en-IN')}`}</span>
                       </div>
                     </div>
 
-                    {balance <= 0 ? (
-                      <button type="button" onClick={() => save({
-                        flowStage: 'final_completion', flowStatus: 'full_paid', status: 'pending',
-                        title: 'Complete Project', paidAmount: paid, balanceAmount: 0,
-                      }, 'Full payment already received — completing project')}
-                        className="w-full py-4 rounded-2xl bg-emerald-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
-                        <CheckCircle2 size={15} /> Complete Project
-                      </button>
-                    ) : (
+                    {!allPaid && (
                       <>
-                        <div>
-                          <label className={lbl}>Balance Amount Received (₹) {req}</label>
-                          <input type="text" inputMode="numeric" value={finalPaidAmt}
-                            onChange={e => setFinalPaidAmt(e.target.value.replace(/[^0-9]/g, ''))}
-                            placeholder={String(balance)}
-                            className={inp} />
-                        </div>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Payment Option</p>
+                        <Opt value="partial" label="Partial Payment" sub="Pay part of the remaining balance" accent="border-amber-200" sel={finalPayType} onPick={v => { setFinalPayType(v); setFinalPaidAmt(''); setFinalBalAmt('') }} />
+                        <Opt value="full"    label="Full Balance Payment" sub={`Clear entire balance — ₹${balance.toLocaleString('en-IN')}`} accent="border-emerald-200" sel={finalPayType} onPick={v => { setFinalPayType(v); setFinalPaidAmt(String(balance)); setFinalBalAmt('0') }} />
+
+                        {(finalPayType === 'partial' || finalPayType === 'full') && (
+                          <div className="space-y-3">
+                            <div>
+                              <label className={lbl}>Payment Received (₹) {req}</label>
+                              <input type="text" inputMode="numeric" value={finalPaidAmt}
+                                onChange={e => {
+                                  const v = e.target.value.replace(/[^0-9]/g, '')
+                                  setFinalPaidAmt(v)
+                                  setFinalBalAmt(String(Math.max(0, balance - Number(v))))
+                                }}
+                                placeholder={finalPayType === 'full' ? String(balance) : 'Enter amount'}
+                                className={inp} />
+                            </div>
+                            {finalPaidAmt && Number(finalPaidAmt) > 0 && (
+                              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-amber-600">Remaining after this payment</span>
+                                  <span className="font-bold text-amber-700">₹{Math.max(0, balance - Number(finalPaidAmt)).toLocaleString('en-IN')}</span>
+                                </div>
+                              </div>
+                            )}
+                            <MultiFileUploadField
+                              label="Payment Screenshot"
+                              accept="image/*,.pdf"
+                              files={finalPayScreenshot}
+                              onChange={setFinalPayScreenshot}
+                              helperText="Upload payment proof / bank screenshot" />
+                            <button type="button"
+                              onClick={() => {
+                                if (!finalPaidAmt) { setError('Enter the amount received.'); return }
+                                const newPaid   = Number(finalPaidAmt)
+                                const totalPaid = paid + newPaid
+                                const newBal    = Math.max(0, balance - newPaid)
+                                save({
+                                  paidAmount: totalPaid,
+                                  balanceAmount: newBal,
+                                  flowStatus: newBal <= 0 ? 'full_paid' : 'partial_paid',
+                                  finalPaymentScreenshot: finalPayScreenshot.length > 0 ? finalPayScreenshot : undefined,
+                                }, `Payment ₹${newPaid.toLocaleString('en-IN')} received — balance ₹${newBal.toLocaleString('en-IN')}`, finalPayScreenshot)
+                              }}
+                              disabled={!finalPaidAmt || Number(finalPaidAmt) <= 0}
+                              className="w-full py-4 rounded-2xl bg-green-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2 disabled:opacity-40">
+                              <CreditCard size={15} /> {finalPayType === 'full' ? 'Pay Full Balance' : 'Save Payment'}
+                            </button>
+                          </div>
+                        )}
+                        <button type="button" disabled
+                          className="w-full py-3.5 rounded-2xl bg-slate-100 text-slate-400 text-sm font-extrabold flex items-center justify-center gap-2 cursor-not-allowed">
+                          <CheckCircle2 size={15} /> Complete Project (Balance Pending)
+                        </button>
+                      </>
+                    )}
+
+                    {allPaid && (
+                      <>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Actual Project Expenses</p>
+                        {([
+                          { label: 'Material Cost (₹)',     val: actualMaterial,     set: setActualMaterial     },
+                          { label: 'Production Cost (₹)',   val: actualProduction,   set: setActualProduction   },
+                          { label: 'Installation Cost (₹)', val: actualInstallation, set: setActualInstallation },
+                          { label: 'Transport Cost (₹)',    val: actualTransport,    set: setActualTransport    },
+                          { label: 'Other Costs (₹)',       val: actualOther,        set: setActualOther        },
+                        ] as { label: string; val: string; set: (v: string) => void }[]).map(({ label, val, set }) => (
+                          <div key={label}>
+                            <label className={lbl}>{label} <span className="text-slate-300 font-normal">(optional)</span></label>
+                            <input type="text" inputMode="numeric" value={val}
+                              onChange={e => set(e.target.value.replace(/[^0-9]/g, ''))}
+                              placeholder="0" className={inp} />
+                          </div>
+                        ))}
+                        {/* Extra Charge — MD/ED only */}
+                        {role === 'owner' && (
+                          <div>
+                            <label className={lbl}>Extra Charge (₹) <span className="text-slate-300 font-normal">(optional — if additional work was done)</span></label>
+                            <input type="text" inputMode="numeric" value={extraChargeAmt}
+                              onChange={e => setExtraChargeAmt(e.target.value.replace(/[^0-9]/g, ''))}
+                              placeholder="0" className={inp} />
+                          </div>
+                        )}
+
+                        {(() => {
+                          const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport, actualOther]
+                            .reduce((s, v) => s + (Number(v) || 0), 0)
+                          const quotation  = task.quotationAmount ?? task.costBreakdown?.quotationAmount ?? 0
+                          const extraCharge = Number(extraChargeAmt) || 0
+                          const totalRevenue = quotation + extraCharge
+                          const profit = totalRevenue - totalExpenses
+                          const profitPct = totalRevenue > 0 ? (profit / totalRevenue * 100) : 0
+                          return totalExpenses > 0 ? (
+                            <div className="bg-slate-50 rounded-xl px-4 py-3 space-y-1.5">
+                              {role === 'owner' && (
+                                <>
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-slate-500">Project Value</span>
+                                    <span className="font-semibold text-slate-700">₹{quotation.toLocaleString('en-IN')}</span>
+                                  </div>
+                                  {extraCharge > 0 && (
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-blue-500">Extra Charge</span>
+                                      <span className="font-semibold text-blue-700">+₹{extraCharge.toLocaleString('en-IN')}</span>
+                                    </div>
+                                  )}
+                                  <div className="flex justify-between text-xs border-t border-slate-200 pt-1">
+                                    <span className="text-slate-600 font-semibold">Total Revenue</span>
+                                    <span className="font-bold text-slate-800">₹{totalRevenue.toLocaleString('en-IN')}</span>
+                                  </div>
+                                </>
+                              )}
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-500">Total Expenses</span>
+                                <span className="font-bold text-slate-700">₹{totalExpenses.toLocaleString('en-IN')}</span>
+                              </div>
+                              {role === 'owner' && quotation > 0 && (
+                                <div className={`flex justify-between text-sm border-t border-slate-200 pt-1.5 mt-0.5 rounded-xl px-2 py-1.5 ${profit >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                                  <span className={`font-bold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{profit >= 0 ? 'Profit' : 'Loss'}</span>
+                                  <span className={`font-extrabold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                                    ₹{Math.abs(profit).toLocaleString('en-IN')}
+                                    <span className="text-xs font-normal opacity-70"> ({profitPct.toFixed(1)}%)</span>
+                                  </span>
+                                </div>
+                              )}
+                              {!role || role !== 'owner' ? (
+                                canSeeProfit && quotation > 0 ? (
+                                  <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5">
+                                    <span className={profit >= 0 ? 'text-emerald-600' : 'text-red-500'}>Profit</span>
+                                    <span className={`font-extrabold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>₹{profit.toLocaleString('en-IN')}</span>
+                                  </div>
+                                ) : null
+                              ) : null}
+                            </div>
+                          ) : null
+                        })()}
                         <button type="button"
                           onClick={() => {
-                            if (!finalPaidAmt) { setError('Enter the balance amount received.'); return }
-                            const newPaid = Number(finalPaidAmt)
-                            const totalPaid = paid + newPaid
+                            const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport, actualOther]
+                              .reduce((s, v) => s + (Number(v) || 0), 0)
+                            const extraCharge = Number(extraChargeAmt) || 0
+                            if (task.projectId) {
+                              updateProject(task.projectId, {
+                                status: 'completed', isCompleted: true,
+                                completedAt: new Date().toISOString(),
+                                actualCompletedDate: new Date().toISOString(),
+                                workflowStatus: 'Finished', paymentStatus: 'Full Paid', progress: 100,
+                                ...(totalExpenses > 0 ? {
+                                  actualCosts: {
+                                    quotationAmount: task.quotationAmount ?? task.costBreakdown?.quotationAmount ?? 0,
+                                    materialCost:    Number(actualMaterial)     || 0,
+                                    productionCost:  Number(actualProduction)   || 0,
+                                    installationCost:Number(actualInstallation) || 0,
+                                    transportCost:   Number(actualTransport)    || 0,
+                                    profit:          ((task.quotationAmount ?? 0) + extraCharge) - totalExpenses,
+                                  },
+                                } : {}),
+                              })
+                            }
                             save({
-                              flowStage: 'final_completion', flowStatus: 'full_paid', status: 'pending',
-                              title: 'Complete Project', paidAmount: totalPaid, balanceAmount: 0,
-                            }, `Balance payment ₹${newPaid.toLocaleString('en-IN')} received — full payment collected`)
+                              flowStage: 'completed', flowStatus: 'done', status: 'completed',
+                              title: 'Project Completed',
+                            }, 'Project completed — full payment received')
                           }}
-                          disabled={!finalPaidAmt}
-                          className="w-full py-4 rounded-2xl bg-green-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2 disabled:opacity-40">
-                          <CreditCard size={15} /> Mark Balance Paid
+                          className="w-full py-4 rounded-2xl bg-emerald-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
+                          <CheckCircle2 size={15} /> Complete Project
                         </button>
                       </>
                     )}
@@ -3156,7 +3933,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               12b. FINAL COMPLETION — after full paid
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'final_completion' && (
+          {displayStage === 'final_completion' && (role === 'lead_manager' || role === 'owner') && (
             <>
               <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-4 space-y-1">
                 <div className="flex items-center gap-2">
@@ -3249,7 +4026,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               13. COMPLETED
           ════════════════════════════════════════════════════════════════ */}
-          {stage === 'completed' && (
+          {displayStage === 'completed' && (
             <div className="space-y-4">
               <div className="py-8 text-center space-y-2">
                 <CheckCircle2 size={52} className="text-emerald-500 mx-auto" />
@@ -3278,6 +4055,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               })()}
             </div>
           )}
+
 
 
         </div>
@@ -3320,6 +4098,38 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               className="absolute top-8 right-2 w-10 h-10 bg-white/90 rounded-full flex items-center justify-center shadow-sm active:bg-white">
               <X size={18} className="text-slate-800" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Loss Warning Confirmation ── */}
+      {showLossWarn && (
+        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-2xl">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-9 h-9 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <AlertTriangle size={18} className="text-red-600" />
+              </div>
+              <p className="text-red-600 font-extrabold text-base">Running at a Loss</p>
+            </div>
+            <p className="text-sm text-slate-600 mb-5 leading-relaxed">
+              The total estimated cost exceeds the quotation amount. This project will run at a loss.
+              Are you sure you want to proceed?
+            </p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setShowLossWarn(false)}
+                className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 active:bg-slate-50">
+                Go Back
+              </button>
+              <button type="button" onClick={() => {
+                setShowLossWarn(false)
+                lossConfirmCb.current?.()
+                lossConfirmCb.current = null
+              }}
+                className="flex-1 py-3 rounded-xl bg-red-600 text-white text-sm font-extrabold active:bg-red-700">
+                Proceed Anyway
+              </button>
+            </div>
           </div>
         </div>
       )}

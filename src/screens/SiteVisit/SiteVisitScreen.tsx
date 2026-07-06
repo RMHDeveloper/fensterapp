@@ -34,8 +34,15 @@ const CHIPS: { value: Filter; label: string }[] = [
   { value: 'cancelled', label: 'Cancelled' },
 ]
 
+const STAGES_PAST_SITE_VISIT = new Set([
+  'site_review','reschedule_review','owner_approval','send_to_client','advance_payment',
+  'production_assign','production_check','production_work','installation_assign',
+  'installation_update','final_payment','final_completion','completed',
+])
+
 function visitStatus(task: Task): Filter {
   if (task.status === 'completed' || task.flowStage === 'completed') return 'completed'
+  if (task.flowStage && STAGES_PAST_SITE_VISIT.has(task.flowStage)) return 'completed'
   if (task.flowStatus === 'dropped' || task.status === 'overdue') return 'cancelled'
   return 'scheduled'
 }
@@ -44,17 +51,16 @@ export default function SiteVisitScreen() {
   const { user }                           = useAuth()
   const { tasks, updateTask }              = useAppData()
   const [filter, setFilter]                = useState<Filter>('all')
-  const [flowTask, setFlowTask]            = useState<Task | null>(null)
+  const [flowTaskId, setFlowTaskId]        = useState<string | null>(null)
+  const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
   const [snack, setSnack]                  = useState({ open: false, msg: '' })
 
   const role = user?.role ?? 'viewer'
 
   // Find all site-visit-related tasks (flow tasks or regular site_visit type)
   const visitTasks = tasks.filter(t => {
-    // Match by flowStage (flow tasks) OR by task.type for regular tasks
-    const isSiteStage = t.flowStage
-      ? ['site_visit', 'site_assign', 'reschedule_review'].includes(t.flowStage)
-      : t.type === 'site_visit'
+    // Include by task type (set at creation) OR by current flowStage — catches completed visits too
+    const isSiteStage = t.type === 'site_visit' || Boolean(t.flowStage && ['site_visit', 'site_assign', 'reschedule_review'].includes(t.flowStage))
     if (!isSiteStage) return false
 
     if (role === 'site_engineer') {
@@ -79,7 +85,7 @@ export default function SiteVisitScreen() {
     if (!flowTask) return
     updateTask(flowTask.id, updates)
     setSnack({ open: true, msg: 'Site visit updated!' })
-    setFlowTask(null)
+    setFlowTaskId(null)
   }
 
   return (
@@ -117,7 +123,7 @@ export default function SiteVisitScreen() {
           </div>
         ) : (
           filtered.map(task => (
-            <button key={task.id} onClick={() => setFlowTask(task)}
+            <button key={task.id} onClick={() => setFlowTaskId(task.id)}
               className="w-full text-left bg-white rounded-2xl shadow-sm border border-slate-100 p-4 active:scale-[0.98] transition-transform">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
@@ -183,7 +189,7 @@ export default function SiteVisitScreen() {
       {flowTask && (
         <DemoFlowSheet
           isOpen={!!flowTask}
-          onClose={() => setFlowTask(null)}
+          onClose={() => setFlowTaskId(null)}
           task={flowTask}
           onUpdate={handleFlowUpdate}
         />

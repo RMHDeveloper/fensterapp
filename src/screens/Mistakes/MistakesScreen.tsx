@@ -60,7 +60,14 @@ export default function MistakesScreen() {
   const managedUsers = loadManagedUsers().filter(u => u.status === 'active')
   const isManager    = user?.role === 'owner' || user?.role === 'lead_manager'
 
-  const filtered = mistakes.filter(m => filter === 'all' || m.status === filter)
+  const myProjectIds = user?.role === 'lead_manager'
+    ? new Set(projects.filter(p => p.ownerId === user.id).map(p => p.id))
+    : null
+
+  const filtered = mistakes.filter(m => {
+    if (myProjectIds && !myProjectIds.has(m.projectId)) return false
+    return filter === 'all' || m.status === filter
+  })
   const open     = mistakes.filter(m => m.status === 'open' || m.status === 'in_progress').length
   const rework   = mistakes.filter(m => m.status === 'rework').length
 

@@ -140,8 +140,8 @@ export type PaymentStatus = 'pending' | 'partial' | 'paid' | 'overdue'
 export type ProductionStage = 'cutting' | 'routing' | 'welding' | 'assembly' | 'glazing' | 'packing' | 'dispatch_ready'
 export type MistakeStatus = 'open' | 'in_progress' | 'rework' | 'resolved'
 export type InstallationStatus = 'scheduled' | 'in_progress' | 'completed' | 'rescheduled'
-export type FileCategory = 'site_photo' | 'quotation' | 'job_sheet' | 'qc_photo' | 'cutting_sheet' | 'glass_sheet' | 'proof' | 'voice_note' | 'other'
-export type LeadSource = 'cold_call' | 'referral' | 'walk_in' | 'online' | 'whatsapp' | 'instagram' | 'facebook' | 'existing_customer' | 'other'
+export type FileCategory = 'site_photo' | 'quotation' | 'job_sheet' | 'qc_photo' | 'cutting_sheet' | 'glass_sheet' | 'proof' | 'voice_note' | 'other' | 'project_file' | 'project_doc' | 'measurement_doc' | 'production_doc' | 'installation_doc'
+export type LeadSource = 'cold_call' | 'referral' | 'walk_in' | 'online' | 'whatsapp' | 'instagram' | 'facebook' | 'existing_customer' | 'other' | 'md_ed_ref' | 'google' | 'client_ref' | 'cni' | 'bni'
 
 // ─── Flow Stage — per-task active workflow step ────────────────────────────────
 export type FlowStage =
@@ -336,6 +336,7 @@ export interface Task {
   // Quotation
   quotationAmount?: number
   quotationFile?: string
+  previousQuotationFile?: string   // previous rejected quotation file (for reapproval display)
   quotationNotes?: string
   ownerRejectionReason?: string
   clientRejectionReason?: string
@@ -357,6 +358,7 @@ export interface Task {
   balanceAmount?: number
   paymentNote?: string
   advancePaymentScreenshot?: string[]  // screenshots of advance payment
+  finalPaymentScreenshot?: string[]   // screenshots of final/partial payment
 
   // Production work
   productionOverdueReason?: string
@@ -451,6 +453,7 @@ export interface Project {
   // Ownership
   ownerId?: string       // user.id of the lead_manager who owns this project
   ownerName?: string     // display name of the owner
+  leadId?: string        // id of the lead this project was created from (used to filter pre-advance projects)
   // Actual costs (entered by LO before completion)
   actualCosts?: CostBreakdown
   spentCost?: number     // running total of extra mistake costs
@@ -473,10 +476,10 @@ export interface Lead {
   name: string
   phone: string
   email?: string
-  requirement: string
+  requirement?: string
   source: LeadSource
   status: LeadStatus
-  followUpDate: string
+  followUpDate?: string
   priority: Priority
   interest?: LeadInterest
   lostReason?: string

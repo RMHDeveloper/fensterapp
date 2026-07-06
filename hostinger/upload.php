@@ -1,6 +1,7 @@
 <?php
 $ALLOWED_ORIGINS = [
     'https://fencraft.in',
+    'https://os.fensterecotech.in',
     'http://localhost:5173',
     'http://localhost:4173',
 ];

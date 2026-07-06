@@ -96,7 +96,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   lead_manager:         'Sales Team / Lead Owner',
   site_engineer:        'Site Engineer',
   production_admin:     'Production Incharge',
-  production_manager:   'Production Incharge',
+  production_manager:   'Production Manager',
   technician:           'Technician',
   installation_incharge:'Technician',
   viewer:               'Viewer',

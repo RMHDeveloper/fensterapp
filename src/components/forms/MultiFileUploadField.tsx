@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Upload, X, FileText, Eye, Image, Camera } from 'lucide-react'
+import { Upload, X, FileText, Eye, Image, Camera, Download } from 'lucide-react'
 import { filePreviewStore as previewStore, resolveFileUrl } from '../../utils/sessionStore'
 import { storeFile, deleteRemoteFile, removeLocalFile } from '../../utils/fileStorage'
 import { FilePreviewModal } from '../feedback/FilePreviewModal'
@@ -12,19 +12,22 @@ interface Props {
   required?: boolean
   error?: string
   helperText?: string
+  maxFiles?: number
 }
 
 function isImageName(name: string) { return /\.(jpg|jpeg|png|gif|webp)$/i.test(name) }
 function isPdfName(name: string)   { return /\.pdf$/i.test(name) }
 
-export function MultiFileUploadField({ label, files, onChange, accept = 'image/*', required, error, helperText }: Props) {
+export function MultiFileUploadField({ label, files, onChange, accept = 'image/*', required, error, helperText, maxFiles }: Props) {
   const inputRef  = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const isImageAccept = accept.includes('image') || accept.includes('.jpg') || accept.includes('.png')
+  const atMax = maxFiles != null && files.length >= maxFiles
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [previewName, setPreviewName] = useState<string>('')
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [debugUrls, setDebugUrls] = useState<string[]>([])
 
   function openPreview(src: string, name: string) {
     setPreviewSrc(src)
@@ -40,6 +43,7 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
     try {
       for (const f of Array.from(selected)) {
         const url = await storeFile(f)
+        setDebugUrls(prev => [...prev, `${f.name} -> ${url}`])
         const identifier = url.startsWith('http') ? url : f.name
         previewStore.set(identifier, url)
         names.push(identifier)
@@ -77,7 +81,7 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          disabled={uploading}
+          disabled={uploading || atMax}
           className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed
             text-sm font-semibold transition-colors active:opacity-70 disabled:opacity-50 disabled:cursor-not-allowed
             ${error || uploadError
@@ -93,7 +97,7 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
           <button
             type="button"
             onClick={() => cameraRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || atMax}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 bg-slate-50 text-sm font-semibold active:opacity-70 disabled:opacity-50"
           >
             <Camera size={15} />
@@ -101,6 +105,9 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
           </button>
         )}
       </div>
+      {atMax && (
+        <p className="text-[11px] text-amber-600 font-semibold mt-1">Remove the current file to upload a different one.</p>
+      )}
 
       <input
         ref={inputRef}
@@ -125,6 +132,14 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
       {helperText && !error && !uploadError && (
         <p className="text-[11px] text-slate-400 mt-1">{helperText}</p>
       )}
+      {debugUrls.length > 0 && (
+        <div className="mt-2 text-[11px] text-slate-500">
+          <p className="font-semibold text-slate-600">Upload debug:</p>
+          {debugUrls.map((d, i) => (
+            <p key={i} className="truncate">{d}</p>
+          ))}
+        </div>
+      )}
       {(error || uploadError) && (
         <p className="text-[11px] text-red-500 font-semibold mt-1">{uploadError ?? error}</p>
       )}
@@ -147,11 +162,17 @@ export function MultiFileUploadField({ label, files, onChange, accept = 'image/*
                 )}
                 <p className="text-xs text-slate-700 flex-1 truncate">{name}</p>
                 {src && (
-                  <button type="button"
-                    onClick={() => openPreview(src, name)}
-                    className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 active:bg-blue-100">
-                    <Eye size={12} className="text-blue-500" />
-                  </button>
+                  <>
+                    <button type="button"
+                      onClick={() => openPreview(src, name)}
+                      className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 active:bg-blue-100">
+                      <Eye size={12} className="text-blue-500" />
+                    </button>
+                    <a href={src} download={name} target="_blank" rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 active:bg-emerald-100">
+                      <Download size={12} className="text-emerald-600" />
+                    </a>
+                  </>
                 )}
                 <button type="button" onClick={() => removeFile(i)}
                   className="w-6 h-6 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0 active:bg-red-100">

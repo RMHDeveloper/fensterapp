@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Phone, IndianRupee } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
+import { useAuth } from '../../context/AuthContext'
 import { PermissionGate } from '../../components/layout/PermissionGate'
 import { StatusBadge } from '../../components/badges/StatusBadge'
 import { PaymentCard } from '../../components/cards/PaymentCard'
@@ -21,7 +22,8 @@ const CHIPS: { value: Filter; label: string }[] = [
 ]
 
 export default function PaymentsScreen() {
-  const { payments, updatePaymentAmount } = useAppData()
+  const { payments, projects, updatePaymentAmount } = useAppData()
+  const { user } = useAuth()
   const [filter, setFilter] = useState<Filter>('all')
   const [selected, setSelected] = useState<Payment | null>(null)
   const [showRecord, setShowRecord] = useState(false)
@@ -29,7 +31,14 @@ export default function PaymentsScreen() {
   const [payMethod, setPayMethod]   = useState('Cash')
   const [snack, setSnack] = useState({ open: false, msg: '' })
 
-  const filtered = payments.filter(p => filter === 'all' || p.status === filter)
+  const myProjectIds = user?.role === 'lead_manager'
+    ? new Set(projects.filter(p => p.ownerId === user.id).map(p => p.id))
+    : null
+
+  const filtered = payments.filter(p => {
+    if (myProjectIds && !myProjectIds.has(p.projectId)) return false
+    return filter === 'all' || p.status === filter
+  })
 
   const totalOutstanding = payments.filter(p => p.status !== 'paid').reduce((s, p) => s + p.pending, 0)
   const overdue = payments.filter(p => p.status === 'overdue').length

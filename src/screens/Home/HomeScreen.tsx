@@ -2,7 +2,7 @@ import {
   ChevronRight, AlertTriangle, Users, Layers,
   MapPin, CheckCircle2, Clock, CalendarCheck,
   FileText, Wallet, BarChart2, FolderOpen,
-  Settings,
+  Settings, XCircle,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -37,76 +37,157 @@ interface QuickItem {
   link: string
 }
 
+const PRE_PROD_STAGES = new Set(['production_sheet_preparation','production_admin_check','waiting_material_availability'])
+const PROD_STAGES     = new Set(['production_manager_work','ready_to_dispatch'])
+const INSTALL_STAGES  = new Set(['installation_assigned','installation','installation_in_progress'])
+
 export default function HomeScreen() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { tasks, leads, payments, projects, mistakes, updateTask } = useAppData()
-  const [flowTask, setFlowTask] = useState<Task | null>(null)
+  const [flowTaskId, setFlowTaskId] = useState<string | null>(null)
+  const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
 
-  const role            = user?.role ?? 'viewer'
-  const todayTasks      = tasks.filter(t => t.dueDate === 'Today' || t.status === 'overdue' || t.status === 'in_progress')
-  const activeProjects  = projects.filter(p => p.status === 'active')
+  const role = user?.role ?? 'viewer'
+
+  // Today tasks — regular tasks only (flow tasks handled separately by activeFTs)
+  const todayTasks = tasks.filter(t => {
+    if (t.flowStage) return false
+    if (!(t.dueDate === 'Today' || t.status === 'overdue' || t.status === 'in_progress')) return false
+    if (role !== 'owner') {
+      const assignee = t.assignedTo || t.assignee
+      if (assignee && assignee !== user?.name) return false
+    }
+    return true
+  })
+
   const openMistakes    = mistakes.filter(m => m.status === 'open').length
   const overduePayments = payments.filter(p => p.status === 'overdue').length
-  const newLeads        = leads.filter(l => l.status === 'new').length
   const pendingTasks    = todayTasks.filter(t => t.status === 'pending' || t.status === 'overdue').length
-  const doneCount       = tasks.filter(t => t.status === 'completed').length
+  const doneCount       = tasks.filter(t => {
+    if (t.status !== 'completed') return false
+    if (role !== 'owner') {
+      const assignee = t.assignedTo || t.assignee
+      if (assignee && assignee !== user?.name) return false
+    }
+    return true
+  }).length
+
+  // Role-filtered active project counts
+  const activeProjects = projects.filter(p => p.status === 'active')
+  const roleProjects = (() => {
+    if (role === 'owner') return activeProjects
+    if (role === 'lead_manager') return activeProjects.filter(p => !p.ownerId || p.ownerId === user?.id)
+    if (role === 'site_engineer') return activeProjects.filter(p =>
+      tasks.some(t => t.projectId === p.id && (t.assignedTo === user?.name || t.siteEngineerName === user?.name))
+    )
+    if (role === 'production_admin') return activeProjects.filter(p =>
+      PRE_PROD_STAGES.has(p.currentStage ?? '') || PROD_STAGES.has(p.currentStage ?? '')
+    )
+    if (role === 'production_manager') return activeProjects.filter(p => PROD_STAGES.has(p.currentStage ?? ''))
+    if (role === 'technician' || role === 'installation_incharge') return activeProjects.filter(p =>
+      INSTALL_STAGES.has(p.currentStage ?? '') || p.currentStage === 'ready_to_dispatch'
+    )
+    return activeProjects
+  })()
+
+  // LO: rejected quotations count (MD rejected the quotation)
+  const rejectedQuotations = tasks.filter(t => {
+    if (t.flowStage !== 'owner_approval' || t.flowStatus !== 'rejected') return false
+    if (t.projectId) {
+      const proj = projects.find(p => p.id === t.projectId)
+      if (proj?.ownerId && proj.ownerId !== user?.id) return false
+    }
+    return true
+  }).length
+
+  // LO: projects owned by this user
+  const myProjectIds = new Set(projects.filter(p => p.ownerId === user?.id).map(p => p.id))
+
+  // LO: pending flow tasks (any active flow stage in their projects)
+  const loPendingFlow = role === 'lead_manager'
+    ? tasks.filter(t => t.flowStage && t.flowStage !== 'completed' && myProjectIds.has(t.projectId)).length
+    : 0
+
+  // LO: active quotation tasks (in site_review or owner_approval)
+  const loProjectIds = new Set(
+    activeProjects.filter(p => !p.ownerId || p.ownerId === user?.id).map(p => p.id)
+  )
+  const activeQuotations = tasks.filter(t =>
+    (t.flowStage === 'site_review' || t.flowStage === 'owner_approval') &&
+    t.projectId && loProjectIds.has(t.projectId)
+  ).length
+
+  // Site engineer: assigned site visits
+  const myVisits = tasks.filter(t =>
+    t.flowStage === 'site_visit' &&
+    (t.assignedTo === user?.name || t.siteEngineerName === user?.name)
+  ).length
+
+  // Production admin: tasks pending check
+  const toCheckCount = tasks.filter(t => t.flowStage === 'production_check').length
+  // Production manager / team: tasks in production
+  const inProdCount  = tasks.filter(t => t.flowStage === 'production_work').length
+  // Technician: installation tasks
+  const installCount = tasks.filter(t =>
+    t.flowStage === 'installation_assign' || t.flowStage === 'installation_update'
+  ).length
 
   // Compact 4-stat rows per role
   const STATS: Record<UserRole, StatItem[]> = {
     owner: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',   iconBg: 'bg-blue-100',   value: pendingTasks,            label: 'Tasks',    link: '/tasks'      },
-      { icon: FolderOpen,    iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: activeProjects.length,   label: 'Projects', link: '/projects'   },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',   iconBg: 'bg-blue-100',   value: pendingTasks,          label: 'Tasks',    link: '/tasks'      },
+      { icon: FolderOpen,    iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: roleProjects.length,   label: 'Projects', link: '/projects'   },
       { icon: Wallet,        iconColor: overduePayments > 0 ? 'text-red-600' : 'text-teal-600', iconBg: overduePayments > 0 ? 'bg-red-100' : 'bg-teal-100', value: overduePayments, label: 'Overdue', link: '/payments' },
-      { icon: AlertTriangle, iconColor: 'text-orange-600', iconBg: 'bg-orange-100', value: openMistakes,            label: 'Problems', link: '/mistakes'   },
+      { icon: AlertTriangle, iconColor: 'text-orange-600', iconBg: 'bg-orange-100', value: openMistakes,          label: 'Problems', link: '/mistakes'   },
     ],
     lead_manager: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',   iconBg: 'bg-blue-100',   value: pendingTasks,          label: 'Tasks',      link: '/tasks'       },
-      { icon: Users,         iconColor: 'text-purple-600', iconBg: 'bg-purple-100', value: newLeads,              label: 'New Leads',  link: '/leads'       },
-      { icon: FolderOpen,    iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: activeProjects.length, label: 'Projects',   link: '/projects'    },
-      { icon: FileText,      iconColor: 'text-indigo-600', iconBg: 'bg-indigo-100', value: 3,                     label: 'Quotations', link: '/quotations'  },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',   iconBg: 'bg-blue-100',   value: pendingTasks,           label: 'Tasks',      link: '/tasks'       },
+      { icon: XCircle,       iconColor: 'text-red-600',    iconBg: 'bg-red-100',    value: rejectedQuotations,     label: 'Rejected',   link: '/projects'    },
+      { icon: FolderOpen,    iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: roleProjects.length,    label: 'Projects',   link: '/projects'    },
+      { icon: FileText,      iconColor: 'text-indigo-600', iconBg: 'bg-indigo-100', value: activeQuotations,       label: 'Quotations', link: '/quotations'  },
     ],
     site_engineer: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks, label: 'Tasks',   link: '/tasks'       },
-      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: 2,            label: 'Visits',  link: '/site-visits' },
-      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks, label: 'Pending', link: '/tasks'       },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,    label: 'Done',    link: '/tasks'       },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks,          label: 'Tasks',   link: '/tasks'       },
+      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: myVisits,              label: 'Visits',  link: '/site-visits' },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending', link: '/tasks'       },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',    link: '/tasks'       },
     ],
     production_admin: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks, label: 'Tasks',     link: '/tasks'      },
-      { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   value: 5,            label: 'To Check',  link: '/production' },
-      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks, label: 'Pending',   link: '/tasks'      },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,    label: 'Done',      link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks,          label: 'Tasks',     link: '/tasks'      },
+      { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   value: toCheckCount,          label: 'To Check',  link: '/production' },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending',   link: '/tasks'      },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',      link: '/tasks'      },
     ],
     production_manager: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks, label: 'Tasks',     link: '/tasks'      },
-      { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   value: 5,            label: 'In Prod',   link: '/production' },
-      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks, label: 'Pending',   link: '/tasks'      },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,    label: 'Done',      link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks,          label: 'Tasks',     link: '/tasks'      },
+      { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   value: inProdCount,           label: 'In Prod',   link: '/production' },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending',   link: '/tasks'      },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',      link: '/tasks'      },
     ],
     technician: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks, label: 'Tasks',     link: '/tasks'      },
-      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: 2,            label: 'Installs',  link: '/projects'   },
-      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks, label: 'Pending',   link: '/tasks'      },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,    label: 'Done',      link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks,          label: 'Tasks',     link: '/tasks'      },
+      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: installCount,          label: 'Installs',  link: '/projects'   },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending',   link: '/tasks'      },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',      link: '/tasks'      },
     ],
     installation_incharge: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks, label: 'Tasks',     link: '/tasks'      },
-      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: 2,            label: 'Installs',  link: '/projects'   },
-      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks, label: 'Pending',   link: '/tasks'      },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,    label: 'Done',      link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks,          label: 'Tasks',     link: '/tasks'      },
+      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: installCount,          label: 'Installs',  link: '/projects'   },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending',   link: '/tasks'      },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',      link: '/tasks'      },
     ],
     production_team: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks, label: 'Tasks',    link: '/tasks'      },
-      { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   value: 5,            label: 'In Prod',  link: '/production' },
-      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks, label: 'Pending',  link: '/tasks'      },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,    label: 'Done',     link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks,          label: 'Tasks',    link: '/tasks'      },
+      { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   value: inProdCount,           label: 'In Prod',  link: '/production' },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending',  link: '/tasks'      },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',     link: '/tasks'      },
     ],
     viewer: [
-      { icon: FolderOpen,   iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: activeProjects.length, label: 'Projects', link: '/projects' },
+      { icon: FolderOpen,   iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: roleProjects.length,   label: 'Projects', link: '/projects' },
       { icon: Users,        iconColor: 'text-purple-600', iconBg: 'bg-purple-100', value: leads.length,          label: 'Leads',    link: '/leads'    },
-      { icon: BarChart2,    iconColor: 'text-pink-600',   iconBg: 'bg-pink-100',   value: 12,                    label: 'Reports',  link: '/reports'  },
-      { icon: FolderOpen,   iconColor: 'text-slate-600',  iconBg: 'bg-slate-100',  value: 8,                     label: 'Files',    link: '/files'    },
+      { icon: BarChart2,    iconColor: 'text-pink-600',   iconBg: 'bg-pink-100',   value: 0,                     label: 'Reports',  link: '/reports'  },
+      { icon: FolderOpen,   iconColor: 'text-slate-600',  iconBg: 'bg-slate-100',  value: 0,                     label: 'Files',    link: '/files'    },
     ],
   }
 
@@ -177,6 +258,25 @@ export default function HomeScreen() {
 
       <div className="px-4 lg:px-6 pt-4 lg:pt-6 space-y-5 lg:max-w-3xl lg:mx-auto">
 
+        {/* LO Pending box ─────────────────────────────────────────────────────── */}
+        {role === 'lead_manager' && (
+          <button
+            onClick={() => navigate('/tasks')}
+            className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3.5 flex items-center justify-between active:opacity-80"
+          >
+            <div className="text-left">
+              <p className="text-[11px] font-bold text-amber-600 uppercase tracking-wide mb-0.5">Pending</p>
+              <p className="text-3xl font-extrabold text-amber-700 leading-none">{loPendingFlow}</p>
+              <p className="text-xs text-amber-500 mt-1">active project tasks</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-0.5">Done</p>
+              <p className="text-3xl font-extrabold text-emerald-600 leading-none">{doneCount}</p>
+              <p className="text-xs text-slate-400 mt-1">completed</p>
+            </div>
+          </button>
+        )}
+
         {/* 1. Compact stat row ─────────────────────────────────────────────────── */}
         <div className="grid grid-cols-4 gap-2">
           {stats.map((s, i) => {
@@ -197,9 +297,23 @@ export default function HomeScreen() {
           })}
         </div>
 
-        {/* 3. Flow Tasks (Demo) ────────────────────────────────────────────────── */}
+        {/* 3. Flow Tasks ──────────────────────────────────────────────────────── */}
         {(() => {
-          const activeFTs = tasks.filter(t => t.flowStage != null && t.flowStage !== 'completed')
+          const isAssignedToMe = (t: Task) =>
+            t.assignedTo === user?.name || t.assignedTo === user?.id ||
+            t.assignee   === user?.name || t.assignee   === user?.id ||
+            t.siteEngineerName === user?.name
+          const activeFTs = tasks.filter(t => {
+            if (t.flowStage == null || t.flowStage === 'completed') return false
+            if (role === 'site_engineer') return t.flowStage === 'site_visit' && isAssignedToMe(t)
+            if (role === 'owner') return t.flowStage === 'owner_approval' || (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
+            if (role === 'production_admin') return t.flowStage === 'production_check'
+            if (role === 'production_manager') return t.flowStage === 'production_work'
+            if (role === 'production_team') return t.flowStage === 'production_check' || t.flowStage === 'production_work'
+            if (role === 'technician' || role === 'installation_incharge') return (t.flowStage === 'installation_assign' || t.flowStage === 'installation_update') && isAssignedToMe(t)
+            if (role === 'lead_manager') return myProjectIds.has(t.projectId)
+            return false
+          })
           if (activeFTs.length === 0) return null
           return (
             <section>
@@ -218,7 +332,7 @@ export default function HomeScreen() {
                 </button>
               </div>
               {activeFTs.slice(0, 3).map(t => (
-                <FlowTaskCard key={t.id} task={t} onClick={() => setFlowTask(t)} />
+                <FlowTaskCard key={t.id} task={t} onClick={() => setFlowTaskId(t.id)} />
               ))}
             </section>
           )
@@ -233,6 +347,9 @@ export default function HomeScreen() {
                   <Clock size={13} className="text-blue-600" aria-hidden="true" />
                 </div>
                 <h2 className="text-sm font-extrabold text-slate-800">Today Work</h2>
+                <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                  {todayTasks.length} tasks
+                </span>
                 {pendingTasks > 0 && (
                   <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
                     {pendingTasks} pending
@@ -254,12 +371,9 @@ export default function HomeScreen() {
                 </div>
               ) : (
                 todayTasks.slice(0, 4).map((task, idx) => (
-                  <TodayTaskRow
-                    key={task.id}
-                    task={task}
-                    onClick={() => navigate(`/task/${task.id}`)}
-                    isLast={idx === Math.min(todayTasks.length, 4) - 1}
-                  />
+                  task.flowStage
+                    ? <FlowTaskCard key={task.id} task={task} onClick={() => setFlowTaskId(task.id)} />
+                    : <TodayTaskRow key={task.id} task={task} onClick={() => navigate(`/task/${task.id}`)} isLast={idx === Math.min(todayTasks.length, 4) - 1} />
                 ))
               )}
             </div>
@@ -283,11 +397,11 @@ export default function HomeScreen() {
                 Manage <ChevronRight size={13} aria-hidden="true" />
               </button>
             </div>
-            {activeProjects.length === 0 ? (
+            {roleProjects.length === 0 ? (
               <EmptyState title="No active projects" message="Projects will appear here once created." />
             ) : (
               <div className="space-y-2.5">
-                {activeProjects.slice(0, 2).map((project, idx) => (
+                {roleProjects.slice(0, 2).map((project, idx) => (
                   <ProjectCard
                     key={project.id}
                     project={project}
@@ -300,33 +414,17 @@ export default function HomeScreen() {
           </section>
         </PermissionGate>
 
-        {/* 5. Quick Access — all roles ─────────────────────────────────────────── */}
-        <section>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Quick Access</p>
-          <div className="grid grid-cols-4 gap-2">
-            {quick.map((q, i) => (
-              <QuickAccessCard
-                key={i}
-                icon={q.icon}
-                iconColor={q.iconColor}
-                iconBg={q.iconBg}
-                label={q.label}
-                onClick={() => navigate(q.link)}
-              />
-            ))}
-          </div>
-        </section>
 
       </div>
 
       {flowTask && (
         <DemoFlowSheet
           isOpen={!!flowTask}
-          onClose={() => setFlowTask(null)}
+          onClose={() => setFlowTaskId(null)}
           task={flowTask}
           onUpdate={(updates) => {
-            updateTask(flowTask.id, updates)
-            setFlowTask(null)
+            updateTask(flowTask!.id, updates)
+            setFlowTaskId(null)
           }}
         />
       )}
