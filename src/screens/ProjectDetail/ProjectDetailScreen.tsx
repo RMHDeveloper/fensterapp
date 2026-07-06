@@ -217,6 +217,9 @@ export default function ProjectDetailScreen() {
   const { tasks: allTasks, payments, projects, mistakes: allMistakes, addTask, updateTask, updateProject } = useAppData()
   const { user, can } = useAuth()
 
+  // Payment visibility: MD/ED/Admin (all `owner` role) and LO (lead_manager) only
+  const canSeePayments = user?.role === 'owner' || user?.role === 'lead_manager'
+
   const project  = projects.find(p => p.id === id) ?? projects[0]
   const tasks    = allTasks.filter(t => t.projectId === id)
   const payment  = payments.find(p => p.projectId === id)
@@ -296,7 +299,7 @@ function handleSaveTask() {
       subtitle: `${timeline.filter(s => s.status === 'completed').length} of ${timeline.length} stages done`,
       children: <Timeline items={timeline} />,
     },
-    {
+    ...(canSeePayments ? [{
       id: 'payment',
       title: 'Payment Summary',
       subtitle: (() => {
@@ -362,7 +365,7 @@ function handleSaveTask() {
         )
         return <p className="text-sm text-slate-400 italic">No payment record.</p>
       })(),
-    },
+    }] : []),
     {
       id: 'notes',
       title: 'Notes & Activity',
@@ -472,7 +475,7 @@ function handleSaveTask() {
             {projectFiles.sitePhotos.length > 0 && (
               <MediaPreviewList files={projectFiles.sitePhotos} title="Site Photos" />
             )}
-            {projectFiles.paymentProofs.length > 0 && (
+            {canSeePayments && projectFiles.paymentProofs.length > 0 && (
               <MediaPreviewList files={projectFiles.paymentProofs} title="Payment Proofs" />
             )}
             {projectFiles.productionDocs.length > 0 && (
