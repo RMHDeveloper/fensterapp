@@ -8,10 +8,27 @@ import { FlowTaskCard } from '../../components/cards/FlowTaskCard'
 import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { Snackbar } from '../../components/feedback/Snackbar'
 import { AppHeader } from '../../components/layout/AppHeader'
+import { FilterChips } from '../../components/forms/FilterChips'
 import type { Task } from '../../types'
-import { isTaskForToday, isDateFuture } from '../../utils/taskFilters'
+import { isDateFuture } from '../../utils/taskFilters'
 
-function sortRegular(tasks: Task[]): Task[] {
+type SortBy = 'status' | 'priority' | 'date'
+
+const SORT_CHIPS: { value: SortBy; label: string }[] = [
+  { value: 'status',   label: 'Status'   },
+  { value: 'priority', label: 'Priority' },
+  { value: 'date',     label: 'Newest'   },
+]
+
+const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+
+function sortRegular(tasks: Task[], sortBy: SortBy): Task[] {
+  if (sortBy === 'priority') {
+    return [...tasks].sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 2) - (PRIORITY_ORDER[b.priority] ?? 2))
+  }
+  if (sortBy === 'date') {
+    return [...tasks].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+  }
   const order: Record<string, number> = { overdue: 0, in_progress: 1, pending: 2, completed: 3 }
   return [...tasks].sort((a, b) => (order[a.status] ?? 2) - (order[b.status] ?? 2))
 }
@@ -41,6 +58,7 @@ export default function TodayTasksScreen() {
   const [flowTaskId, setFlowTaskId]       = useState<string | null>(null)
   const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
   const [snack, setSnack]                 = useState({ open: false, msg: '' })
+  const [sortBy, setSortBy]               = useState<SortBy>('status')
 
   const role = user?.role ?? 'lead_manager'
 
@@ -97,15 +115,16 @@ export default function TodayTasksScreen() {
     ? flowTasks.filter(t => t.flowStage === 'completed' && myProjectIds.has(t.projectId))
     : []
 
-  // Regular tasks (no flowStage) for today — per-user scoping
+  // Regular tasks (no flowStage), any due date — grouped by status, per-user scoping
   const regular = sortRegular(
     tasks.filter(t => {
-      if (t.flowStage || !isTaskForToday(t)) return false
+      if (t.flowStage) return false
       if (role === 'viewer') return false
       if (role === 'owner') return true
       const hasAssignee = t.assignedTo || t.assignee
       return !hasAssignee || isAssignedToMe(t)
-    })
+    }),
+    sortBy
   )
   const overdueR   = regular.filter(t => t.status === 'overdue')
   const startedR   = regular.filter(t => t.status === 'in_progress')
@@ -124,6 +143,9 @@ export default function TodayTasksScreen() {
     <div className="min-h-screen bg-[#f8f9fa] pb-28">
       <AppHeader />
       <div className="px-4 pt-4 space-y-3">
+
+        {/* ── Sort by ── */}
+        <FilterChips chips={SORT_CHIPS} active={sortBy} onChange={setSortBy} />
 
         {/* ── Active flow tasks at top ── */}
         {activeFTs.length > 0 && (

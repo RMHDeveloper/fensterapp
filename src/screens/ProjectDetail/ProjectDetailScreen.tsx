@@ -91,6 +91,26 @@ const FLOW_STAGE_LABEL: Record<string, string> = {
   final_payment: 'Payment Collected', final_completion: 'Project Complete', completed: 'Project Completed',
 }
 
+// Generic fallback label per stage when no specific person's name is on the task
+const STAGE_HANDLER_ROLE: Record<string, string> = {
+  site_assign: 'Sales Team', site_visit: 'Site Engineer', reschedule_review: 'Sales Team',
+  site_review: 'Sales Team', owner_approval: 'MD/ED', send_to_client: 'Sales Team',
+  production_assign: 'Sales Team', production_check: 'Production Admin',
+  advance_payment: 'Sales Team', production_work: 'Production Incharge',
+  installation_assign: 'Sales Team', installation_update: 'Technician',
+  final_payment: 'Sales Team', final_completion: 'Sales Team', completed: '—',
+}
+
+// Who's currently handling this flow task — prefer a specific name over the generic role label
+function getHandlingBy(task: Task): string {
+  const stage = task.flowStage
+  if (!stage) return '—'
+  const named = task.siteEngineerName || task.assignedTo || task.assignee
+  const roleFallback = STAGE_HANDLER_ROLE[stage] ?? stage.replace(/_/g, ' ')
+  if (named && named !== roleFallback && !['Owner', 'Client'].includes(named)) return named
+  return roleFallback
+}
+
 const ACTIVITY_STATUS_LABEL: Record<string, Record<string, string>> = {
   site_visit:          { completed: 'Site Visit Completed', reschedule_requested: 'Reschedule Requested', reschedule_approved: 'Reschedule Approved', reschedule_rejected: 'Reschedule Rejected' },
   site_review:         { completed: 'Quotation Uploaded' },
@@ -708,6 +728,20 @@ function handleSaveTask() {
           </div>
         )}
       </div>
+
+      {/* Handling By — changes with the project's current stage */}
+      {activeFlowTask && (
+        <div className="px-4 mb-3">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 flex items-center justify-between">
+            <p className="text-xs text-slate-500">
+              Handling by: <span className="font-bold text-slate-700">{getHandlingBy(activeFlowTask)}</span>
+            </p>
+            <span className="text-[10px] font-bold text-slate-400 uppercase">
+              {FLOW_STAGE_LABEL[activeFlowTask.flowStage!] ?? activeFlowTask.flowStage}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Current Action Needed — LM / owner banner */}
       {activeFlowTask && (user?.role === 'lead_manager' || user?.role === 'owner') && (

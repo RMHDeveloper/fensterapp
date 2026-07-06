@@ -11,7 +11,6 @@ import { useAppData } from '../../context/AppDataContext'
 import { PermissionGate } from '../../components/layout/PermissionGate'
 import { QuickAccessCard } from '../../components/cards/QuickAccessCard'
 import { AppHeader } from '../../components/layout/AppHeader'
-import { TodayTaskRow } from '../../components/cards/TodayTaskRow'
 import { FlowTaskCard } from '../../components/cards/FlowTaskCard'
 import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { ProjectCard } from '../../components/cards/ProjectCard'
@@ -366,48 +365,6 @@ export default function HomeScreen() {
             </section>
           )
         })()}
-
-        {/* 4. Today Work ───────────────────────────────────────────────────────── */}
-        <PermissionGate permission="view_today">
-          <section>
-            <div className="flex items-center justify-between mb-2.5">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center">
-                  <Clock size={13} className="text-blue-600" aria-hidden="true" />
-                </div>
-                <h2 className="text-sm font-extrabold text-slate-800">Today Work</h2>
-                <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
-                  {todayTasks.length} tasks
-                </span>
-                {pendingTasks > 0 && (
-                  <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
-                    {pendingTasks} pending
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={() => navigate('/tasks')}
-                className="flex items-center gap-0.5 text-xs font-semibold text-blue-600 min-h-[36px] active:opacity-70"
-              >
-                See all <ChevronRight size={13} aria-hidden="true" />
-              </button>
-            </div>
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-              {todayTasks.length === 0 ? (
-                <div className="px-4 py-6 text-center">
-                  <CheckCircle2 size={28} className="text-emerald-300 mx-auto mb-2" aria-hidden="true" />
-                  <p className="text-xs font-semibold text-slate-400">No work assigned for today.</p>
-                </div>
-              ) : (
-                todayTasks.slice(0, 4).map((task, idx) => (
-                  task.flowStage
-                    ? <FlowTaskCard key={task.id} task={task} onClick={() => setFlowTaskId(task.id)} />
-                    : <TodayTaskRow key={task.id} task={task} onClick={() => navigate(`/task/${task.id}`)} isLast={idx === Math.min(todayTasks.length, 4) - 1} />
-                ))
-              )}
-            </div>
-          </section>
-        </PermissionGate>
 
         {/* 4. Active Projects — compact, 1 card ───────────────────────────────── */}
         <PermissionGate permission="view_projects">
