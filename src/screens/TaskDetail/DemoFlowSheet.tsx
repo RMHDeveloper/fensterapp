@@ -241,17 +241,30 @@ function WaitingView({ icon: Icon, color, title, sub }: WaitingViewProps) {
   )
 }
 
-// ─── DemoControlCard defined OUTSIDE — prevents remount focus bug ─────────────
+// ─── Override Control card (LO) / Take Control button (Owner) ────────────────
 
-interface DemoControlCardProps { waitingFor: string; description: string; onOverride: () => void }
-function DemoControlCard({ waitingFor, description, onOverride }: DemoControlCardProps) {
+interface DemoControlCardProps {
+  waitingFor: string
+  description: string
+  onOverride: () => void
+  variant?: 'override' | 'owner'
+}
+function DemoControlCard({ waitingFor, description, onOverride, variant = 'override' }: DemoControlCardProps) {
+  if (variant === 'owner') {
+    return (
+      <button type="button" onClick={onOverride}
+        className="w-full py-3 rounded-xl bg-slate-800 text-white text-sm font-bold active:opacity-90 flex items-center justify-center gap-2">
+        Take Control →
+      </button>
+    )
+  }
   return (
     <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 space-y-2.5">
       <div className="flex items-center gap-2">
         <div className="w-5 h-5 bg-amber-200 rounded-md flex items-center justify-center flex-shrink-0">
           <AlertTriangle size={11} className="text-amber-700" />
         </div>
-        <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">Demo Control</p>
+        <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">Override Control</p>
       </div>
       <p className="text-xs text-amber-700">
         <span className="font-semibold">{waitingFor}</span> needs to update this step.
@@ -259,7 +272,7 @@ function DemoControlCard({ waitingFor, description, onOverride }: DemoControlCar
       <p className="text-[11px] text-amber-600">{description}</p>
       <button type="button" onClick={onOverride}
         className="w-full py-3 rounded-xl bg-amber-600 text-white text-sm font-bold active:opacity-90">
-        Update This Step Yourself →
+        Override This Step →
       </button>
     </div>
   )
@@ -1348,9 +1361,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const canDemoOverride = role === 'lead_manager' || role === 'owner'
 
   function demoSave(updates: Partial<Task>, histNote?: string, histFiles?: string[]) {
-    const note = histNote
-      ? `${histNote} (Demo override by Sales Team)`
-      : '(Demo override by Sales Team)'
+    const by   = role === 'owner' ? 'MD/ED' : 'Sales Team'
+    const note = histNote ? `${histNote} (Override by ${by})` : `(Override by ${by})`
     save(updates, note, histFiles)
   }
 
@@ -1839,7 +1851,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                  <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as Site Engineer</p>
+                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Site Engineer</p>
                 </div>
                 <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
               </div>
@@ -1890,7 +1902,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <button type="button" onClick={submitDemoSiteVisitComplete}
                 className="w-full py-4 rounded-2xl bg-amber-600 text-white text-sm font-extrabold active:opacity-90">
-                ✓ Submit Site Visit (Demo Override) →
+                ✓ Submit Site Visit (Override) →
               </button>
             </div>
           )}
@@ -2004,33 +2016,63 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 </div>
 
                 {(costSqft || costMaterial || costTransAmt) && (() => {
-                  const sqft  = Number(costSqft) || 0
-                  const matC  = Number(costMaterial) || 0
-                  const prodC = sqft * productionRate
-                  const instC = sqft * installationRate
-                  const transC = Number(costTransAmt) || 0
-                  const total = matC + prodC + instC + transC
+                  const sqft       = Number(costSqft) || 0
+                  const matC       = Number(costMaterial) || 0
+                  const prodC      = sqft * productionRate
+                  const instC      = sqft * installationRate
+                  const transC     = Number(costTransAmt) || 0
+                  const totalC     = matC + prodC + instC + transC
+                  const quotAmount = Number(quotAmt) || 0
+                  const isLoss     = quotAmount > 0 && totalC > quotAmount
+                  const profit     = quotAmount - totalC
                   return (
                     <div className="space-y-1.5">
-                      <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
-                        <span className="text-xs font-semibold text-slate-600">Material Cost</span>
-                        <span className="text-sm font-extrabold text-slate-700">₹{matC.toLocaleString('en-IN')}</span>
-                      </div>
-                      <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
-                        <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹{productionRate} × sq.ft)</span></span>
-                        <span className="text-sm font-extrabold text-blue-700">₹{prodC.toLocaleString('en-IN')}</span>
-                      </div>
-                      <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
-                        <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹{installationRate} × sq.ft)</span></span>
-                        <span className="text-sm font-extrabold text-violet-700">₹{instC.toLocaleString('en-IN')}</span>
-                      </div>
-                      <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
-                        <span className="text-xs font-semibold text-amber-700">Transport Cost</span>
-                        <span className="text-sm font-extrabold text-amber-700">₹{transC.toLocaleString('en-IN')}</span>
-                      </div>
-                      <div className="flex items-center justify-between bg-slate-100 rounded-xl px-4 py-2.5">
-                        <span className="text-xs font-bold text-slate-700">Total Costs</span>
-                        <span className="text-sm font-extrabold text-slate-800">₹{total.toLocaleString('en-IN')}</span>
+                      {matC > 0 && (
+                        <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                          <span className="text-xs font-semibold text-slate-600">Material Cost</span>
+                          <span className="text-sm font-extrabold text-slate-700">₹{matC.toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
+                      {sqft > 0 && (
+                        <>
+                          <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+                            <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹{productionRate} × sq.ft)</span></span>
+                            <span className="text-sm font-extrabold text-blue-700">₹{prodC.toLocaleString('en-IN')}</span>
+                          </div>
+                          <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5">
+                            <span className="text-xs font-semibold text-violet-700">Installation Cost <span className="font-normal text-violet-400">(₹{installationRate} × sq.ft)</span></span>
+                            <span className="text-sm font-extrabold text-violet-700">₹{instC.toLocaleString('en-IN')}</span>
+                          </div>
+                        </>
+                      )}
+                      {transC > 0 && (
+                        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                          <span className="text-xs font-semibold text-amber-700">Transport Cost</span>
+                          <span className="text-sm font-extrabold text-amber-700">₹{transC.toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
+                      <div className={`rounded-xl px-4 py-2.5 space-y-1.5 ${isLoss ? 'bg-red-50 border border-red-200' : 'bg-slate-100'}`}>
+                        <div className="flex justify-between text-xs">
+                          <span className="font-bold text-slate-700">Total Costs</span>
+                          <span className={`font-extrabold ${isLoss ? 'text-red-600' : 'text-slate-800'}`}>
+                            ₹{totalC.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        {quotAmount > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className={isLoss ? 'text-red-500 font-semibold' : 'text-emerald-600 font-semibold'}>
+                              {isLoss ? 'Loss' : 'Profit'}
+                            </span>
+                            <span className={`font-bold ${isLoss ? 'text-red-600' : 'text-emerald-600'}`}>
+                              ₹{Math.abs(profit).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        )}
+                        {isLoss && (
+                          <p className="text-[11px] text-red-600 font-semibold pt-0.5">
+                            ⚠ Quotation is lower than estimated cost — this project will run at a loss.
+                          </p>
+                        )}
                       </div>
                     </div>
                   )
@@ -2207,11 +2249,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               sub={`Quotation ₹${task.quotationAmount?.toLocaleString('en-IN') ?? '—'} sent for MD/ED review`} />
           )}
 
-          {/* DEMO CONTROL: Owner Approval */}
+          {/* OVERRIDE CONTROL: Owner Approval — LM only (owner has their own form above) */}
           {displayStage === 'owner_approval' && canDemoOverride && role !== 'owner' && flowStatus !== 'rejected' && !demoOverride && (
             <DemoControlCard
               waitingFor="MD/ED"
-              description="MD/ED needs to approve or reject the quotation. For demo, approve or reject it yourself."
+              description="MD/ED needs to approve or reject the quotation. You can override and process it yourself."
               onOverride={() => setDemoOverride(true)}
             />
           )}
@@ -2220,7 +2262,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                  <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as MD/ED</p>
+                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as MD/ED</p>
                 </div>
                 <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
               </div>
@@ -2286,7 +2328,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               {sel && (
                 <button type="button" onClick={submitDemoOwnerApproval}
                   className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${sel === 'approved' ? 'bg-amber-600' : 'bg-red-600'}`}>
-                  {sel === 'approved' ? '✓ Approve Quotation (Demo Override)' : 'Reject Quotation (Demo Override)'}
+                  {sel === 'approved' ? '✓ Approve Quotation (Override)' : 'Reject Quotation (Override)'}
                 </button>
               )}
             </div>
@@ -2764,7 +2806,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                    <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as Sales Team</p>
+                    <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Sales Team</p>
                   </div>
                   <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
                 </div>
@@ -2925,7 +2967,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                  <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as Production Incharge</p>
+                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Production Incharge</p>
                 </div>
                 <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
               </div>
@@ -2979,12 +3021,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 return allMandOk ? (
                   <button type="button" onClick={submitDemoProductionCheck}
                     className="w-full py-4 rounded-2xl bg-amber-600 text-white text-sm font-extrabold active:opacity-90">
-                    ✓ Confirm — Start Production (Demo Override)
+                    ✓ Confirm — Start Production (Override)
                   </button>
                 ) : (
                   <button type="button" onClick={submitDemoProductionCheck}
                     className="w-full py-4 rounded-2xl bg-red-600 text-white text-sm font-extrabold active:opacity-90">
-                    Report Not Available (Demo Override)
+                    Report Not Available (Override)
                   </button>
                 )
               })()}
@@ -3232,7 +3274,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                  <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as Production Manager</p>
+                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Production Manager</p>
                 </div>
                 <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
               </div>
@@ -3283,7 +3325,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               {prodChecklist.every(i => i.done) ? (
                 <button type="button" onClick={submitDemoProductionWork}
                   className="w-full py-4 rounded-2xl bg-amber-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
-                  <Package size={15} /> Ready to Dispatch (Demo Override) →
+                  <Package size={15} /> Ready to Dispatch (Override) →
                 </button>
               ) : (
                 <div className="space-y-3 pt-2 border-t border-slate-100">
@@ -3301,7 +3343,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       </div>
                       <button type="button" onClick={submitDemoProductionWorkOverdue}
                         className="w-full py-4 rounded-2xl bg-red-600 text-white text-sm font-extrabold active:opacity-90">
-                        Submit Overdue Report (Demo Override)
+                        Submit Overdue Report (Override)
                       </button>
                     </div>
                   )}
@@ -3449,7 +3491,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                    <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as Installation Incharge</p>
+                    <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Installation Incharge</p>
                   </div>
                   <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
                 </div>
@@ -3557,7 +3599,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                  <p className="text-xs font-semibold text-amber-700">Demo Override — Acting as Installation Incharge</p>
+                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Installation Incharge</p>
                 </div>
                 <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
               </div>

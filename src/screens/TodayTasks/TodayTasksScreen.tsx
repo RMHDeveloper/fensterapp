@@ -9,7 +9,7 @@ import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { Snackbar } from '../../components/feedback/Snackbar'
 import { AppHeader } from '../../components/layout/AppHeader'
 import type { Task } from '../../types'
-import { isTaskForToday, isDateToday, isDateFuture } from '../../utils/taskFilters'
+import { isTaskForToday, isDateFuture } from '../../utils/taskFilters'
 
 function sortRegular(tasks: Task[]): Task[] {
   const order: Record<string, number> = { overdue: 0, in_progress: 1, pending: 2, completed: 3 }
@@ -86,7 +86,7 @@ export default function TodayTasksScreen() {
       if (t.flowStage === 'reschedule_review' && (t.flowStatus === 'approved' || t.flowStatus === 'rejected')) return false
       return myProjectIds.has(t.projectId)
     }
-    return false // viewer sees no active flow tasks
+    return false
   })
 
   // Completed flow tasks — owner sees all, LM sees only their projects'

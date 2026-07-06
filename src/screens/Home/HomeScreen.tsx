@@ -2,7 +2,7 @@ import {
   ChevronRight, AlertTriangle, Users, Layers,
   MapPin, CheckCircle2, Clock, CalendarCheck,
   FileText, Wallet, BarChart2, FolderOpen,
-  Settings,
+  Settings, XCircle,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -37,6 +37,10 @@ interface QuickItem {
   link: string
 }
 
+const PRE_PROD_STAGES = new Set(['production_sheet_preparation','production_admin_check','waiting_material_availability'])
+const PROD_STAGES     = new Set(['production_manager_work','ready_to_dispatch'])
+const INSTALL_STAGES  = new Set(['installation_assigned','installation','installation_in_progress'])
+
 export default function HomeScreen() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -44,70 +48,131 @@ export default function HomeScreen() {
   const [flowTaskId, setFlowTaskId] = useState<string | null>(null)
   const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
 
-  const role            = user?.role ?? 'viewer'
-  const todayTasks      = tasks.filter(t => t.dueDate === 'Today' || t.status === 'overdue' || t.status === 'in_progress')
-  const activeProjects  = projects.filter(p => p.status === 'active')
+  const role = user?.role ?? 'viewer'
+
+  // Today tasks — only show tasks assigned to this user (or unassigned)
+  const todayTasks = tasks.filter(t => {
+    if (!(t.dueDate === 'Today' || t.status === 'overdue' || t.status === 'in_progress')) return false
+    if (role !== 'owner' && t.assignedTo && t.assignedTo !== user?.name) return false
+    return true
+  })
+
   const openMistakes    = mistakes.filter(m => m.status === 'open').length
   const overduePayments = payments.filter(p => p.status === 'overdue').length
-  const newLeads        = leads.filter(l => l.status === 'new').length
   const pendingTasks    = todayTasks.filter(t => t.status === 'pending' || t.status === 'overdue').length
-  const doneCount       = tasks.filter(t => t.status === 'completed').length
+  const doneCount       = tasks.filter(t => {
+    if (t.status !== 'completed') return false
+    if (role !== 'owner' && t.assignedTo && t.assignedTo !== user?.name) return false
+    return true
+  }).length
+
+  // Role-filtered active project counts
+  const activeProjects = projects.filter(p => p.status === 'active')
+  const roleProjects = (() => {
+    if (role === 'owner') return activeProjects
+    if (role === 'lead_manager') return activeProjects.filter(p => !p.ownerId || p.ownerId === user?.id)
+    if (role === 'site_engineer') return activeProjects.filter(p =>
+      tasks.some(t => t.projectId === p.id && (t.assignedTo === user?.name || t.siteEngineerName === user?.name))
+    )
+    if (role === 'production_admin') return activeProjects.filter(p =>
+      PRE_PROD_STAGES.has(p.currentStage ?? '') || PROD_STAGES.has(p.currentStage ?? '')
+    )
+    if (role === 'production_manager') return activeProjects.filter(p => PROD_STAGES.has(p.currentStage ?? ''))
+    if (role === 'technician' || role === 'installation_incharge') return activeProjects.filter(p =>
+      INSTALL_STAGES.has(p.currentStage ?? '') || p.currentStage === 'ready_to_dispatch'
+    )
+    return activeProjects
+  })()
+
+  // LO: rejected quotations count (MD rejected the quotation)
+  const rejectedQuotations = tasks.filter(t => {
+    if (t.flowStage !== 'owner_approval' || t.flowStatus !== 'rejected') return false
+    if (t.projectId) {
+      const proj = projects.find(p => p.id === t.projectId)
+      if (proj?.ownerId && proj.ownerId !== user?.id) return false
+    }
+    return true
+  }).length
+
+  // LO: active quotation tasks (in site_review or owner_approval)
+  const loProjectIds = new Set(
+    activeProjects.filter(p => !p.ownerId || p.ownerId === user?.id).map(p => p.id)
+  )
+  const activeQuotations = tasks.filter(t =>
+    (t.flowStage === 'site_review' || t.flowStage === 'owner_approval') &&
+    t.projectId && loProjectIds.has(t.projectId)
+  ).length
+
+  // Site engineer: assigned site visits
+  const myVisits = tasks.filter(t =>
+    t.flowStage === 'site_visit' &&
+    (t.assignedTo === user?.name || t.siteEngineerName === user?.name)
+  ).length
+
+  // Production admin: tasks pending check
+  const toCheckCount = tasks.filter(t => t.flowStage === 'production_check').length
+  // Production manager / team: tasks in production
+  const inProdCount  = tasks.filter(t => t.flowStage === 'production_work').length
+  // Technician: installation tasks
+  const installCount = tasks.filter(t =>
+    t.flowStage === 'installation_assign' || t.flowStage === 'installation_update'
+  ).length
 
   // Compact 4-stat rows per role
   const STATS: Record<UserRole, StatItem[]> = {
     owner: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',   iconBg: 'bg-blue-100',   value: pendingTasks,            label: 'Tasks',    link: '/tasks'      },
-      { icon: FolderOpen,    iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: activeProjects.length,   label: 'Projects', link: '/projects'   },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',   iconBg: 'bg-blue-100',   value: pendingTasks,          label: 'Tasks',    link: '/tasks'      },
+      { icon: FolderOpen,    iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: roleProjects.length,   label: 'Projects', link: '/projects'   },
       { icon: Wallet,        iconColor: overduePayments > 0 ? 'text-red-600' : 'text-teal-600', iconBg: overduePayments > 0 ? 'bg-red-100' : 'bg-teal-100', value: overduePayments, label: 'Overdue', link: '/payments' },
-      { icon: AlertTriangle, iconColor: 'text-orange-600', iconBg: 'bg-orange-100', value: openMistakes,            label: 'Problems', link: '/mistakes'   },
+      { icon: AlertTriangle, iconColor: 'text-orange-600', iconBg: 'bg-orange-100', value: openMistakes,          label: 'Problems', link: '/mistakes'   },
     ],
     lead_manager: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',   iconBg: 'bg-blue-100',   value: pendingTasks,          label: 'Tasks',      link: '/tasks'       },
-      { icon: Users,         iconColor: 'text-purple-600', iconBg: 'bg-purple-100', value: newLeads,              label: 'New Leads',  link: '/leads'       },
-      { icon: FolderOpen,    iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: activeProjects.length, label: 'Projects',   link: '/projects'    },
-      { icon: FileText,      iconColor: 'text-indigo-600', iconBg: 'bg-indigo-100', value: 3,                     label: 'Quotations', link: '/quotations'  },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',   iconBg: 'bg-blue-100',   value: pendingTasks,           label: 'Tasks',      link: '/tasks'       },
+      { icon: XCircle,       iconColor: 'text-red-600',    iconBg: 'bg-red-100',    value: rejectedQuotations,     label: 'Rejected',   link: '/projects'    },
+      { icon: FolderOpen,    iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: roleProjects.length,    label: 'Projects',   link: '/projects'    },
+      { icon: FileText,      iconColor: 'text-indigo-600', iconBg: 'bg-indigo-100', value: activeQuotations,       label: 'Quotations', link: '/quotations'  },
     ],
     site_engineer: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks, label: 'Tasks',   link: '/tasks'       },
-      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: 2,            label: 'Visits',  link: '/site-visits' },
-      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks, label: 'Pending', link: '/tasks'       },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,    label: 'Done',    link: '/tasks'       },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks,          label: 'Tasks',   link: '/tasks'       },
+      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: myVisits,              label: 'Visits',  link: '/site-visits' },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending', link: '/tasks'       },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',    link: '/tasks'       },
     ],
     production_admin: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks, label: 'Tasks',     link: '/tasks'      },
-      { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   value: 5,            label: 'To Check',  link: '/production' },
-      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks, label: 'Pending',   link: '/tasks'      },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,    label: 'Done',      link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks,          label: 'Tasks',     link: '/tasks'      },
+      { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   value: toCheckCount,          label: 'To Check',  link: '/production' },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending',   link: '/tasks'      },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',      link: '/tasks'      },
     ],
     production_manager: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks, label: 'Tasks',     link: '/tasks'      },
-      { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   value: 5,            label: 'In Prod',   link: '/production' },
-      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks, label: 'Pending',   link: '/tasks'      },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,    label: 'Done',      link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks,          label: 'Tasks',     link: '/tasks'      },
+      { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   value: inProdCount,           label: 'In Prod',   link: '/production' },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending',   link: '/tasks'      },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',      link: '/tasks'      },
     ],
     technician: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks, label: 'Tasks',     link: '/tasks'      },
-      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: 2,            label: 'Installs',  link: '/projects'   },
-      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks, label: 'Pending',   link: '/tasks'      },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,    label: 'Done',      link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks,          label: 'Tasks',     link: '/tasks'      },
+      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: installCount,          label: 'Installs',  link: '/projects'   },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending',   link: '/tasks'      },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',      link: '/tasks'      },
     ],
     installation_incharge: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks, label: 'Tasks',     link: '/tasks'      },
-      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: 2,            label: 'Installs',  link: '/projects'   },
-      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks, label: 'Pending',   link: '/tasks'      },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,    label: 'Done',      link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks,          label: 'Tasks',     link: '/tasks'      },
+      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: installCount,          label: 'Installs',  link: '/projects'   },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending',   link: '/tasks'      },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',      link: '/tasks'      },
     ],
     production_team: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks, label: 'Tasks',    link: '/tasks'      },
-      { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   value: 5,            label: 'In Prod',  link: '/production' },
-      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks, label: 'Pending',  link: '/tasks'      },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,    label: 'Done',     link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: pendingTasks,          label: 'Tasks',    link: '/tasks'      },
+      { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   value: inProdCount,           label: 'In Prod',  link: '/production' },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending',  link: '/tasks'      },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',     link: '/tasks'      },
     ],
     viewer: [
-      { icon: FolderOpen,   iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: activeProjects.length, label: 'Projects', link: '/projects' },
-      { icon: BarChart2,    iconColor: 'text-pink-600',   iconBg: 'bg-pink-100',   value: 12,                    label: 'Reports',  link: '/reports'  },
-      { icon: FolderOpen,   iconColor: 'text-slate-600',  iconBg: 'bg-slate-100',  value: 8,                     label: 'Files',    link: '/files'    },
-      { icon: CheckCircle2, iconColor: 'text-emerald-600',iconBg: 'bg-emerald-100',value: doneCount,             label: 'Done',     link: '/tasks'    },
+      { icon: FolderOpen,   iconColor: 'text-cyan-600',   iconBg: 'bg-cyan-100',   value: roleProjects.length,   label: 'Projects', link: '/projects' },
+      { icon: Users,        iconColor: 'text-purple-600', iconBg: 'bg-purple-100', value: leads.length,          label: 'Leads',    link: '/leads'    },
+      { icon: BarChart2,    iconColor: 'text-pink-600',   iconBg: 'bg-pink-100',   value: 0,                     label: 'Reports',  link: '/reports'  },
+      { icon: FolderOpen,   iconColor: 'text-slate-600',  iconBg: 'bg-slate-100',  value: 0,                     label: 'Files',    link: '/files'    },
     ],
   }
 
@@ -198,7 +263,7 @@ export default function HomeScreen() {
           })}
         </div>
 
-        {/* 3. Flow Tasks (Demo) ────────────────────────────────────────────────── */}
+        {/* 3. Flow Tasks ──────────────────────────────────────────────────────── */}
         {(() => {
           const myProjectIds = new Set(projects.filter(p => p.ownerId === user?.id).map(p => p.id))
           const isAssignedToMe = (t: Task) =>
@@ -296,11 +361,11 @@ export default function HomeScreen() {
                 Manage <ChevronRight size={13} aria-hidden="true" />
               </button>
             </div>
-            {activeProjects.length === 0 ? (
+            {roleProjects.length === 0 ? (
               <EmptyState title="No active projects" message="Projects will appear here once created." />
             ) : (
               <div className="space-y-2.5">
-                {activeProjects.slice(0, 2).map((project, idx) => (
+                {roleProjects.slice(0, 2).map((project, idx) => (
                   <ProjectCard
                     key={project.id}
                     project={project}
