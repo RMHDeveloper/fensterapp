@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Calendar, MapPin, Phone, CheckCircle2, Star, Navigation, MessageCircle, Pencil, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Calendar, MapPin, Phone, CheckCircle2, Star, Navigation, MessageCircle, Pencil, AlertTriangle, X } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
 import { StatusBadge } from '../../components/badges/StatusBadge'
@@ -242,6 +242,13 @@ export default function ProjectDetailScreen() {
   const [showEditClient,  setShowEditClient]  = useState(false)
   const [editClientName,  setEditClientName]  = useState('')
 
+  // MD-only edit mode — unlocks editing of payment fields and note/activity text
+  const isMD = user?.role === 'owner'
+  const [mdEditMode, setMdEditMode] = useState(false)
+  const [editPaid,    setEditPaid]    = useState('')
+  const [editBalance, setEditBalance] = useState('')
+  const [editingNote, setEditingNote] = useState<{ taskId: string; index: number; text: string } | null>(null)
+
   const activeFlowTask = tasks.find(t => t.flowStage && t.flowStage !== 'completed')
 
   // Add Task form state
@@ -258,6 +265,31 @@ export default function ProjectDetailScreen() {
       return
     }
     window.location.href = `tel:${project.clientPhone}`
+  }
+
+  function handleSavePayment(advTaskId: string) {
+    const paid = Number(editPaid.replace(/[^0-9]/g, '')) || 0
+    const balance = Number(editBalance.replace(/[^0-9]/g, '')) || 0
+    updateTask(advTaskId, { paidAmount: paid, balanceAmount: balance })
+    setSnack({ open: true, msg: 'Payment updated.' })
+  }
+
+  function handleSaveNote(taskId: string, index: number, newText: string) {
+    const task = tasks.find(t => t.id === taskId)
+    if (!task?.statusHistory) return
+    const history = [...task.statusHistory]
+    history[index] = { ...history[index], note: newText }
+    updateTask(taskId, { statusHistory: history })
+    setEditingNote(null)
+    setSnack({ open: true, msg: 'Note updated.' })
+  }
+
+  function handleDeleteNote(taskId: string, index: number) {
+    const task = tasks.find(t => t.id === taskId)
+    if (!task?.statusHistory) return
+    const history = task.statusHistory.filter((_, i) => i !== index)
+    updateTask(taskId, { statusHistory: history })
+    setSnack({ open: true, msg: 'Entry removed.' })
   }
 
 function handleSaveTask() {
@@ -361,6 +393,30 @@ function handleSaveTask() {
             </div>
             {paid === 0 && <p className="text-xs text-slate-400 italic text-center">No payment received yet.</p>}
             {paid > 0 && balance === 0 && <p className="text-xs text-emerald-600 font-semibold text-center">✓ Fully paid</p>}
+
+            {mdEditMode && advTask && (
+              <div className="border-t border-slate-100 pt-2.5 space-y-2">
+                <p className="text-[10px] font-bold text-blue-500 uppercase">Edit Payment (MD)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-400 mb-1 block">Paid (₹)</label>
+                    <input type="text" inputMode="numeric"
+                      defaultValue={paid} onChange={e => setEditPaid(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-blue-400" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 mb-1 block">Balance (₹)</label>
+                    <input type="text" inputMode="numeric"
+                      defaultValue={balance} onChange={e => setEditBalance(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-blue-400" />
+                  </div>
+                </div>
+                <button onClick={() => handleSavePayment(advTask.id)}
+                  className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-xs font-bold active:opacity-90">
+                  Save Payment
+                </button>
+              </div>
+            )}
           </div>
         )
         return <p className="text-sm text-slate-400 italic">No payment record.</p>
@@ -378,7 +434,7 @@ function handleSaveTask() {
       children: (() => {
         const allowedRoles = user?.role ? HISTORY_VISIBLE_FOR[user.role] : undefined
         const allEntries = tasks
-          .flatMap(t => (t.statusHistory ?? []).map(e => ({ ...e, taskTitle: t.title })))
+          .flatMap(t => (t.statusHistory ?? []).map((e, historyIndex) => ({ ...e, taskTitle: t.title, taskId: t.id, historyIndex })))
           .filter(e => (e.note || (e.files && e.files.length > 0)) && (!allowedRoles || allowedRoles.includes(e.updatedRole)))
           .sort((a, b) => parseTimestamp(b.updatedAt) - parseTimestamp(a.updatedAt))
         if (allEntries.length === 0) {
@@ -404,10 +460,40 @@ function handleSaveTask() {
                     <div className="w-2 h-2 rounded-full bg-blue-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-bold text-blue-500 uppercase mb-0.5">
-                      {getActivityLabel(entry.stage, entry.status)}
-                    </p>
-                    {entry.note && <p className="text-xs text-slate-700 leading-relaxed">{entry.note}</p>}
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[10px] font-bold text-blue-500 uppercase mb-0.5">
+                        {getActivityLabel(entry.stage, entry.status)}
+                      </p>
+                      {mdEditMode && (
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => setEditingNote({ taskId: entry.taskId, index: entry.historyIndex, text: entry.note ?? '' })}
+                            className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center active:bg-slate-200">
+                            <Pencil size={10} className="text-slate-500" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteNote(entry.taskId, entry.historyIndex)}
+                            className="w-6 h-6 rounded-md bg-red-50 flex items-center justify-center active:bg-red-100">
+                            <X size={11} className="text-red-500" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {editingNote?.taskId === entry.taskId && editingNote?.index === entry.historyIndex ? (
+                      <div className="space-y-1.5">
+                        <textarea rows={2} value={editingNote.text}
+                          onChange={e => setEditingNote({ ...editingNote, text: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs resize-none focus:outline-none focus:border-blue-400" />
+                        <div className="flex gap-1.5">
+                          <button onClick={() => handleSaveNote(entry.taskId, entry.historyIndex, editingNote.text)}
+                            className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-[11px] font-bold">Save</button>
+                          <button onClick={() => setEditingNote(null)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-bold">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      entry.note && <p className="text-xs text-slate-700 leading-relaxed">{entry.note}</p>
+                    )}
                     {entry.files && entry.files.length > 0 && (
                       <div className="mt-1 space-y-0.5">
                         {entry.files.map((f, fi) => (
@@ -573,11 +659,17 @@ function handleSaveTask() {
     <div className="min-h-screen bg-[#f8f9fa] pb-24">
       {/* Header */}
       <div className="bg-blue-700 px-4 pt-12 pb-6">
-        {/* Top row: back only */}
-        <div className="flex items-center gap-3 mb-3">
+        {/* Top row: back + MD-only edit toggle */}
+        <div className="flex items-center justify-between gap-3 mb-3">
           <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center active:bg-white/30 flex-shrink-0">
             <ArrowLeft size={18} className="text-white" />
           </button>
+          {isMD && (
+            <button onClick={() => setMdEditMode(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold active:opacity-80 ${mdEditMode ? 'bg-white text-blue-700' : 'bg-white/20 text-white'}`}>
+              <Pencil size={13} /> {mdEditMode ? 'Done Editing' : 'Edit'}
+            </button>
+          )}
         </div>
 
         {/* Two-column: project info (left) + progress circle (right) */}
