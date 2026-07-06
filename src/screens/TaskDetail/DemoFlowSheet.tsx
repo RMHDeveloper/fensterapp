@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   X, CheckCircle2, AlertTriangle, Camera, Clock, Send, PhoneCall,
-  Package, Wrench, CreditCard, Eye, Download, FileText,
+  Package, Wrench, CreditCard, Eye, Download, FileText, Copy, Check,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useAppData } from '../../context/AppDataContext'
@@ -465,6 +465,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [error, setError] = useState('')
   const [showLossWarn, setShowLossWarn] = useState(false)
   const lossConfirmCb = useRef<(() => void) | null>(null)
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+
+  function copyToClipboard(key: string, text: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedKey(key)
+      setTimeout(() => setCopiedKey(k => (k === key ? null : k)), 2000)
+    })
+  }
 
   // ── SITE ASSIGN ─────────────────────────────────────────────────────────────
   const [engineerName,   setEngineerName]   = useState('Kavya M')
@@ -1997,7 +2005,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   placeholder="e.g. 175000" className={inp} />
               </div>
 
-              <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx"
+              <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png"
                 files={quotFiles} onChange={setQuotFiles} maxFiles={1}
                 helperText="Upload quotation PDF or document — required" />
 
@@ -2181,7 +2189,15 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               4a. OWNER APPROVAL — Owner only
           ════════════════════════════════════════════════════════════════ */}
-          {displayStage === 'owner_approval' && role === 'owner' && (
+          {displayStage === 'owner_approval' && role === 'owner' && flowStatus === 'rejected' && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-4 space-y-1">
+              <p className="text-xs font-bold text-red-600 uppercase">You Rejected This Quotation</p>
+              <p className="text-sm text-red-700">{task.ownerRejectionReason}</p>
+              <p className="text-xs text-red-500 pt-1">Waiting for Sales Team to revise and resend.</p>
+            </div>
+          )}
+
+          {displayStage === 'owner_approval' && role === 'owner' && flowStatus !== 'rejected' && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quotation Review</p>
 
@@ -2366,7 +2382,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   placeholder="e.g. 160000" className={inp} />
               </div>
 
-              <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx" files={quotFiles} onChange={setQuotFiles} maxFiles={1} helperText="Upload revised quotation document" />
+              <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png" files={quotFiles} onChange={setQuotFiles} maxFiles={1} helperText="Upload revised quotation document" />
 
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pt-1">Cost Breakdown {req}</p>
 
@@ -2502,7 +2518,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           placeholder="e.g. 170000" className={inp} />
                       </div>
 
-                      <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx"
+                      <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png"
                         files={quotFiles} onChange={setQuotFiles} maxFiles={1} helperText="Upload revised quotation document" />
 
                       <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cost Breakdown (optional)</p>
@@ -2691,10 +2707,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           </div>
                         )}
 
-                        <button type="button" onClick={handleShareToWhatsApp}
-                          className="w-full py-4 rounded-2xl bg-green-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
-                          <PhoneCall size={16} /> Share via WhatsApp
-                        </button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button type="button" onClick={() => copyToClipboard('quotation_send', waMsg)}
+                            className="py-4 rounded-2xl bg-slate-100 text-slate-700 text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
+                            {copiedKey === 'quotation_send' ? <><Check size={16} /> Copied!</> : <><Copy size={16} /> Copy to Clipboard</>}
+                          </button>
+                          <button type="button" onClick={handleShareToWhatsApp}
+                            className="py-4 rounded-2xl bg-green-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
+                            <PhoneCall size={16} /> WhatsApp
+                          </button>
+                        </div>
 
                         <button type="button" onClick={() => setShowSentConfirm(true)}
                           className="w-full py-4 rounded-2xl bg-slate-800 text-white text-sm font-extrabold active:opacity-90">
@@ -4043,14 +4065,21 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 const reviewLink = 'https://maps.app.goo.gl/SRqthqnsFTo5UdHL9'
                 const msg = `Hello ${clientName},\nThank you for choosing Fenster.\n\nWe would be happy if you could share your experience with us by leaving a Google review:\n${reviewLink}\n\nRegards,\nFenster Team`
                 return (
-                  <button type="button"
-                    onClick={() => {
-                      window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`, '_blank')
-                      save({}, 'Google review link sent to client.')
-                    }}
-                    className="w-full py-4 rounded-2xl bg-amber-500 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
-                    ⭐ Send Google Review Link
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button"
+                      onClick={() => copyToClipboard('google_review', msg)}
+                      className="py-4 rounded-2xl bg-slate-100 text-slate-700 text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
+                      {copiedKey === 'google_review' ? <><Check size={16} /> Copied!</> : <><Copy size={16} /> Copy to Clipboard</>}
+                    </button>
+                    <button type="button"
+                      onClick={() => {
+                        window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`, '_blank')
+                        save({}, 'Google review link sent to client.')
+                      }}
+                      className="py-4 rounded-2xl bg-amber-500 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
+                      ⭐ Send via WhatsApp
+                    </button>
+                  </div>
                 )
               })()}
             </div>

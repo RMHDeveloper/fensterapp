@@ -84,6 +84,15 @@ export async function storeFile(file: File): Promise<string> {
   return storeLocally(file)
 }
 
+// Uploaded remote URLs carry a `<timestamp>_<random>_<originalName>` filename
+// to avoid server-side overwrites — strip that prefix back off for display.
+export function getDisplayFileName(nameOrUrl: string): string {
+  const raw = nameOrUrl.startsWith('http')
+    ? decodeURIComponent(nameOrUrl.split('/').pop() ?? nameOrUrl)
+    : nameOrUrl
+  return raw.replace(/^\d+_[a-z0-9]{4,8}_/i, '')
+}
+
 export function getFileUrl(nameOrUrl: string): string | undefined {
   if (nameOrUrl.startsWith('http')) return nameOrUrl
   return load()[nameOrUrl]?.dataUrl

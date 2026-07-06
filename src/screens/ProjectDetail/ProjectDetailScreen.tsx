@@ -12,6 +12,7 @@ import { Snackbar } from '../../components/feedback/Snackbar'
 import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { MediaPreviewList } from '../../components/media/MediaPreviewList'
 import { voicePreviewStore } from '../../utils/sessionStore'
+import { getDisplayFileName } from '../../utils/fileStorage'
 import type { TimelineItem } from '../../components/layout/Timeline'
 import type { Task, TaskStatus, Project } from '../../types'
 
@@ -388,7 +389,7 @@ function handleSaveTask() {
                       <div className="mt-1 space-y-0.5">
                         {entry.files.map((f, fi) => (
                           <p key={fi} className="text-[10px] text-slate-400">
-                            📎 {f}{timeStr ? <span className="text-slate-300"> · {timeStr}</span> : null}
+                            📎 {getDisplayFileName(f)}{timeStr ? <span className="text-slate-300"> · {timeStr}</span> : null}
                           </p>
                         ))}
                       </div>

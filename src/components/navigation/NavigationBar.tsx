@@ -1,4 +1,4 @@
-import { LayoutDashboard, CalendarCheck, FolderOpen, Layers, Settings, Users, MapPin, CheckSquare } from 'lucide-react'
+import { LayoutDashboard, CalendarCheck, FolderOpen, Layers, Settings, Users, MapPin, CheckSquare, UserCheck } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import type { UserRole } from '../../types'
@@ -9,6 +9,7 @@ const ALL_ITEMS: NavItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard'   },
   { icon: LayoutDashboard, label: 'Task',      path: '/home'        },
   { icon: CalendarCheck,   label: 'Today',     path: '/tasks'       },
+  { icon: UserCheck,       label: 'Qualified', path: '/leads/qualified' },
   { icon: Users,           label: 'Leads',     path: '/leads'       },
   { icon: FolderOpen,      label: 'Projects',  path: '/projects'    },
   { icon: Layers,          label: 'Production',path: '/production'  },
@@ -20,7 +21,7 @@ const ALL_ITEMS: NavItem[] = [
 const ROLE_PATHS: Record<UserRole, string[]> = {
   // MD/ED: leads replace today; approvals in bar
   owner:                ['/dashboard', '/leads', '/approvals', '/projects', '/settings'],
-  lead_manager:         ['/home', '/tasks', '/leads',       '/projects',   '/settings'],
+  lead_manager:         ['/home', '/leads/qualified', '/leads', '/projects', '/settings'],
   site_engineer:        ['/home', '/tasks', '/site-visits', '/projects',   '/settings'],
   production_admin:     ['/home', '/tasks', '/production',  '/projects',   '/settings'],
   production_manager:   ['/home', '/tasks', '/production',  '/projects',   '/settings'],
@@ -57,7 +58,7 @@ export function NavigationBar() {
     >
       <div className="flex items-center px-1">
         {items.map(({ icon: Icon, label, path }) => {
-          const active = pathname === path || (path !== '/home' && pathname.startsWith(path))
+          const active = pathname === path || (path !== '/home' && path !== '/leads' && pathname.startsWith(path))
           return (
             <button
               key={path}

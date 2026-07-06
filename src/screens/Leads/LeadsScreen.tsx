@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, UserPlus, HardHat, Phone, Pencil, FileDown } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { PermissionGate } from '../../components/layout/PermissionGate'
 import { StatusBadge } from '../../components/badges/StatusBadge'
 import { FilterChips } from '../../components/forms/FilterChips'
@@ -80,6 +80,8 @@ export default function LeadsScreen() {
   const { leads, projects, updateLeadStatus, updateLead, addProject, addTask, addLead } = useAppData()
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const isQualifiedView = pathname === '/leads/qualified'
 
   const isMdEd = user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED')
   const isLO   = user?.role === 'lead_manager'
@@ -149,6 +151,11 @@ export default function LeadsScreen() {
 
   const filtered = leads.filter(l => {
     if (user?.role === 'lead_manager' && l.assignee && l.assignee !== user.name) return false
+    const matchSearchOnly = !search
+      || l.name.toLowerCase().includes(search.toLowerCase())
+      || l.phone.includes(search)
+      || l.city.toLowerCase().includes(search.toLowerCase())
+    if (isQualifiedView) return l.status === 'qualified' && matchSearchOnly
     const proj = projects.find(p => p.leadId === l.id)
     const projStage = proj?.currentStage
     let matchFilter = false
@@ -407,7 +414,11 @@ export default function LeadsScreen() {
             </button>
           </PermissionGate>
         </div>
-        <FilterChips chips={CHIPS} active={filter} onChange={setFilter} />
+        {isQualifiedView ? (
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Qualified Leads</p>
+        ) : (
+          <FilterChips chips={CHIPS} active={filter} onChange={setFilter} />
+        )}
       </div>
 
       <div className="px-4 pt-4 space-y-2.5">
