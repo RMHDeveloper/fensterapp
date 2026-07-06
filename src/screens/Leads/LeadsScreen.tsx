@@ -604,8 +604,12 @@ export default function LeadsScreen() {
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Phone Number *</label>
-            <input type="tel" value={editPhone}
-              onChange={e => { setEditPhone(e.target.value); setEditPhoneError('') }}
+            <input type="tel" value={editPhone} maxLength={13}
+              onChange={e => {
+                const val = e.target.value.replace(/[^0-9+\-\s]/g, '')
+                setEditPhone(val)
+                setEditPhoneError(validatePhone(val))
+              }}
               placeholder="9876543210"
               className={`w-full bg-slate-50 border rounded-xl px-4 py-3 text-sm focus:outline-none ${editPhoneError ? 'border-red-400 focus:border-red-400' : 'border-slate-200 focus:border-indigo-400'}`} />
             {editPhoneError && <p className="text-xs text-red-500 mt-1">{editPhoneError}</p>}
@@ -720,8 +724,12 @@ export default function LeadsScreen() {
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Phone Number *</label>
-            <input type="tel" value={newPhone}
-              onChange={e => { setNewPhone(e.target.value); setNewPhoneError('') }}
+            <input type="tel" value={newPhone} maxLength={13}
+              onChange={e => {
+                const val = e.target.value.replace(/[^0-9+\-\s]/g, '')
+                setNewPhone(val)
+                setNewPhoneError(validatePhone(val))
+              }}
               placeholder="9876543210"
               className={`w-full bg-slate-50 border rounded-xl px-4 py-3 text-sm focus:outline-none ${newPhoneError ? 'border-red-400 focus:border-red-400' : 'border-slate-200 focus:border-indigo-400'}`} />
             {newPhoneError && <p className="text-xs text-red-500 mt-1">{newPhoneError}</p>}
