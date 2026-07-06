@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, UserPlus, HardHat, Phone, Pencil, FileDown } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
@@ -11,8 +11,9 @@ import { BottomSheet } from '../../components/feedback/BottomSheet'
 import { Dialog } from '../../components/feedback/Dialog'
 import { Snackbar } from '../../components/feedback/Snackbar'
 import { AppHeader } from '../../components/layout/AppHeader'
+import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { loadManagedUsers } from '../../utils/userStorage'
-import type { Lead, LeadStatus, LeadSource, LeadInterest } from '../../types'
+import type { Lead, LeadStatus, LeadSource, LeadInterest, Task } from '../../types'
 
 type Filter = 'active' | 'contact' | 'measurement' | 'quotation' | 'lost'
 
@@ -77,7 +78,7 @@ function InterestBadge({ interest }: { interest?: LeadInterest }) {
 }
 
 export default function LeadsScreen() {
-  const { leads, projects, updateLeadStatus, updateLead, addProject, addTask, addLead } = useAppData()
+  const { leads, projects, tasks, updateLeadStatus, updateLead, addProject, addTask, updateTask, addLead } = useAppData()
   const { user } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -94,9 +95,22 @@ export default function LeadsScreen() {
   const [search,   setSearch]   = useState('')
   const [selected, setSelected] = useState<Lead | null>(null)
   const [showNew,  setShowNew]  = useState(false)
-  const [showConvert, setShowConvert] = useState(false)
-  const [convertingLead, setConvertingLead] = useState<Lead | null>(null)
+  const [pendingAssignProjectId, setPendingAssignProjectId] = useState<string | null>(null)
+  const [assignFlowTaskId, setAssignFlowTaskId] = useState<string | null>(null)
+  const [showStatusOptions, setShowStatusOptions] = useState(false)
   const [snack, setSnack] = useState({ open: false, msg: '' })
+
+  // Once the project + "Assign Site Engineer" task exist, open the real flow popup for it
+  useEffect(() => {
+    if (!pendingAssignProjectId) return
+    const t = tasks.find(t => t.projectId === pendingAssignProjectId && t.flowStage === 'site_assign')
+    if (t) {
+      setAssignFlowTaskId(t.id)
+      setPendingAssignProjectId(null)
+    }
+  }, [tasks, pendingAssignProjectId])
+
+  const assignFlowTask = assignFlowTaskId ? (tasks.find(t => t.id === assignFlowTaskId) ?? null) : null
 
   // Contacted → followup date dialog
   const [showFollowupDialog, setShowFollowupDialog]   = useState(false)
@@ -142,12 +156,6 @@ export default function LeadsScreen() {
   const [editInterest,  setEditInterest]  = useState<LeadInterest>('medium')
   const [editAssignee,  setEditAssignee]  = useState('')
 
-  // Convert to project form
-  const [projName,     setProjName]     = useState('')
-  const [projReq,      setProjReq]      = useState('')
-  const [projCity,     setProjCity]     = useState('')
-  const [projAssignee, setProjAssignee] = useState('')
-  const [projNote,     setProjNote]     = useState('')
 
   const filtered = leads.filter(l => {
     if (user?.role === 'lead_manager' && l.assignee && l.assignee !== user.name) return false
@@ -295,39 +303,29 @@ export default function LeadsScreen() {
     setSnack({ open: true, msg: 'Lead updated!' })
   }
 
-  function openConvert() {
+  // Qualified lead → create the project behind the scenes, then jump straight into
+  // the real "Assign Site Engineer" flow popup (same one used later on the project page)
+  function handleAssignSiteEngineer() {
     if (!selected) return
-    setConvertingLead(selected)
-    setProjName(selected.name + ' Project')
-    setProjReq(selected.requirement ?? '')
-    setProjCity(selected.city)
-    setProjAssignee(selected.assignee)
-    setProjNote('')
-    setSelected(null)
-    setShowConvert(true)
-  }
-
-  function handleSaveConvert() {
-    if (!projName.trim()) return
-    const lead = convertingLead
-    const name = projName.trim()
+    const lead = selected
+    const name = `${lead.name} Project`
 
     const projectId = addProject({
       number:       `FC-${String(Date.now()).slice(-4)}`,
       name,
-      client:       lead?.name ?? name,
-      clientPhone:  lead?.phone ?? '',
+      client:       lead.name,
+      clientPhone:  lead.phone,
       status:       'new',
       progress:     5,
       pendingTasks: 1,
       dueDate:      '—',
       value:        0,
       stage:        'Lead Converted',
-      city:         projCity,
-      productType:  projReq || '',
+      city:         lead.city,
+      productType:  lead.requirement ?? '',
       createdAt:    new Date().toLocaleDateString('en-IN'),
-      description:  projNote || projReq,
-      leadId:       lead?.id,
+      description:  lead.notes ?? lead.requirement ?? '',
+      leadId:       lead.id,
     })
 
     addTask({
@@ -337,26 +335,33 @@ export default function LeadsScreen() {
       status:            'pending',
       priority:          'high',
       dueDate:           'Today',
-      assignee:          projAssignee || lead?.assignee || '',
+      assignee:          lead.assignee ?? '',
       projectId,
       projectName:       name,
-      location:          projCity,
+      location:          lead.city,
       requiredProofType: 'none',
       proofUploads:      [],
       createdAt:         new Date().toLocaleDateString('en-IN'),
       flowStage:         'site_assign',
       flowStatus:        'ready',
-      clientName:        lead?.name ?? name,
-      clientPhone:       lead?.phone ?? '',
-      clientEmail:       lead?.email,
-      clientRequirement: projReq,
+      clientName:        lead.name,
+      clientPhone:       lead.phone,
+      clientEmail:       lead.email,
+      clientRequirement: lead.requirement,
     })
 
-    if (lead) updateLeadStatus(lead.id, 'won')
-    setShowConvert(false)
-    setConvertingLead(null)
-    setSnack({ open: true, msg: 'Project created! Site Engineer assignment task ready.' })
-    setTimeout(() => navigate(`/project/${projectId}`), 800)
+    updateLeadStatus(lead.id, 'won')
+    setSelected(null)
+    setPendingAssignProjectId(projectId)
+  }
+
+  function handleAssignFlowUpdate(updates: Partial<Task>) {
+    if (!assignFlowTask) return
+    const projectId = assignFlowTask.projectId
+    updateTask(assignFlowTask.id, updates)
+    setAssignFlowTaskId(null)
+    setSnack({ open: true, msg: 'Site Engineer assigned!' })
+    if (projectId) setTimeout(() => navigate(`/project/${projectId}`), 500)
   }
 
   function exportCSV(filename: string, rows: (string | number)[][]) {
@@ -423,7 +428,7 @@ export default function LeadsScreen() {
 
       <div className="px-4 pt-4 space-y-2.5">
         {filtered.map(lead => (
-          <button key={lead.id} onClick={() => setSelected(lead)}
+          <button key={lead.id} onClick={() => { setSelected(lead); setShowStatusOptions(false) }}
             className="w-full text-left bg-white rounded-2xl shadow-card border border-slate-100 p-4 active:scale-[0.98] transition-transform">
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
@@ -478,6 +483,15 @@ export default function LeadsScreen() {
               )}
             </div>
 
+            {selected.status !== 'won' && selected.status !== 'lost' && (
+              <PermissionGate permission="edit_lead">
+                <button onClick={() => setShowStatusOptions(v => !v)}
+                  className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold active:bg-indigo-100">
+                  Update Status
+                </button>
+              </PermissionGate>
+            )}
+
             <div className="bg-slate-50 rounded-2xl p-4 space-y-2.5">
               {[
                 { label: 'Phone',       value: selected.phone },
@@ -499,13 +513,13 @@ export default function LeadsScreen() {
               ))}
             </div>
 
-            {selected.status !== 'won' && selected.status !== 'lost' && (
+            {showStatusOptions && selected.status !== 'won' && selected.status !== 'lost' && (
               <PermissionGate permission="edit_lead">
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Update Status</label>
+                  <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Set Status</label>
                   <div className="grid grid-cols-2 gap-2">
                     {(['new', 'contacted', 'qualified', 'lost'] as const).map(s => (
-                      <button key={s} onClick={() => handleStatusClick(s)}
+                      <button key={s} onClick={() => { handleStatusClick(s); setShowStatusOptions(false) }}
                         className={`py-3 rounded-xl text-xs font-bold border-2 capitalize
                           ${selected.status === s
                             ? 'bg-indigo-600 text-white border-indigo-600'
@@ -529,7 +543,7 @@ export default function LeadsScreen() {
             {selected.status === 'qualified' && (
               <PermissionGate permission="create_project">
                 <button
-                  onClick={openConvert}
+                  onClick={handleAssignSiteEngineer}
                   className="w-full flex items-center justify-center gap-2 bg-teal-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-teal-700">
                   <UserPlus size={16} /> Assign to Site Engineer →
                 </button>
@@ -685,45 +699,15 @@ export default function LeadsScreen() {
         </div>
       </BottomSheet>
 
-      {/* ── Convert to Project Sheet ── */}
-      <BottomSheet isOpen={showConvert} onClose={() => setShowConvert(false)} title="Assign Site Engineer" height="full">
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Project Name *</label>
-            <input value={projName} onChange={e => setProjName(e.target.value)} placeholder="e.g. Rajesh Villa Windows"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Requirement</label>
-            <input value={projReq} onChange={e => setProjReq(e.target.value)} placeholder="What product/work is needed"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">City</label>
-            <input value={projCity} onChange={e => setProjCity(e.target.value)} placeholder="Chennai"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Lead Owner</label>
-            <select value={projAssignee} onChange={e => setProjAssignee(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 appearance-none">
-              <option value="">Select lead owner…</option>
-              {leadManagers.map(name => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Note <span className="text-slate-300 font-normal">(optional)</span></label>
-            <textarea rows={2} value={projNote} onChange={e => setProjNote(e.target.value)} placeholder="Any important notes…"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
-          </div>
-          <button onClick={handleSaveConvert} disabled={!projName.trim() || !projAssignee.trim()}
-            className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-indigo-700 disabled:opacity-50">
-            Assign Site Engineer →
-          </button>
-        </div>
-      </BottomSheet>
+      {/* ── Assign Site Engineer — real flow popup, same one used on the project page ── */}
+      {assignFlowTask && (
+        <DemoFlowSheet
+          isOpen={!!assignFlowTask}
+          onClose={() => setAssignFlowTaskId(null)}
+          task={assignFlowTask}
+          onUpdate={handleAssignFlowUpdate}
+        />
+      )}
 
       {/* ── New Lead Sheet ── */}
       <BottomSheet isOpen={showNew} onClose={() => setShowNew(false)} title="Add New Lead" height="full">
