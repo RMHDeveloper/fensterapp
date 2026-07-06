@@ -7,7 +7,7 @@ interface NavItem { icon: React.ElementType; label: string; path: string }
 
 const ALL_ITEMS: NavItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard'   },
-  { icon: LayoutDashboard, label: 'Home',      path: '/home'        },
+  { icon: LayoutDashboard, label: 'Task',      path: '/home'        },
   { icon: CalendarCheck,   label: 'Today',     path: '/tasks'       },
   { icon: Users,           label: 'Leads',     path: '/leads'       },
   { icon: FolderOpen,      label: 'Projects',  path: '/projects'    },

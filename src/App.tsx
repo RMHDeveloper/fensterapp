@@ -30,11 +30,10 @@ import UserManagementScreen         from './screens/Settings/UserManagementScree
 import ApprovalsScreen              from './screens/Approvals/ApprovalsScreen'
 import OwnerDashboardScreen         from './screens/Dashboard/OwnerDashboardScreen'
 
-// Home route — MDs land on the Dashboard, everyone else on Home
+// Home route — owners (MD/ED) land on the Dashboard, everyone else on Home
 function HomeRoute() {
   const { user } = useAuth()
-  const isMD = user?.role === 'owner' && user?.displayRole?.includes('MD')
-  return isMD ? <Navigate to="/dashboard" replace /> : <HomeScreen />
+  return user?.role === 'owner' ? <Navigate to="/dashboard" replace /> : <HomeScreen />
 }
 
 // Dashboard shell — only rendered after login
