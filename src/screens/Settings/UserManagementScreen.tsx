@@ -67,7 +67,7 @@ export default function UserManagementScreen() {
       setSyncing(true)
       getAllManagedUsers()
         .then(remote => { if (remote.length > 0) { setUsers(remote); saveManagedUsers(remote) } })
-        .catch(() => {})
+        .catch(() => setSnack({ open: true, msg: 'Cloud sync failed. Using local data.', type: 'error' }))
         .finally(() => setSyncing(false))
     }
   }, [])
@@ -76,8 +76,11 @@ export default function UserManagementScreen() {
     if (!isSupabaseConfigured) { setUsers(loadManagedUsers()); return }
     setSyncing(true)
     getAllManagedUsers()
-      .then(remote => { if (remote.length > 0) { setUsers(remote); saveManagedUsers(remote) } })
-      .catch(() => {})
+      .then(remote => {
+        if (remote.length > 0) { setUsers(remote); saveManagedUsers(remote) }
+        setSnack({ open: true, msg: 'Users synced from cloud.', type: 'success' })
+      })
+      .catch(() => setSnack({ open: true, msg: 'Cloud sync failed. Using local data.', type: 'error' }))
       .finally(() => setSyncing(false))
   }
 

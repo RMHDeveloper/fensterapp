@@ -251,7 +251,7 @@ export default function ProjectDetailScreen() {
     }, undefined)
 
   const [showAddTask,     setShowAddTask]     = useState(false)
-  const [snack,           setSnack]           = useState({ open: false, msg: '' })
+  const [snack,           setSnack]           = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
   const [flowTaskId,      setFlowTaskId]      = useState<string | null>(null)
   const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
   const [editDateType,    setEditDateType]    = useState<'start' | 'due' | null>(null)
@@ -279,7 +279,7 @@ export default function ProjectDetailScreen() {
 
   function handleCallClient() {
     if (!project?.clientPhone) {
-      setSnack({ open: true, msg: 'Phone number not available' })
+      setSnack({ open: true, msg: 'Phone number not available', type: 'error' })
       return
     }
     window.location.href = `tel:${project.clientPhone}`
@@ -296,7 +296,7 @@ export default function ProjectDetailScreen() {
         ...(project.costBreakdown ? { costBreakdown: { ...project.costBreakdown, quotationAmount: quoted } } : {}),
       })
     }
-    setSnack({ open: true, msg: 'Payment updated.' })
+    setSnack({ open: true, msg: 'Payment updated.', type: 'success' })
   }
 
   function handleSaveNote(taskId: string, index: number, newText: string) {
@@ -306,7 +306,7 @@ export default function ProjectDetailScreen() {
     history[index] = { ...history[index], note: newText }
     updateTask(taskId, { statusHistory: history })
     setEditingNote(null)
-    setSnack({ open: true, msg: 'Note updated.' })
+    setSnack({ open: true, msg: 'Note updated.', type: 'success' })
   }
 
   function handleDeleteNote(taskId: string, index: number) {
@@ -314,7 +314,7 @@ export default function ProjectDetailScreen() {
     if (!task?.statusHistory) return
     const history = task.statusHistory.filter((_, i) => i !== index)
     updateTask(taskId, { statusHistory: history })
-    setSnack({ open: true, msg: 'Entry removed.' })
+    setSnack({ open: true, msg: 'Entry removed.', type: 'success' })
   }
 
 function handleSaveTask() {
@@ -337,13 +337,13 @@ function handleSaveTask() {
     setShowAddTask(false)
     setTaskName(''); setTaskType('other'); setTaskAssignee('')
     setTaskDueDate(''); setTaskLocation(''); setTaskNote('')
-    setSnack({ open: true, msg: 'Task added successfully!' })
+    setSnack({ open: true, msg: 'Task added successfully!', type: 'success' })
   }
 
   function handleFlowUpdate(updates: Partial<Task>) {
     if (!flowTask) return
     updateTask(flowTask.id, updates)
-    setSnack({ open: true, msg: 'Status updated!' })
+    setSnack({ open: true, msg: 'Status updated!', type: 'success' })
     setFlowTaskId(null)
   }
 
@@ -669,7 +669,7 @@ function handleSaveTask() {
             { label: 'Project No.', value: project?.number      },
             { label: 'Client',      value: project?.client      },
             { label: 'Phone',       value: project?.clientPhone },
-            { label: 'Product',     value: project?.productType },
+            { label: 'Product',     value: project?.productType ?? '—' },
             { label: 'City',        value: project?.city        },
             { label: 'Created',     value: project?.createdAt   },
             { label: 'Due Date',    value: project?.dueDate     },
@@ -968,7 +968,7 @@ function handleSaveTask() {
           <button onClick={() => {
             if (!editDateValue) return
             updateProject(id, editDateType === 'start' ? { startDate: editDateValue } : { dueDate: editDateValue })
-            setSnack({ open: true, msg: `${editDateType === 'start' ? 'Start' : 'Due'} date updated!` })
+            setSnack({ open: true, msg: `${editDateType === 'start' ? 'Start' : 'Due'} date updated!`, type: 'success' })
             setEditDateType(null)
           }} className="w-full bg-blue-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-blue-700">
             Save Date
@@ -985,7 +985,7 @@ function handleSaveTask() {
           <button onClick={() => {
             if (!editClientName.trim()) return
             updateProject(id, { client: editClientName.trim() })
-            setSnack({ open: true, msg: 'Client name updated!' })
+            setSnack({ open: true, msg: 'Client name updated!', type: 'success' })
             setShowEditClient(false)
           }} className="w-full bg-blue-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-blue-700">
             Save Name
@@ -993,7 +993,7 @@ function handleSaveTask() {
         </div>
       </BottomSheet>
 
-      <Snackbar isOpen={snack.open} message={snack.msg} type="success" onClose={() => setSnack(s => ({ ...s, open: false }))} />
+      <Snackbar isOpen={snack.open} message={snack.msg} type={snack.type} onClose={() => setSnack(s => ({ ...s, open: false }))} />
     </div>
   )
 }

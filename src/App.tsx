@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider }             from './context/AuthContext'
 import { AppDataProvider }          from './context/AppDataContext'
 import { OfflineBanner }            from './components/pwa/OfflineBanner'
+import { DbBanner }               from './components/pwa/DbBanner'
 import { InstallAppPrompt }         from './components/pwa/InstallAppPrompt'
 import { PWAUpdatePrompt }          from './components/pwa/PWAUpdatePrompt'
 import { SidebarNavigation }        from './components/navigation/SidebarNavigation'
@@ -98,6 +99,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <AppDataProvider>
+          <DbBanner />
           <OfflineBanner />
           <AppRoutes />
           <InstallAppPrompt />

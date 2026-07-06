@@ -32,7 +32,7 @@ export default function ProductionScreen() {
   const { user } = useAuth()
   const [filter, setFilter]       = useState<Filter>('all')
   const [flowTaskId, setFlowTaskId] = useState<string | null>(null)
-  const [snack, setSnack]         = useState({ open: false, msg: '' })
+  const [snack, setSnack]         = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
 
   const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
 
@@ -71,7 +71,7 @@ export default function ProductionScreen() {
     if (!flowTask) return
     updateTask(flowTask.id, updates)
     const nextStage = (updates.flowStage ?? flowTask.flowStage) as string
-    setSnack({ open: true, msg: STAGE_MSG[nextStage] ?? 'Production updated!' })
+    setSnack({ open: true, msg: STAGE_MSG[nextStage] ?? 'Production updated!', type: 'success' })
     setFlowTaskId(null)
   }
 
@@ -214,7 +214,7 @@ export default function ProductionScreen() {
       <Snackbar
         isOpen={snack.open}
         message={snack.msg}
-        type="success"
+        type={snack.type}
         onClose={() => setSnack(s => ({ ...s, open: false }))}
       />
     </div>
