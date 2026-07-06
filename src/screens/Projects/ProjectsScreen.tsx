@@ -55,14 +55,15 @@ const NEGOTIATION_STAGES = new Set([
   'negotiation','client_approved','advance_payment','client_rejected','client_not_approved',
   'advance_payment_pending','waiting_advance_payment','owner_disapproved','md_ed_rejected'
 ])
-// Lead-originated projects stay in the Leads screen until advance payment is received (production_admin_check or later)
+// Lead-originated projects stay in Leads screen until client approves quotation
+// Once client_approved / advance_payment → project appears in Projects/Active for all
 const LEAD_PIPELINE_STAGES = new Set([
   'new_project','measurement','site_visit_assigned','site_visit','site_visit_completed',
   'waiting_site_visit_review','reschedule_requested','reschedule_approved',
   'quotation_preparation','quotation_sent_owner','quotation_sent_md_ed','owner_approved',
   'owner_disapproved','md_ed_approved','md_ed_rejected','sent_to_client',
-  'waiting_client_approval','quotation_rework','client_approved','client_rejected',
-  'client_not_approved','negotiation','advance_payment','advance_payment_pending','waiting_advance_payment',
+  'waiting_client_approval','quotation_rework','client_rejected',
+  'client_not_approved','negotiation',
 ])
 const PRE_PRODUCTION_STAGES = new Set([
   'production_sheet_preparation','production_admin_check','waiting_material_availability'

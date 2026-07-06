@@ -31,11 +31,13 @@ const LEAD_MEASUREMENT_STAGES = new Set([
 const LEAD_QUOTATION_STAGES = new Set([
   'quotation_preparation','quotation_sent_owner','quotation_sent_md_ed',
   'owner_approved','md_ed_approved','quotation_rework',
+  // Send-to-client phase: quotation with client, negotiating, or rejected
+  'sent_to_client','waiting_client_approval','client_rejected',
+  'client_not_approved','negotiation','owner_disapproved','md_ed_rejected',
 ])
+// Once client approves → project moves to Active in Projects screen (no longer in Leads filters)
 const LEAD_NEGOTIATION_STAGES = new Set([
-  'sent_to_client','waiting_client_approval','client_approved','client_rejected',
-  'client_not_approved','negotiation','advance_payment','advance_payment_pending',
-  'waiting_advance_payment','owner_disapproved','md_ed_rejected',
+  'client_approved','advance_payment','advance_payment_pending','waiting_advance_payment',
 ])
 
 const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
@@ -163,7 +165,6 @@ export default function LeadsScreen() {
         || !!(projStage && LEAD_MEASUREMENT_STAGES.has(projStage))
     } else if (filter === 'quotation') {
       matchFilter = !!(projStage && LEAD_QUOTATION_STAGES.has(projStage))
-        || !!(projStage && LEAD_NEGOTIATION_STAGES.has(projStage))
     }
     const matchSearch = !search
       || l.name.toLowerCase().includes(search.toLowerCase())
