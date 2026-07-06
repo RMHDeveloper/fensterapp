@@ -459,36 +459,54 @@ export default function LeadsScreen() {
       </div>
 
       <div className="px-4 pt-4 space-y-2.5">
-        {filtered.map(lead => (
-          <button key={lead.id} onClick={() => { setSelected(lead); setShowStatusOptions(false) }}
-            className="w-full text-left bg-white rounded-2xl shadow-card border border-slate-100 p-4 active:scale-[0.98] transition-transform">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                {/* Name | City */}
-                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                  <span className="text-sm font-bold text-slate-800">{lead.name}</span>
-                  <span className="text-slate-300 text-xs">|</span>
-                  <span className="text-xs text-slate-500">{lead.city}</span>
-                  {lead.interest && <InterestBadge interest={lead.interest} />}
+        {filtered.map(lead => {
+          const linkedProject = lead.status === 'won' ? projects.find(p => p.leadId === lead.id) : undefined
+          const showFlowUpdate = !!linkedProject?.pendingConversion
+          const showStatusUpdate = lead.status !== 'won' && lead.status !== 'lost'
+          return (
+            <div key={lead.id} onClick={() => { setSelected(lead); setShowStatusOptions(false) }}
+              className="w-full text-left bg-white rounded-2xl shadow-card border border-slate-100 p-4 active:scale-[0.98] transition-transform cursor-pointer">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  {/* Name | City */}
+                  <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                    <span className="text-sm font-bold text-slate-800">{lead.name}</span>
+                    <span className="text-slate-300 text-xs">|</span>
+                    <span className="text-xs text-slate-500">{lead.city}</span>
+                    {lead.interest && <InterestBadge interest={lead.interest} />}
+                  </div>
+                  {/* Requirement */}
+                  <p className="text-xs text-slate-600 truncate mb-1">{lead.requirement}</p>
+                  {/* Source */}
+                  <p className="text-[11px] text-slate-400">{SOURCE_LABEL[lead.source] ?? lead.source}</p>
+                  {/* Follow-up if set */}
+                  {lead.followUpDate && lead.followUpDate !== 'TBD' && (
+                    <p className="text-[11px] text-indigo-500 mt-0.5">📅 {lead.followUpDate}</p>
+                  )}
                 </div>
-                {/* Requirement */}
-                <p className="text-xs text-slate-600 truncate mb-1">{lead.requirement}</p>
-                {/* Source */}
-                <p className="text-[11px] text-slate-400">{SOURCE_LABEL[lead.source] ?? lead.source}</p>
-                {/* Follow-up if set */}
-                {lead.followUpDate && lead.followUpDate !== 'TBD' && (
-                  <p className="text-[11px] text-indigo-500 mt-0.5">📅 {lead.followUpDate}</p>
-                )}
+                <StatusBadge status={lead.status} size="xs" />
               </div>
-              <StatusBadge status={lead.status} size="xs" />
+              {lead.status === 'lost' && lead.lostReason && (
+                <p className="mt-2 text-[11px] text-red-500 border-t border-slate-100 pt-2">
+                  Lost reason: {lead.lostReason}
+                </p>
+              )}
+              {(showFlowUpdate || showStatusUpdate) && (
+                <PermissionGate permission="edit_lead">
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      if (showFlowUpdate && linkedProject) openLeadFlowUpdate(linkedProject.id)
+                      else { setSelected(lead); setShowStatusOptions(true) }
+                    }}
+                    className="w-full mt-2.5 py-2 rounded-lg border-2 border-indigo-200 bg-indigo-50 text-indigo-700 text-[11px] font-bold active:bg-indigo-100">
+                    Update Status
+                  </button>
+                </PermissionGate>
+              )}
             </div>
-            {lead.status === 'lost' && lead.lostReason && (
-              <p className="mt-2 text-[11px] text-red-500 border-t border-slate-100 pt-2">
-                Lost reason: {lead.lostReason}
-              </p>
-            )}
-          </button>
-        ))}
+          )
+        })}
 
         {filtered.length === 0 && (
           <div className="text-center py-16 text-slate-400">
