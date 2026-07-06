@@ -251,7 +251,7 @@ export default function ProjectsScreen() {
 
   function downloadProjectsExcel() {
     const canSeeCosts = canExport
-    const canSeeProfit = user?.role === 'owner'
+    const canSeeProfit = user?.role === 'owner' && !!(user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED'))
     let exportList = filtered
     if (exportFrom) exportList = exportList.filter(p => p.createdAt >= exportFrom)
     if (exportTo)   exportList = exportList.filter(p => p.createdAt <= exportTo + 'T23:59:59')

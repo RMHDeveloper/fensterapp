@@ -793,10 +793,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   }
 
   const STAGES_POST_CLIENT: string[] = ['advance_payment','production_assign','production_check','production_work','installation_assign','installation_update','final_payment','final_completion','completed']
-  // MD/ED, Admin, and LO can see cost breakdown; profit only for MD/ED and Admin
+  // MD/ED, Admin, and LO can see cost breakdown; profit only for MD/ED — not Admin, not LO, not anyone else
   const canSeeCosts  = role === 'owner' || role === 'lead_manager' || role === 'production_admin'
   const canEditCosts = role === 'owner'
-  const canSeeProfit = role === 'owner' || role === 'production_admin'
+  const canSeeProfit = role === 'owner' && (user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED'))
 
   function ContextStrip() {
     return (

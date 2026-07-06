@@ -230,10 +230,12 @@ export default function ProjectDetailScreen() {
   const { id = 'p1' } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { tasks: allTasks, payments, projects, mistakes: allMistakes, addTask, updateTask, updateProject } = useAppData()
-  const { user, can } = useAuth()
+  const { user } = useAuth()
 
   // Payment visibility: MD/ED/Admin (all `owner` role) and LO (lead_manager) only
   const canSeePayments = user?.role === 'owner' || user?.role === 'lead_manager'
+  // Profit is sensitive even among owner-role accounts — MD/ED only, not Admin, not LO, not anyone else
+  const canSeeProfit = user?.role === 'owner' && !!(user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED'))
 
   const project  = projects.find(p => p.id === id) ?? projects[0]
   const tasks    = allTasks.filter(t => t.projectId === id)
@@ -609,7 +611,7 @@ function handleSaveTask() {
     ...(project?.actualCosts ? [{
       id: 'budget',
       title: 'Project Budget',
-      subtitle: can('view_profit') && project.actualCosts
+      subtitle: canSeeProfit && project.actualCosts
         ? (() => {
             const profit = (project.actualCosts.quotationAmount || 0) -
               (project.actualCosts.materialCost + project.actualCosts.productionCost +
@@ -642,7 +644,7 @@ function handleSaveTask() {
               <span className="font-semibold text-slate-600">Total Expenses</span>
               <span className="font-bold text-slate-800">₹{totalActual.toLocaleString('en-IN')}</span>
             </div>
-            {can('view_profit') && (
+            {canSeeProfit && (
               <div className={`rounded-xl px-3 py-2 flex justify-between text-sm ${profit >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
                 <span className={`font-bold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>Profit</span>
                 <span className={`font-extrabold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
