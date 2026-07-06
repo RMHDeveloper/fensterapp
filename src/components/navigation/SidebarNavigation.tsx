@@ -1,60 +1,8 @@
-import {
-  Home, CalendarCheck, FolderOpen, Layers, Wallet,
-  BarChart2, Settings, Users, MapPin, FileText,
-  Wrench, AlertTriangle, CheckSquare, LogOut, File,
-  LayoutDashboard, ClipboardCheck,
-} from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { ROLE_LABELS } from '../../data/permissions'
-import type { Permission } from '../../types'
-
-interface NavItem {
-  icon: React.ElementType
-  label: string
-  path: string
-  permission: Permission
-}
-
-function getMainItems(isOwner: boolean): NavItem[] {
-  if (isOwner) {
-    return [
-      { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', permission: 'view_home'     },
-      { icon: FolderOpen,      label: 'Projects',  path: '/projects',  permission: 'view_projects' },
-    ]
-  }
-  return [
-    { icon: Home,          label: 'Task',       path: '/home',     permission: 'view_home'     },
-    { icon: CalendarCheck, label: 'Today Work', path: '/tasks',    permission: 'view_today'    },
-    { icon: FolderOpen,    label: 'Projects',   path: '/projects', permission: 'view_projects' },
-  ]
-}
-
-const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
-  {
-    label: 'Operations',
-    items: [
-      { icon: Users,          label: 'Leads',        path: '/leads',        permission: 'view_leads'       },
-      { icon: MapPin,         label: 'Site Visits',  path: '/site-visits',  permission: 'view_site_visit'  },
-      { icon: FileText,       label: 'Quotations',   path: '/quotations',   permission: 'view_quotation'   },
-      { icon: File,           label: 'Orders',       path: '/orders',       permission: 'view_orders'      },
-      { icon: Layers,         label: 'Production',   path: '/production',   permission: 'view_production'  },
-      { icon: CheckSquare,    label: 'Delivery QC',  path: '/delivery-qc',  permission: 'view_delivery_qc' },
-      { icon: ClipboardCheck, label: 'Approvals',    path: '/approvals',    permission: 'approve_work'     },
-      { icon: AlertTriangle,  label: 'Problems',     path: '/mistakes',     permission: 'view_mistakes'    },
-      { icon: Wallet,         label: 'Payments',     path: '/payments',     permission: 'view_payments'    },
-      { icon: Wrench,         label: 'Installation', path: '/installation', permission: 'view_installation'},
-      { icon: File,           label: 'Files',        path: '/files',        permission: 'view_files'       },
-    ],
-  },
-  {
-    label: 'Reporting',
-    items: [
-      { icon: BarChart2, label: 'Reports',  path: '/reports',  permission: 'view_reports'  },
-      { icon: Settings,  label: 'Settings', path: '/settings', permission: 'view_settings' },
-    ],
-  },
-]
+import { getMainItems, NAV_SECTIONS } from './navItems'
 
 export function SidebarNavigation() {
   const navigate     = useNavigate()
