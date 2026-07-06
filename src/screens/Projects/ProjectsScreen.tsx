@@ -168,8 +168,11 @@ export default function ProjectsScreen() {
   }
 
   const filtered = projects.filter(p => {
-    // Lead-originated projects only appear here after advance payment (stage moves to production_admin_check+)
-    if (p.leadId && (!p.currentStage || LEAD_PIPELINE_STAGES.has(p.currentStage))) return false
+    // Lead-originated projects in pipeline stages: show to assigned LO and owner; hide from others
+    if (p.leadId && (!p.currentStage || LEAD_PIPELINE_STAGES.has(p.currentStage))) {
+      const role = user?.role
+      if (role !== 'owner' && !(role === 'lead_manager' && p.ownerId === user?.id)) return false
+    }
     if (!matchesRoleVisibility(p)) return false
     const matchF = matchesFilter(p, filter, user?.role)
     const matchS = !search
