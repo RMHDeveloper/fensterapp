@@ -50,8 +50,9 @@ export default function HomeScreen() {
 
   const role = user?.role ?? 'viewer'
 
-  // Today tasks — only show tasks assigned to this user (or unassigned)
+  // Today tasks — regular tasks only (flow tasks handled separately by activeFTs)
   const todayTasks = tasks.filter(t => {
+    if (t.flowStage) return false
     if (!(t.dueDate === 'Today' || t.status === 'overdue' || t.status === 'in_progress')) return false
     if (role !== 'owner') {
       const assignee = t.assignedTo || t.assignee
@@ -99,6 +100,14 @@ export default function HomeScreen() {
     }
     return true
   }).length
+
+  // LO: projects owned by this user
+  const myProjectIds = new Set(projects.filter(p => p.ownerId === user?.id).map(p => p.id))
+
+  // LO: pending flow tasks (any active flow stage in their projects)
+  const loPendingFlow = role === 'lead_manager'
+    ? tasks.filter(t => t.flowStage && t.flowStage !== 'completed' && myProjectIds.has(t.projectId)).length
+    : 0
 
   // LO: active quotation tasks (in site_review or owner_approval)
   const loProjectIds = new Set(
@@ -249,6 +258,25 @@ export default function HomeScreen() {
 
       <div className="px-4 lg:px-6 pt-4 lg:pt-6 space-y-5 lg:max-w-3xl lg:mx-auto">
 
+        {/* LO Pending box ─────────────────────────────────────────────────────── */}
+        {role === 'lead_manager' && (
+          <button
+            onClick={() => navigate('/tasks')}
+            className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3.5 flex items-center justify-between active:opacity-80"
+          >
+            <div className="text-left">
+              <p className="text-[11px] font-bold text-amber-600 uppercase tracking-wide mb-0.5">Pending</p>
+              <p className="text-3xl font-extrabold text-amber-700 leading-none">{loPendingFlow}</p>
+              <p className="text-xs text-amber-500 mt-1">active project tasks</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-0.5">Done</p>
+              <p className="text-3xl font-extrabold text-emerald-600 leading-none">{doneCount}</p>
+              <p className="text-xs text-slate-400 mt-1">completed</p>
+            </div>
+          </button>
+        )}
+
         {/* 1. Compact stat row ─────────────────────────────────────────────────── */}
         <div className="grid grid-cols-4 gap-2">
           {stats.map((s, i) => {
@@ -271,7 +299,6 @@ export default function HomeScreen() {
 
         {/* 3. Flow Tasks ──────────────────────────────────────────────────────── */}
         {(() => {
-          const myProjectIds = new Set(projects.filter(p => p.ownerId === user?.id).map(p => p.id))
           const isAssignedToMe = (t: Task) =>
             t.assignedTo === user?.name || t.assignedTo === user?.id ||
             t.assignee   === user?.name || t.assignee   === user?.id ||
@@ -320,6 +347,9 @@ export default function HomeScreen() {
                   <Clock size={13} className="text-blue-600" aria-hidden="true" />
                 </div>
                 <h2 className="text-sm font-extrabold text-slate-800">Today Work</h2>
+                <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                  {todayTasks.length} tasks
+                </span>
                 {pendingTasks > 0 && (
                   <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
                     {pendingTasks} pending
@@ -384,22 +414,6 @@ export default function HomeScreen() {
           </section>
         </PermissionGate>
 
-        {/* 5. Quick Access — all roles ─────────────────────────────────────────── */}
-        <section>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Quick Access</p>
-          <div className="grid grid-cols-4 gap-2">
-            {quick.map((q, i) => (
-              <QuickAccessCard
-                key={i}
-                icon={q.icon}
-                iconColor={q.iconColor}
-                iconBg={q.iconBg}
-                label={q.label}
-                onClick={() => navigate(q.link)}
-              />
-            ))}
-          </div>
-        </section>
 
       </div>
 

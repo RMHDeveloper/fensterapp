@@ -2049,7 +2049,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           <span className="text-sm font-extrabold text-slate-700">₹{matC.toLocaleString('en-IN')}</span>
                         </div>
                       )}
-                      {sqft > 0 && (
+                      {sqft > 0 && role === 'owner' && (
                         <>
                           <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
                             <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹{productionRate} × sq.ft)</span></span>
