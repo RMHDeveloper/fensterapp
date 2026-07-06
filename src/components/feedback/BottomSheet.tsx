@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 interface Props {
   isOpen: boolean
@@ -20,7 +21,7 @@ export function BottomSheet({ isOpen, onClose, title, children, height = 'auto' 
 
   const heightClass = height === 'full' ? 'max-h-[92vh]' : height === 'half' ? 'max-h-[55vh]' : 'max-h-[85vh]'
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={onClose} />
@@ -47,6 +48,7 @@ export function BottomSheet({ isOpen, onClose, title, children, height = 'auto' 
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
