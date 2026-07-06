@@ -14,14 +14,13 @@ import { AppHeader } from '../../components/layout/AppHeader'
 import { loadManagedUsers } from '../../utils/userStorage'
 import type { Lead, LeadStatus, LeadSource, LeadInterest } from '../../types'
 
-type Filter = 'new' | 'contacted' | 'measurement' | 'quotation' | 'negotiation' | 'lost'
+type Filter = 'active' | 'contact' | 'measurement' | 'quotation' | 'lost'
 
 const CHIPS: { value: Filter; label: string }[] = [
-  { value: 'new',         label: 'New'         },
-  { value: 'contacted',   label: 'Contacted'   },
+  { value: 'active',      label: 'Active'      },
+  { value: 'contact',     label: 'Contact'     },
   { value: 'measurement', label: 'Measurement' },
   { value: 'quotation',   label: 'Quotation'   },
-  { value: 'negotiation', label: 'Negotiation' },
   { value: 'lost',        label: 'Lost'        },
 ]
 
@@ -87,7 +86,7 @@ export default function LeadsScreen() {
   const leadManagers = loadManagedUsers()
     .filter(u => u.status === 'active' && u.role === 'lead_manager')
     .map(u => u.fullName)
-  const [filter,   setFilter]   = useState<Filter>('new')
+  const [filter,   setFilter]   = useState<Filter>('active')
   const [search,   setSearch]   = useState('')
   const [selected, setSelected] = useState<Lead | null>(null)
   const [showNew,  setShowNew]  = useState(false)
@@ -155,17 +154,16 @@ export default function LeadsScreen() {
       matchFilter = l.status === 'lost'
     } else if (l.status === 'lost') {
       matchFilter = false
-    } else if (filter === 'new') {
-      matchFilter = l.status === 'new'
-    } else if (filter === 'contacted') {
-      matchFilter = l.status === 'contacted'
+    } else if (filter === 'active') {
+      matchFilter = true
+    } else if (filter === 'contact') {
+      matchFilter = l.status === 'new' || l.status === 'contacted'
     } else if (filter === 'measurement') {
       matchFilter = l.status === 'qualified'
         || !!(projStage && LEAD_MEASUREMENT_STAGES.has(projStage))
     } else if (filter === 'quotation') {
       matchFilter = !!(projStage && LEAD_QUOTATION_STAGES.has(projStage))
-    } else if (filter === 'negotiation') {
-      matchFilter = !!(projStage && LEAD_NEGOTIATION_STAGES.has(projStage))
+        || !!(projStage && LEAD_NEGOTIATION_STAGES.has(projStage))
     }
     const matchSearch = !search
       || l.name.toLowerCase().includes(search.toLowerCase())
