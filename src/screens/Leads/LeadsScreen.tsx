@@ -41,6 +41,12 @@ const LEAD_NEGOTIATION_STAGES = new Set([
   'client_approved','advance_payment','advance_payment_pending','waiting_advance_payment',
 ])
 
+// Flow stages reached only after advance payment has actually been recorded
+const STAGES_AFTER_ADVANCE_PAYMENT = new Set([
+  'production_assign','production_check','production_work',
+  'installation_assign','installation_update','final_payment','final_completion','completed',
+])
+
 const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: 'existing_customer', label: 'Existing Client'    },
   { value: 'md_ed_ref',         label: 'MD / ED Reference'  },
@@ -78,7 +84,7 @@ function InterestBadge({ interest }: { interest?: LeadInterest }) {
 }
 
 export default function LeadsScreen() {
-  const { leads, projects, tasks, updateLeadStatus, updateLead, addProject, addTask, updateTask, addLead } = useAppData()
+  const { leads, projects, tasks, updateLeadStatus, updateLead, addProject, addTask, updateTask, updateProject, addLead } = useAppData()
   const { user } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -98,6 +104,8 @@ export default function LeadsScreen() {
   const [pendingAssignProjectId, setPendingAssignProjectId] = useState<string | null>(null)
   const [assignFlowTaskId, setAssignFlowTaskId] = useState<string | null>(null)
   const [showStatusOptions, setShowStatusOptions] = useState(false)
+  const [convertingProjectId, setConvertingProjectId] = useState<string | null>(null)
+  const [convertDueDate, setConvertDueDate] = useState('')
   const [snack, setSnack] = useState({ open: false, msg: '' })
 
   // Once the project + "Assign Site Engineer" task exist, open the real flow popup for it
@@ -326,6 +334,7 @@ export default function LeadsScreen() {
       createdAt:    new Date().toLocaleDateString('en-IN'),
       description:  lead.notes ?? lead.requirement ?? '',
       leadId:       lead.id,
+      pendingConversion: true,
     })
 
     addTask({
@@ -355,13 +364,36 @@ export default function LeadsScreen() {
     setPendingAssignProjectId(projectId)
   }
 
+  // Every stage update (site visit, quotation, approval, advance payment…) is driven
+  // from this same popup while the linked project is still pendingConversion — stays
+  // on the Leads screen instead of jumping to the project folder.
   function handleAssignFlowUpdate(updates: Partial<Task>) {
     if (!assignFlowTask) return
-    const projectId = assignFlowTask.projectId
     updateTask(assignFlowTask.id, updates)
     setAssignFlowTaskId(null)
-    setSnack({ open: true, msg: 'Site Engineer assigned!' })
-    if (projectId) setTimeout(() => navigate(`/project/${projectId}`), 500)
+    setSnack({ open: true, msg: 'Status updated!' })
+  }
+
+  // Open the real flow popup for whichever stage this lead's linked project is
+  // currently on — used by the lead sheet's "Update Status" button
+  function openLeadFlowUpdate(projectId: string) {
+    const t = tasks.find(t => t.projectId === projectId && t.flowStage && t.flowStage !== 'completed')
+    if (t) setAssignFlowTaskId(t.id)
+  }
+
+  function openConvertToProject(projectId: string) {
+    setConvertingProjectId(projectId)
+    setConvertDueDate('')
+  }
+
+  function finishConvertToProject(dueDate?: string) {
+    if (!convertingProjectId) return
+    const projectId = convertingProjectId
+    updateProject(projectId, { pendingConversion: false, ...(dueDate ? { dueDate } : {}) })
+    setConvertingProjectId(null)
+    setSelected(null)
+    setSnack({ open: true, msg: 'Converted to project!' })
+    setTimeout(() => navigate(`/project/${projectId}`), 500)
   }
 
   function exportCSV(filename: string, rows: (string | number)[][]) {
@@ -563,11 +595,37 @@ export default function LeadsScreen() {
 
             {selected.status === 'won' && (() => {
               const linkedProject = projects.find(p => p.leadId === selected.id)
+              if (!linkedProject) return null
+
+              if (linkedProject.pendingConversion) {
+                const activeTask = tasks.find(t => t.projectId === linkedProject.id && t.flowStage && t.flowStage !== 'completed')
+                const pastAdvancePayment = !!activeTask && STAGES_AFTER_ADVANCE_PAYMENT.has(activeTask.flowStage!)
+                return (
+                  <div className="space-y-2.5">
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Current Stage</p>
+                      <p className="text-sm font-bold text-slate-700">{activeTask?.title ?? 'In progress'}</p>
+                    </div>
+                    <button
+                      onClick={() => openLeadFlowUpdate(linkedProject.id)}
+                      className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-blue-700">
+                      Update Status →
+                    </button>
+                    {pastAdvancePayment && (
+                      <button
+                        onClick={() => openConvertToProject(linkedProject.id)}
+                        className="w-full flex items-center justify-center gap-2 border-2 border-emerald-600 text-emerald-600 rounded-xl py-3 text-sm font-bold active:bg-emerald-50">
+                        <HardHat size={16} /> Convert to Project →
+                      </button>
+                    )}
+                  </div>
+                )
+              }
+
               return (
                 <button onClick={() => {
                   setSelected(null)
-                  if (linkedProject) navigate(`/project/${linkedProject.id}`)
-                  else navigate('/projects')
+                  navigate(`/project/${linkedProject.id}`)
                 }}
                   className="w-full flex items-center justify-center gap-2 border-2 border-emerald-600 text-emerald-600 rounded-xl py-3 text-sm font-bold active:bg-emerald-50">
                   <HardHat size={16} /> View Progress →
@@ -707,6 +765,29 @@ export default function LeadsScreen() {
           task={assignFlowTask}
           onUpdate={handleAssignFlowUpdate}
         />
+      )}
+
+      {/* ── Convert to Project — optional due date, Done or Skip both convert ── */}
+      {convertingProjectId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setConvertingProjectId(null)} />
+          <div className="relative bg-white rounded-2xl shadow-sheet w-full max-w-[320px] p-5 space-y-4">
+            <h3 className="text-base font-bold text-slate-800">Set a Due Date</h3>
+            <p className="text-sm text-slate-500">Optional — you can skip this and set it later on the project page.</p>
+            <input type="date" value={convertDueDate} onChange={e => setConvertDueDate(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
+            <div className="flex gap-2">
+              <button onClick={() => finishConvertToProject(undefined)}
+                className="flex-1 bg-slate-100 text-slate-700 rounded-xl py-3 text-sm font-semibold active:bg-slate-200">
+                Skip
+              </button>
+              <button onClick={() => finishConvertToProject(convertDueDate || undefined)}
+                className="flex-1 bg-indigo-600 text-white rounded-xl py-3 text-sm font-semibold active:bg-indigo-700">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── New Lead Sheet ── */}

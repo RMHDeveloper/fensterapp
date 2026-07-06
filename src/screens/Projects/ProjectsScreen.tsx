@@ -169,6 +169,8 @@ export default function ProjectsScreen() {
   }
 
   const filtered = projects.filter(p => {
+    // Not yet converted from its lead (still managed from the Leads page) — hidden everywhere, including for MD
+    if (p.pendingConversion) return false
     // Lead-originated projects in pipeline stages: show to assigned LO and owner; hide from others
     if (p.leadId && (!p.currentStage || LEAD_PIPELINE_STAGES.has(p.currentStage))) {
       const role = user?.role

@@ -153,7 +153,9 @@ function LOPanel({ loName, projects, onClose }: LOPanelProps) {
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function OwnerDashboardScreen() {
-  const { projects, tasks, leads, mistakes } = useAppData()
+  const { projects: allProjects, tasks, leads, mistakes } = useAppData()
+  // Not yet converted from their lead — stay off the MD dashboard until the LM converts them
+  const projects = allProjects.filter(p => !p.pendingConversion)
   const [dateFilter, setDateFilter] = useState<DateFilter>('month')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo,   setCustomTo]   = useState('')

@@ -454,6 +454,7 @@ export interface Project {
   ownerId?: string       // user.id of the lead_manager who owns this project
   ownerName?: string     // display name of the owner
   leadId?: string        // id of the lead this project was created from (used to filter pre-advance projects)
+  pendingConversion?: boolean  // true until the LM clicks "Convert to Project" after advance payment — hides it from Projects list / MD Dashboard while true
   // Actual costs (entered by LO before completion)
   actualCosts?: CostBreakdown
   spentCost?: number     // running total of extra mistake costs
