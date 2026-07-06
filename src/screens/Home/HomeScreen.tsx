@@ -53,7 +53,10 @@ export default function HomeScreen() {
   // Today tasks — only show tasks assigned to this user (or unassigned)
   const todayTasks = tasks.filter(t => {
     if (!(t.dueDate === 'Today' || t.status === 'overdue' || t.status === 'in_progress')) return false
-    if (role !== 'owner' && t.assignedTo && t.assignedTo !== user?.name) return false
+    if (role !== 'owner') {
+      const assignee = t.assignedTo || t.assignee
+      if (assignee && assignee !== user?.name) return false
+    }
     return true
   })
 
@@ -62,7 +65,10 @@ export default function HomeScreen() {
   const pendingTasks    = todayTasks.filter(t => t.status === 'pending' || t.status === 'overdue').length
   const doneCount       = tasks.filter(t => {
     if (t.status !== 'completed') return false
-    if (role !== 'owner' && t.assignedTo && t.assignedTo !== user?.name) return false
+    if (role !== 'owner') {
+      const assignee = t.assignedTo || t.assignee
+      if (assignee && assignee !== user?.name) return false
+    }
     return true
   }).length
 

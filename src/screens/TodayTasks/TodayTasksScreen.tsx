@@ -102,7 +102,8 @@ export default function TodayTasksScreen() {
       if (t.flowStage || !isTaskForToday(t)) return false
       if (role === 'viewer') return false
       if (role === 'owner') return true
-      return isAssignedToMe(t) || !t.assignee
+      const hasAssignee = t.assignedTo || t.assignee
+      return !hasAssignee || isAssignedToMe(t)
     })
   )
   const overdueR   = regular.filter(t => t.status === 'overdue')

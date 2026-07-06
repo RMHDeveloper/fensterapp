@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   X, CheckCircle2, AlertTriangle, Camera, Clock, Send, PhoneCall,
   Package, Wrench, CreditCard, Eye, Download, FileText,
@@ -463,6 +463,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   const [sel,   setSel]   = useState('')
   const [error, setError] = useState('')
+  const [showLossWarn, setShowLossWarn] = useState(false)
+  const lossConfirmCb = useRef<(() => void) | null>(null)
 
   // ── SITE ASSIGN ─────────────────────────────────────────────────────────────
   const [engineerName,   setEngineerName]   = useState('Kavya M')
@@ -953,7 +955,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     const prodC = sqft > 0 ? sqft * productionRate : 0
     const instC = sqft > 0 ? sqft * installationRate : 0
     const transC= costTransAmt ? Number(costTransAmt) : 0
+    const totalC = matC + prodC + instC + transC
     const hasCosts = matC > 0 || prodC > 0 || instC > 0 || transC > 0
+    if (hasCosts && totalC > quotAmount) {
+      lossConfirmCb.current = () => submitSiteReview()
+      setShowLossWarn(true)
+      return
+    }
+    setShowLossWarn(false)
     const breakdown: CostBreakdown | undefined = hasCosts ? {
       quotationAmount: quotAmount,
       numberOfSqft:    sqft > 0 ? sqft : undefined,
@@ -961,7 +970,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       productionCost:  prodC,
       installationCost:instC,
       transportCost:   transC,
-      profit:          quotAmount - (matC + prodC + instC + transC),
+      profit:          quotAmount - totalC,
     } : undefined
     const latestQuot = quotFiles[quotFiles.length - 1] ?? quotFiles[0]
     save({
@@ -1005,7 +1014,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     const prodC = sqft > 0 ? sqft * productionRate : 0
     const instC = sqft > 0 ? sqft * installationRate : 0
     const transC= costTransAmt ? Number(costTransAmt) : 0
+    const totalC = matC + prodC + instC + transC
     const hasCosts = matC > 0 || prodC > 0 || instC > 0 || transC > 0
+    if (hasCosts && totalC > quotAmount) {
+      lossConfirmCb.current = () => submitReviseQuotation()
+      setShowLossWarn(true)
+      return
+    }
+    setShowLossWarn(false)
     const breakdown: CostBreakdown | undefined = hasCosts ? {
       quotationAmount: quotAmount,
       numberOfSqft:    sqft > 0 ? sqft : undefined,
@@ -1013,7 +1029,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       productionCost:  prodC,
       installationCost:instC,
       transportCost:   transC,
-      profit:          quotAmount - (matC + prodC + instC + transC),
+      profit:          quotAmount - totalC,
     } : undefined
     save({
       flowStage: 'owner_approval', flowStatus: 'waiting', status: 'pending',
@@ -4082,6 +4098,38 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               className="absolute top-8 right-2 w-10 h-10 bg-white/90 rounded-full flex items-center justify-center shadow-sm active:bg-white">
               <X size={18} className="text-slate-800" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Loss Warning Confirmation ── */}
+      {showLossWarn && (
+        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-2xl">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-9 h-9 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <AlertTriangle size={18} className="text-red-600" />
+              </div>
+              <p className="text-red-600 font-extrabold text-base">Running at a Loss</p>
+            </div>
+            <p className="text-sm text-slate-600 mb-5 leading-relaxed">
+              The total estimated cost exceeds the quotation amount. This project will run at a loss.
+              Are you sure you want to proceed?
+            </p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setShowLossWarn(false)}
+                className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 active:bg-slate-50">
+                Go Back
+              </button>
+              <button type="button" onClick={() => {
+                setShowLossWarn(false)
+                lossConfirmCb.current?.()
+                lossConfirmCb.current = null
+              }}
+                className="flex-1 py-3 rounded-xl bg-red-600 text-white text-sm font-extrabold active:bg-red-700">
+                Proceed Anyway
+              </button>
+            </div>
           </div>
         </div>
       )}

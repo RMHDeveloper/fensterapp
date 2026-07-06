@@ -178,8 +178,6 @@ export default function ProjectsScreen() {
     return matchF && matchS
   })
 
-  const total = projects.reduce((s, p) => s + p.value, 0)
-
   function resetForm() {
     setFCustomer(''); setFPhone(''); setFName(''); setFReq('')
     setFLocation(''); setFEmail(''); setFNotes(''); setFLeadFrom('')
@@ -308,14 +306,6 @@ export default function ProjectsScreen() {
       </div>
 
       <div className="px-4 pt-4 space-y-3">
-        {filter === 'active' && (
-          <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 flex justify-between text-xs text-slate-500">
-            <span>{projects.filter(p => !isProjectCompleted(p)).length} active</span>
-            <span>{projects.filter(isProjectCompleted).length} completed</span>
-            <span>Total ₹{(total / 100000).toFixed(1)}L</span>
-          </div>
-        )}
-
         {filtered.length === 0 ? (
           <EmptyState
             icon={FolderOpen}
