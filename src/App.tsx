@@ -30,6 +30,13 @@ import UserManagementScreen         from './screens/Settings/UserManagementScree
 import ApprovalsScreen              from './screens/Approvals/ApprovalsScreen'
 import OwnerDashboardScreen         from './screens/Dashboard/OwnerDashboardScreen'
 
+// Home route — MDs land on the Dashboard, everyone else on Home
+function HomeRoute() {
+  const { user } = useAuth()
+  const isMD = user?.role === 'owner' && user?.displayRole?.includes('MD')
+  return isMD ? <Navigate to="/dashboard" replace /> : <HomeScreen />
+}
+
 // Dashboard shell — only rendered after login
 function AppShell() {
   return (
@@ -43,7 +50,7 @@ function AppShell() {
             <Route path="/login"        element={<Navigate to="/home" replace />} />
 
             <Route path="/dashboard"    element={<ProtectedRoute screenPath="home"><OwnerDashboardScreen /></ProtectedRoute>} />
-            <Route path="/home"         element={<ProtectedRoute screenPath="home">         <HomeScreen />         </ProtectedRoute>} />
+            <Route path="/home"         element={<ProtectedRoute screenPath="home">         <HomeRoute />          </ProtectedRoute>} />
             <Route path="/tasks"        element={<ProtectedRoute screenPath="tasks">        <TodayTasksScreen />   </ProtectedRoute>} />
             <Route path="/task/:id"     element={<ProtectedRoute screenPath="tasks">        <TaskDetailScreen />   </ProtectedRoute>} />
             <Route path="/projects"     element={<ProtectedRoute screenPath="projects">     <ProjectsScreen />     </ProtectedRoute>} />

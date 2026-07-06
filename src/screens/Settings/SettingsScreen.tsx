@@ -318,8 +318,8 @@ export default function SettingsScreen() {
           </div>
         )}
 
-        {/* Prototype Role Switcher — MD-only debug section */}
-        {user?.role === 'owner' && user?.displayRole?.includes('MD') && <div>
+        {/* TEMP DEBUG: Role Switcher opened to all users — REMOVE after testing */}
+        {user && <div>
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-2">Prototype</p>
           <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
             <button
