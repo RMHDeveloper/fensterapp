@@ -65,6 +65,21 @@ const HISTORY_VISIBLE_FOR: Partial<Record<string, string[]>> = {
 }
 
 
+// Files aren't individually timestamped on the task, but each save() records the
+// files attached alongside a statusHistory entry — use that entry's time as the
+// file's upload time.
+function buildFileUploadTimes(tasks: Task[]): Record<string, string> {
+  const times: Record<string, string> = {}
+  for (const t of tasks) {
+    for (const entry of t.statusHistory ?? []) {
+      for (const f of entry.files ?? []) {
+        if (!times[f]) times[f] = entry.updatedAt
+      }
+    }
+  }
+  return times
+}
+
 function collectProjectFiles(tasks: Task[]) {
   const dedup = (arr: string[]) => [...new Set(arr.filter(Boolean))]
   const quotationDocs     = dedup(tasks.flatMap(t => [
@@ -331,6 +346,7 @@ function handleSaveTask() {
   }
 
   const projectFiles = collectProjectFiles(tasks)
+  const fileUploadTimes = buildFileUploadTimes(tasks)
 
   const accordionItems = [
     {
@@ -570,22 +586,22 @@ function handleSaveTask() {
         : (
           <div className="space-y-4">
             {projectFiles.quotationDocs.length > 0 && (
-              <MediaPreviewList files={projectFiles.quotationDocs} title="Quotation Files" />
+              <MediaPreviewList files={projectFiles.quotationDocs} title="Quotation Files" uploadedAt={fileUploadTimes} />
             )}
             {projectFiles.sitePhotos.length > 0 && (
-              <MediaPreviewList files={projectFiles.sitePhotos} title="Site Photos" />
+              <MediaPreviewList files={projectFiles.sitePhotos} title="Site Photos" uploadedAt={fileUploadTimes} />
             )}
             {canSeePayments && projectFiles.paymentProofs.length > 0 && (
-              <MediaPreviewList files={projectFiles.paymentProofs} title="Payment Proofs" />
+              <MediaPreviewList files={projectFiles.paymentProofs} title="Payment Proofs" uploadedAt={fileUploadTimes} />
             )}
             {projectFiles.productionDocs.length > 0 && (
-              <MediaPreviewList files={projectFiles.productionDocs} title="Production Docs" />
+              <MediaPreviewList files={projectFiles.productionDocs} title="Production Docs" uploadedAt={fileUploadTimes} />
             )}
             {projectFiles.installationPhotos.length > 0 && (
-              <MediaPreviewList files={projectFiles.installationPhotos} title="Installation Photos" />
+              <MediaPreviewList files={projectFiles.installationPhotos} title="Installation Photos" uploadedAt={fileUploadTimes} />
             )}
             {projectFiles.voiceNotes.length > 0 && (
-              <MediaPreviewList files={projectFiles.voiceNotes} title="Voice Notes" voiceStore={voicePreviewStore} />
+              <MediaPreviewList files={projectFiles.voiceNotes} title="Voice Notes" voiceStore={voicePreviewStore} uploadedAt={fileUploadTimes} />
             )}
           </div>
         ),

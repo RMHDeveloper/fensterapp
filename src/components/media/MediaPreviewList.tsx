@@ -1,20 +1,28 @@
 import { useState } from 'react'
 import { FileText, Image, Mic, Eye, Download } from 'lucide-react'
 import { resolveFileUrl, voicePreviewStore } from '../../utils/sessionStore'
+import { getDisplayFileName } from '../../utils/fileStorage'
 import { FilePreviewModal } from '../feedback/FilePreviewModal'
 
 function isImageName(name: string) { return /\.(jpg|jpeg|png|gif|webp)$/i.test(name) }
 function isAudioId(name: string)   { return name.startsWith('voice_') || /\.(mp3|wav|webm|ogg|aac|m4a)$/i.test(name) }
 function isPdfName(name: string)   { return /\.pdf$/i.test(name) }
 
+function fmtUploadedAt(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 interface Props {
   files: (string | undefined)[]
   title?: string
   emptyText?: string
   voiceStore?: Map<string, string>
+  uploadedAt?: Record<string, string>
 }
 
-export function MediaPreviewList({ files, title, emptyText, voiceStore }: Props) {
+export function MediaPreviewList({ files, title, emptyText, voiceStore, uploadedAt }: Props) {
   const [preview, setPreview] = useState<{ src: string; name: string } | null>(null)
   const validFiles = files.filter(Boolean) as string[]
   if (validFiles.length === 0) return null
@@ -34,46 +42,52 @@ export function MediaPreviewList({ files, title, emptyText, voiceStore }: Props)
           const fileUrl = !isAudio ? resolveFileUrl(name) : undefined
           const isImg   = isImageName(name)
 
+          const uploadedTime = uploadedAt?.[name] ? fmtUploadedAt(uploadedAt[name]) : ''
+
           if (isAudio) {
             return (
               <div key={i} className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2.5 space-y-1.5">
                 <div className="flex items-center gap-2">
                   <Mic size={12} className="text-purple-500 flex-shrink-0" />
-                  <p className="text-[10px] text-purple-600 font-semibold truncate flex-1">{name}</p>
+                  <p className="text-[10px] text-purple-600 font-semibold truncate flex-1">{getDisplayFileName(name)}</p>
                 </div>
                 {audioUrl
                   ? <audio controls src={audioUrl} className="w-full" style={{ height: 36 }} />
                   : <p className="text-[10px] text-purple-400 italic">Voice preview unavailable — please re-record for playback</p>
                 }
+                {uploadedTime && <p className="text-[10px] text-purple-400">{uploadedTime}</p>}
               </div>
             )
           }
 
           const isPdf = isPdfName(name)
           return (
-            <div key={i} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-              {isImg
-                ? <Image size={14} className="text-blue-400 flex-shrink-0" />
-                : isPdf
-                  ? <span className="text-sm flex-shrink-0">📄</span>
-                  : <FileText size={14} className="text-slate-400 flex-shrink-0" />
-              }
-              <p className="text-xs text-slate-700 flex-1 truncate">{name}</p>
-              {fileUrl ? (
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button type="button"
-                    onClick={() => setPreview({ src: fileUrl, name })}
-                    className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center active:bg-blue-100">
-                    <Eye size={11} className="text-blue-500" />
-                  </button>
-                  <a href={fileUrl} download={name} target="_blank" rel="noopener noreferrer"
-                    className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center active:bg-emerald-100">
-                    <Download size={11} className="text-emerald-600" />
-                  </a>
-                </div>
-              ) : (
-                <p className="text-[10px] text-slate-400 flex-shrink-0 italic">Unavailable</p>
-              )}
+            <div key={i} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+              <div className="flex items-center gap-2">
+                {isImg
+                  ? <Image size={14} className="text-blue-400 flex-shrink-0" />
+                  : isPdf
+                    ? <span className="text-sm flex-shrink-0">📄</span>
+                    : <FileText size={14} className="text-slate-400 flex-shrink-0" />
+                }
+                <p className="text-xs text-slate-700 flex-1 truncate">{getDisplayFileName(name)}</p>
+                {fileUrl ? (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button type="button"
+                      onClick={() => setPreview({ src: fileUrl, name: getDisplayFileName(name) })}
+                      className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center active:bg-blue-100">
+                      <Eye size={11} className="text-blue-500" />
+                    </button>
+                    <a href={fileUrl} download={getDisplayFileName(name)} target="_blank" rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center active:bg-emerald-100">
+                      <Download size={11} className="text-emerald-600" />
+                    </a>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-400 flex-shrink-0 italic">Unavailable</p>
+                )}
+              </div>
+              {uploadedTime && <p className="text-[10px] text-slate-400 mt-1 ml-[22px]">{uploadedTime}</p>}
             </div>
           )
         })}
