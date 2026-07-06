@@ -276,7 +276,7 @@ export default function HomeScreen() {
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] lg:bg-[#f0f2f5] pb-24 lg:pb-8">
-      <AppHeader notifications={openMistakes + overduePayments} />
+      <AppHeader />
 
       <div className="px-4 lg:px-6 pt-4 lg:pt-6 space-y-5 lg:max-w-3xl lg:mx-auto">
 

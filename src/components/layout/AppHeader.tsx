@@ -1,14 +1,10 @@
 import { useState } from 'react'
-import { Bell, Menu } from 'lucide-react'
+import { Menu } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { MobileMenuDrawer } from '../navigation/MobileMenuDrawer'
 
-interface Props {
-  notifications?: number
-}
-
-export function AppHeader({ notifications = 0 }: Props) {
+export function AppHeader() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const initials = user?.initials ?? '?'
@@ -32,12 +28,6 @@ export function AppHeader({ notifications = 0 }: Props) {
         />
       </div>
       <div className="flex items-center gap-2">
-        <button className="relative w-9 h-9 flex items-center justify-center rounded-xl active:bg-slate-100">
-          <Bell size={20} className="text-slate-600" strokeWidth={1.8} />
-          {notifications > 0 && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
-          )}
-        </button>
         <button
           onClick={() => navigate('/settings')}
           className="w-9 h-9 rounded-full flex items-center justify-center"
