@@ -65,6 +65,13 @@ export default function HomeScreen() {
 
   const role = user?.role ?? 'viewer'
 
+  // LO project ownership — matches OwnerDashboardScreen's loStats matching,
+  // since ownerId alone is often unset; fall back to ownerName / lead assignee.
+  const isMyProject = (p: { ownerId?: string; ownerName?: string; leadId?: string }) =>
+    p.ownerId === user?.id ||
+    p.ownerName === user?.name ||
+    (!!p.leadId && leads.some(l => l.id === p.leadId && l.assignee === user?.name))
+
   // Today tasks — regular tasks only (flow tasks handled separately by activeFTs)
   const todayTasks = tasks.filter(t => {
     if (t.flowStage) return false
@@ -92,7 +99,7 @@ export default function HomeScreen() {
   const activeProjects = projects.filter(p => p.status === 'active')
   const roleProjects = (() => {
     if (role === 'owner') return activeProjects
-    if (role === 'lead_manager') return activeProjects.filter(p => !p.ownerId || p.ownerId === user?.id)
+    if (role === 'lead_manager') return activeProjects.filter(isMyProject)
     if (role === 'site_engineer') return activeProjects.filter(p =>
       tasks.some(t => t.projectId === p.id && (t.assignedTo === user?.name || t.siteEngineerName === user?.name))
     )
@@ -111,13 +118,13 @@ export default function HomeScreen() {
     if (t.flowStage !== 'owner_approval' || t.flowStatus !== 'rejected') return false
     if (t.projectId) {
       const proj = projects.find(p => p.id === t.projectId)
-      if (proj?.ownerId && proj.ownerId !== user?.id) return false
+      if (proj && !isMyProject(proj)) return false
     }
     return true
   }).length
 
   // LO: projects owned by this user
-  const myProjectIds = new Set(projects.filter(p => p.ownerId === user?.id).map(p => p.id))
+  const myProjectIds = new Set(projects.filter(isMyProject).map(p => p.id))
 
   // LO: pending flow tasks (any active flow stage in their projects)
   const loPendingFlow = role === 'lead_manager'
@@ -128,7 +135,7 @@ export default function HomeScreen() {
   const loTaskCount = tasks.filter(t => myProjectIds.has(t.projectId)).length
 
   // LO: total projects owned by this user, regardless of status
-  const loAllProjects = projects.filter(p => !p.ownerId || p.ownerId === user?.id)
+  const loAllProjects = projects.filter(isMyProject)
 
   // LO: quotations sent to client, awaiting the client's decision
   const quotationsWaitingClient = tasks.filter(t =>
