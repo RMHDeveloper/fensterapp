@@ -159,6 +159,7 @@ export const DISPLAY_ROLES: string[] = [
   'Sales Team / Lead Owner',
   'Site Engineer',
   'Production Incharge',
+  'Production Manager',
   'Installation Incharge',
   'Installation Technician',
 ]
@@ -170,7 +171,8 @@ export const DISPLAY_ROLE_TO_INTERNAL: Record<string, UserRole> = {
   'Admin / Purchase / Accounts':  'owner',
   'Sales Team / Lead Owner':      'lead_manager',
   'Site Engineer':                'site_engineer',
-  'Production Incharge':          'production_manager',
+  'Production Incharge':          'production_admin',
+  'Production Manager':           'production_manager',
   'Installation Incharge':        'technician',
   'Installation Technician':      'technician',
 }
