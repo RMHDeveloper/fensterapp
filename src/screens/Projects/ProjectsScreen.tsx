@@ -14,7 +14,7 @@ import { BottomSheet } from '../../components/feedback/BottomSheet'
 import { Snackbar } from '../../components/feedback/Snackbar'
 import { createProjectFromForm, createSiteAssignTask } from '../../utils/workflow'
 import { loadManagedUsers } from '../../utils/userStorage'
-import type { Project } from '../../types'
+import type { Project, Task } from '../../types'
 
 type Filter = 'active' | 'pre_production' | 'production' | 'ready_to_dispatch' | 'installation' | 'collection' | 'completed'
 
@@ -43,41 +43,6 @@ function getChipsForRole(role?: string): { value: Filter; label: string }[] {
   ]
 }
 
-const MEASUREMENT_STAGES = new Set([
-  'new_project','measurement','site_visit_assigned','site_visit','site_visit_completed',
-  'waiting_site_visit_review','reschedule_requested','reschedule_approved'
-])
-const QUOTATION_STAGES = new Set([
-  'quotation_preparation','quotation_sent_owner','quotation_sent_md_ed','owner_approved',
-  'md_ed_approved','sent_to_client','waiting_client_approval','quotation_rework'
-])
-const NEGOTIATION_STAGES = new Set([
-  'negotiation','client_approved','advance_payment','client_rejected','client_not_approved',
-  'advance_payment_pending','waiting_advance_payment','owner_disapproved','md_ed_rejected'
-])
-const PRE_PRODUCTION_STAGES = new Set([
-  'production_sheet_preparation','production_admin_check','waiting_material_availability'
-])
-// For production_admin / production_manager: only PM work stages
-const PRODUCTION_PM_STAGES = new Set([
-  'production_manager_work','ready_to_dispatch'
-])
-// For owner/lead_manager "Production" filter: all production stages
-const PRODUCTION_ALL_STAGES = new Set([
-  'production_sheet_preparation','production_admin_check','waiting_material_availability',
-  'production_manager_work','ready_to_dispatch'
-])
-const READY_TO_DISPATCH_STAGES = new Set([
-  'ready_to_dispatch','installation_assigned'
-])
-const INSTALLATION_STAGES = new Set([
-  'installation','installation_assigned','installation_in_progress',
-  'installation_not_completed','installation_mistake'
-])
-const PAYMENT_STAGES = new Set([
-  'final_payment','payment_pending','partial_paid','remaining_payment_pending'
-])
-
 function isProjectCompleted(p: Project): boolean {
   return (
     p.status === 'completed' ||
@@ -88,21 +53,29 @@ function isProjectCompleted(p: Project): boolean {
   )
 }
 
-function matchesFilter(p: Project, filter: Filter, role?: string): boolean {
+type Bucket = 'pre_production' | 'production' | 'ready_to_dispatch' | 'installation' | 'collection' | null
+
+// Bucketed by the project's actual active flow task, not project.currentStage —
+// currentStage reuses the same string ('advance_payment') for both "waiting on
+// advance payment" and "job sheet sent to Production Incharge", so it can't tell
+// those apart. The flow task's stage/status can.
+function getProjectBucket(p: Project, allTasks: Task[]): Bucket {
+  const activeTask = allTasks.find(t => t.projectId === p.id && t.flowStage && t.flowStage !== 'completed')
+  const stage  = activeTask?.flowStage
+  const status = activeTask?.flowStatus
+  if (stage === 'production_assign' || stage === 'production_check') return 'pre_production'
+  if (stage === 'production_work') return status === 'ready_to_pack' ? 'ready_to_dispatch' : 'production'
+  if (stage === 'installation_assign') return 'ready_to_dispatch'
+  if (stage === 'installation_update') return 'installation'
+  if (stage === 'final_payment' || stage === 'final_completion') return 'collection'
+  return null
+}
+
+function matchesFilter(p: Project, filter: Filter, bucket: Bucket): boolean {
   if (filter === 'active')    return !isProjectCompleted(p)
   if (filter === 'completed') return isProjectCompleted(p)
   if (isProjectCompleted(p)) return false
-  const stage = p.currentStage
-  if (filter === 'pre_production'    && stage && PRE_PRODUCTION_STAGES.has(stage))    return true
-  if (filter === 'production') {
-    if (!stage) return !!(p.status === 'active')
-    if (role === 'production_manager') return PRODUCTION_PM_STAGES.has(stage)
-    return PRODUCTION_ALL_STAGES.has(stage)
-  }
-  if (filter === 'ready_to_dispatch' && stage && READY_TO_DISPATCH_STAGES.has(stage)) return true
-  if (filter === 'installation'      && stage && INSTALLATION_STAGES.has(stage))      return true
-  if (filter === 'collection'        && stage && PAYMENT_STAGES.has(stage))           return true
-  return false
+  return bucket === filter
 }
 
 const inp = 'w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400'
@@ -139,7 +112,7 @@ export default function ProjectsScreen() {
   const leadManagers = loadManagedUsers().filter(u => u.role === 'lead_manager' && u.status === 'active')
   const chips = getChipsForRole(user?.role)
 
-  function matchesRoleVisibility(p: Project): boolean {
+  function matchesRoleVisibility(p: Project, bucket: Bucket): boolean {
     const role = user?.role
     if (!role || role === 'owner') return true
     if (role === 'lead_manager') return p.ownerId === user!.id
@@ -150,10 +123,10 @@ export default function ProjectsScreen() {
         (t.assignedTo === user!.name || t.assignee === user!.name || t.siteEngineerName === user!.name)
       )
     }
-    if (role === 'production_admin') return !!(p.currentStage && (PRE_PRODUCTION_STAGES.has(p.currentStage) || PRODUCTION_PM_STAGES.has(p.currentStage)))
-    if (role === 'production_manager') return !!(p.currentStage && PRODUCTION_PM_STAGES.has(p.currentStage))
+    if (role === 'production_admin') return bucket === 'pre_production'
+    if (role === 'production_manager') return bucket === 'production' || bucket === 'ready_to_dispatch'
     if (role === 'technician' || role === 'installation_incharge') {
-      return !!(p.currentStage && (INSTALLATION_STAGES.has(p.currentStage) || p.currentStage === 'ready_to_dispatch'))
+      return bucket === 'ready_to_dispatch' || bucket === 'installation'
     }
     return true
   }
@@ -161,8 +134,9 @@ export default function ProjectsScreen() {
   const filtered = projects.filter(p => {
     // Not yet converted from its lead (still managed from the Leads page) — hidden everywhere, including for MD
     if (p.pendingConversion) return false
-    if (!matchesRoleVisibility(p)) return false
-    const matchF = matchesFilter(p, filter, user?.role)
+    const bucket = getProjectBucket(p, allTasks)
+    if (!matchesRoleVisibility(p, bucket)) return false
+    const matchF = matchesFilter(p, filter, bucket)
     const matchS = !search
       || p.name.toLowerCase().includes(search.toLowerCase())
       || p.client.toLowerCase().includes(search.toLowerCase())
