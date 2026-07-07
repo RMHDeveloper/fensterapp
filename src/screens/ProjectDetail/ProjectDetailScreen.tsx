@@ -251,6 +251,7 @@ export default function ProjectDetailScreen() {
     }, undefined)
 
   const [showAddTask,     setShowAddTask]     = useState(false)
+  const [showReviewPopup, setShowReviewPopup] = useState(false)
   const [snack,           setSnack]           = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
   const [flowTaskId,      setFlowTaskId]      = useState<string | null>(null)
   const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
@@ -283,6 +284,28 @@ export default function ProjectDetailScreen() {
       return
     }
     window.location.href = `tel:${project.clientPhone}`
+  }
+
+  function buildReviewMessage() {
+    const clientName = project?.client ?? 'Sir/Madam'
+    return `Hello ${clientName},\nThank you for choosing Fenster.\n\nWe would be happy if you could share your experience with us by leaving a Google review:\n${GOOGLE_REVIEW_LINK}\n\nRegards,\nFenster Team`
+  }
+
+  function handleCopyReviewLink() {
+    navigator.clipboard.writeText(buildReviewMessage()).then(() => {
+      setSnack({ open: true, msg: 'Review message copied!', type: 'success' })
+      setShowReviewPopup(false)
+    })
+  }
+
+  function handleSendReviewWhatsApp() {
+    const phone = (project?.clientPhone ?? '').replace(/\D/g, '').replace(/^0/, '')
+    if (!phone) {
+      setSnack({ open: true, msg: 'Client phone number not available', type: 'error' })
+      return
+    }
+    window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(buildReviewMessage())}`, '_blank')
+    setShowReviewPopup(false)
   }
 
   function handleSavePayment(advTaskId: string) {
@@ -839,10 +862,10 @@ function handleSaveTask() {
             className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-semibold active:scale-95 transition-transform bg-emerald-50 text-emerald-700 border-emerald-100">
             <MessageCircle size={13} /> WhatsApp
           </a>
-          <a href={GOOGLE_REVIEW_LINK} target="_blank" rel="noopener noreferrer"
+          <button onClick={() => setShowReviewPopup(true)}
             className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-semibold active:scale-95 transition-transform bg-amber-50 text-amber-700 border-amber-100">
             <Star size={13} /> Review
-          </a>
+          </button>
         </div>
 
         {/* Google Maps link — shown for site engineers to navigate to job site */}
@@ -994,6 +1017,21 @@ function handleSaveTask() {
             setShowEditClient(false)
           }} className="w-full bg-blue-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-blue-700">
             Save Name
+          </button>
+        </div>
+      </BottomSheet>
+
+      {/* Review — copy link or send to client via WhatsApp */}
+      <BottomSheet isOpen={showReviewPopup} onClose={() => setShowReviewPopup(false)} title="Ask for a Review">
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">Send the client a link to leave a Google review.</p>
+          <button onClick={handleCopyReviewLink}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl border-2 border-slate-200 bg-white text-slate-700 text-sm font-bold active:bg-slate-50">
+            Copy to Clipboard
+          </button>
+          <button onClick={handleSendReviewWhatsApp}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-emerald-600 text-white text-sm font-bold active:bg-emerald-700">
+            <MessageCircle size={16} /> Send via WhatsApp
           </button>
         </div>
       </BottomSheet>
