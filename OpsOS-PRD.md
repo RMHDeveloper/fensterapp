@@ -1,5 +1,5 @@
 # Operations OS Platform (OpsOS) — Product Requirements Document
-.
+
 **Version:** 1.0  
 **Date:** 2026-07-04  
 **Status:** Draft
