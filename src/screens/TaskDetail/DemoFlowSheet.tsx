@@ -1587,8 +1587,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   function submitDemoProductionWork() {
     demoSave({
-      flowStage: 'installation_assign', flowStatus: 'ready', status: 'pending',
-      title: 'Assign Installation',
+      flowStage: 'dispatch_assign', flowStatus: 'ready', status: 'pending',
+      title: 'Assign to Dispatch',
       productionChecklist: prodChecklist,
       productionOverdueReason: undefined, productionNewDate: undefined,
     }, 'All production steps completed — Ready to Dispatch')
@@ -3633,7 +3633,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               {prodChecklist.every(i => i.done) ? (
                 <button type="button" onClick={submitDemoProductionWork}
                   className="w-full py-4 rounded-2xl bg-amber-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
-                  <Package size={15} /> Ready to Dispatch (Override) →
+                  <Package size={15} /> Assign to Dispatch (Override) →
                 </button>
               ) : (
                 <div className="space-y-3 pt-2 border-t border-slate-100">
