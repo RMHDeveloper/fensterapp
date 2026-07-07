@@ -169,6 +169,7 @@ export interface CostBreakdown {
   productionCost: number
   installationCost: number
   transportCost: number
+  extraCharge?: number
   profit?: number     // visible to Owner only — never show to other roles
 }
 

@@ -580,7 +580,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [ownerNavStage, setOwnerNavStage] = useState<string | null>(null)
 
   // ── FINAL PAYMENT ─────────────────────────────────────────────────────────
-  const [finalPayType,   setFinalPayType]   = useState('')   // 'partial' | 'full'
   const [finalPaidAmt,   setFinalPaidAmt]   = useState('')
   const [finalBalAmt,    setFinalBalAmt]    = useState('')
   const [extraChargeAmt, setExtraChargeAmt] = useState('')
@@ -677,7 +676,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setInstCompletedPhotos([])
     setExtraSheets([])
     setOwnerNavStage(null)
-    setFinalPayType('')
     setFinalPaidAmt(task.paidAmount ? String(task.paidAmount) : '')
     setFinalBalAmt(task.balanceAmount ? String(task.balanceAmount) : '')
     setFinalPayScreenshot([])
@@ -2848,7 +2846,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       )}
                       <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Advance Payment</p>
                       <Opt value="advance_paid" label="Advance Paid" sub="Client paid advance — start production" accent="border-emerald-200" sel={sel} onPick={pick} />
-                      <Opt value="partial_paid" label="Partial Paid" sub="Partial amount received"                accent="border-amber-200"   sel={sel} onPick={pick} />
+                      <Opt value="partial_paid" label="Partial Paid" sub="Partial payment received"                accent="border-amber-200"   sel={sel} onPick={pick} />
                       <Opt value="full_paid"    label="Full Paid"    sub="Complete payment received"              accent="border-green-200"   sel={sel} onPick={pick} />
                       {(sel === 'advance_paid' || sel === 'partial_paid' || sel === 'full_paid') && (
                         <div className="space-y-3">
@@ -3269,7 +3267,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               )}
 
               <Opt value="advance_paid" label="Advance Paid" sub="Client paid advance — start production" accent="border-emerald-200" sel={sel} onPick={pick} />
-              <Opt value="partial_paid" label="Partial Paid" sub="Partial amount received"                accent="border-amber-200"   sel={sel} onPick={pick} />
+              <Opt value="partial_paid" label="Partial Paid" sub="Partial payment received"                accent="border-amber-200"   sel={sel} onPick={pick} />
               <Opt value="full_paid"    label="Full Paid"    sub="Complete payment received"              accent="border-green-200"   sel={sel} onPick={pick} />
 
               {(sel === 'advance_paid' || sel === 'partial_paid' || sel === 'full_paid') && (
@@ -3816,14 +3814,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           ════════════════════════════════════════════════════════════════ */}
 
           {/* 11a. waiting view for non-incharge roles */}
-          {displayStage === 'installation_update' && flowStatus !== 'mistake' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && (
+          {displayStage === 'installation_update' && flowStatus !== 'mistake' && flowStatus !== 'not_completed' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && (
             <WaitingView icon={Wrench} color="bg-rose-50 border border-rose-200 text-rose-700"
               title={`Installation ${flowStatus === 'not_completed' ? 'Not Completed' : 'In Progress'}`}
               sub={task.installationPerson ? `Installer: ${task.installationPerson}${task.installationDate ? ` · ${task.installationDate}` : ''}` : 'Waiting for installation incharge to update'} />
           )}
 
           {/* CONTROL: Installation Update — owner sees Take Control, others see Override */}
-          {displayStage === 'installation_update' && flowStatus !== 'mistake' && role === 'owner' && !demoOverride && (
+          {displayStage === 'installation_update' && flowStatus !== 'mistake' && flowStatus !== 'not_completed' && role === 'owner' && !demoOverride && (
             <>
               <WaitingView icon={Wrench} color="bg-rose-50 border border-rose-200 text-rose-700"
                 title={`Installation ${flowStatus === 'not_completed' ? 'Not Completed' : 'In Progress'}`}
@@ -3833,7 +3831,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             </>
           )}
 
-          {displayStage === 'installation_update' && flowStatus !== 'mistake' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && canDemoOverride && (
+          {displayStage === 'installation_update' && flowStatus !== 'mistake' && flowStatus !== 'not_completed' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && canDemoOverride && (
             <DemoControlCard
               waitingFor="Installation Incharge"
               description="Installation Incharge needs to report installation result. For demo, update it yourself."
@@ -3841,7 +3839,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             />
           )}
 
-          {displayStage === 'installation_update' && flowStatus !== 'mistake' && (role === 'technician' || role === 'installation_incharge' || demoOverride) && (
+          {displayStage === 'installation_update' && flowStatus !== 'mistake' && flowStatus !== 'not_completed' && (role === 'technician' || role === 'installation_incharge' || demoOverride) && (
             <>{demoOverride && (
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
@@ -3853,7 +3851,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             )}</>
           )}
 
-          {displayStage === 'installation_update' && flowStatus !== 'mistake' && (role === 'technician' || role === 'installation_incharge' || demoOverride) && (
+          {displayStage === 'installation_update' && flowStatus !== 'mistake' && flowStatus !== 'not_completed' && (role === 'technician' || role === 'installation_incharge' || demoOverride) && (
             <>
               {task.installationPerson && (
                 <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
@@ -3922,10 +3920,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               11b. INSTALLATION MISTAKE REVIEW — LM
           ════════════════════════════════════════════════════════════════ */}
-          {displayStage === 'installation_update' && flowStatus === 'mistake' && (
+          {displayStage === 'installation_update' && (flowStatus === 'mistake' || flowStatus === 'not_completed') && (
             <>
               <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-4 space-y-2">
-                <p className="text-xs font-bold text-red-600 uppercase">Installation Mistake Reported</p>
+                <p className="text-xs font-bold text-red-600 uppercase">
+                  {flowStatus === 'not_completed' ? 'Installation Not Completed' : 'Installation Mistake Reported'}
+                </p>
                 {task.installationMistakeDetails && (
                   <p className="text-sm text-red-700">{task.installationMistakeDetails}</p>
                 )}
@@ -3995,62 +3995,31 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                     </div>
 
                     {!allPaid && (
-                      <>
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Payment Option</p>
-                        <Opt value="partial" label="Partial Payment" sub="Pay part of the remaining balance" accent="border-amber-200" sel={finalPayType} onPick={v => { setFinalPayType(v); setFinalPaidAmt(''); setFinalBalAmt('') }} />
-                        <Opt value="full"    label="Full Balance Payment" sub={`Clear entire balance — ₹${balance.toLocaleString('en-IN')}`} accent="border-emerald-200" sel={finalPayType} onPick={v => { setFinalPayType(v); setFinalPaidAmt(String(balance)); setFinalBalAmt('0') }} />
-
-                        {(finalPayType === 'partial' || finalPayType === 'full') && (
-                          <div className="space-y-3">
-                            <div>
-                              <label className={lbl}>Payment Received (₹) {req}</label>
-                              <input type="text" inputMode="numeric" value={finalPaidAmt}
-                                onChange={e => {
-                                  const v = e.target.value.replace(/[^0-9]/g, '')
-                                  setFinalPaidAmt(v)
-                                  setFinalBalAmt(String(Math.max(0, balance - Number(v))))
-                                }}
-                                placeholder={finalPayType === 'full' ? String(balance) : 'Enter amount'}
-                                className={inp} />
-                            </div>
-                            {finalPaidAmt && Number(finalPaidAmt) > 0 && (
-                              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
-                                <div className="flex justify-between text-xs">
-                                  <span className="text-amber-600">Remaining after this payment</span>
-                                  <span className="font-bold text-amber-700">₹{Math.max(0, balance - Number(finalPaidAmt)).toLocaleString('en-IN')}</span>
-                                </div>
-                              </div>
-                            )}
-                            <MultiFileUploadField
-                              label="Payment Screenshot"
-                              accept="image/*,.pdf"
-                              files={finalPayScreenshot}
-                              onChange={setFinalPayScreenshot}
-                              helperText="Upload payment proof / bank screenshot" />
-                            <button type="button"
-                              onClick={() => {
-                                if (!finalPaidAmt) { setError('Enter the amount received.'); return }
-                                const newPaid   = Number(finalPaidAmt)
-                                const totalPaid = paid + newPaid
-                                const newBal    = Math.max(0, balance - newPaid)
-                                save({
-                                  paidAmount: totalPaid,
-                                  balanceAmount: newBal,
-                                  flowStatus: newBal <= 0 ? 'full_paid' : 'partial_paid',
-                                  finalPaymentScreenshot: finalPayScreenshot.length > 0 ? finalPayScreenshot : undefined,
-                                }, `Payment ₹${newPaid.toLocaleString('en-IN')} received — balance ₹${newBal.toLocaleString('en-IN')}`, finalPayScreenshot)
-                              }}
-                              disabled={!finalPaidAmt || Number(finalPaidAmt) <= 0}
-                              className="w-full py-4 rounded-2xl bg-green-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2 disabled:opacity-40">
-                              <CreditCard size={15} /> {finalPayType === 'full' ? 'Pay Full Balance' : 'Save Payment'}
-                            </button>
-                          </div>
-                        )}
+                      <div className="space-y-3">
+                        <MultiFileUploadField
+                          label="Payment Screenshot"
+                          accept="image/*,.pdf"
+                          files={finalPayScreenshot}
+                          onChange={setFinalPayScreenshot}
+                          helperText="Upload payment proof / bank screenshot (optional)" />
+                        <button type="button"
+                          onClick={() => {
+                            const totalPaid = paid + balance
+                            save({
+                              paidAmount: totalPaid,
+                              balanceAmount: 0,
+                              flowStatus: 'full_paid',
+                              finalPaymentScreenshot: finalPayScreenshot.length > 0 ? finalPayScreenshot : undefined,
+                            }, `Payment ₹${balance.toLocaleString('en-IN')} received — fully paid`, finalPayScreenshot)
+                          }}
+                          className="w-full py-4 rounded-2xl bg-green-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
+                          <CreditCard size={15} /> Payment Paid — Complete
+                        </button>
                         <button type="button" disabled
                           className="w-full py-3.5 rounded-2xl bg-slate-100 text-slate-400 text-sm font-extrabold flex items-center justify-center gap-2 cursor-not-allowed">
                           <CheckCircle2 size={15} /> Complete Project (Balance Pending)
                         </button>
-                      </>
+                      </div>
                     )}
 
                     {allPaid && (
@@ -4073,10 +4042,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                         {/* Extra Charge — MD/ED only */}
                         {role === 'owner' && (
                           <div>
-                            <label className={lbl}>Extra Charge (₹) <span className="text-slate-300 font-normal">(optional — if additional work was done)</span></label>
+                            <label className={lbl}>Extra Charge (₹) {req}</label>
                             <input type="text" inputMode="numeric" value={extraChargeAmt}
                               onChange={e => setExtraChargeAmt(e.target.value.replace(/[^0-9]/g, ''))}
-                              placeholder="0" className={inp} />
+                              placeholder="0 (enter 0 if no additional work was done)" className={inp} />
                           </div>
                         )}
 
@@ -4135,6 +4104,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                         <button type="button"
                           onClick={() => {
                             if (!actualOther.trim()) { setError('Enter Other Costs (enter 0 if none).'); return }
+                            if (role === 'owner' && !extraChargeAmt.trim()) { setError('Enter Extra Charge (enter 0 if none).'); return }
                             const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport, actualOther]
                               .reduce((s, v) => s + (Number(v) || 0), 0)
                             const extraCharge = Number(extraChargeAmt) || 0
@@ -4151,6 +4121,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                                     productionCost:  Number(actualProduction)   || 0,
                                     installationCost:Number(actualInstallation) || 0,
                                     transportCost:   Number(actualTransport)    || 0,
+                                    extraCharge,
                                     profit:          ((task.quotationAmount ?? 0) + extraCharge) - totalExpenses,
                                   },
                                 } : {}),

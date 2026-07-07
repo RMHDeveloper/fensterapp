@@ -417,6 +417,12 @@ function handleSaveTask() {
                 </div>
               ))}
             </div>
+            {canSeePayments && project.actualCosts?.extraCharge != null && project.actualCosts.extraCharge > 0 && (
+              <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+                <span className="text-xs font-semibold text-blue-600">Extra Charge</span>
+                <span className="text-xs font-bold text-blue-700">₹{project.actualCosts.extraCharge.toLocaleString('en-IN')}</span>
+              </div>
+            )}
             {paid === 0 && <p className="text-xs text-slate-400 italic text-center">No payment received yet.</p>}
             {paid > 0 && balance === 0 && <p className="text-xs text-emerald-600 font-semibold text-center">✓ Fully paid</p>}
 
@@ -662,14 +668,13 @@ function handleSaveTask() {
     {
       id: 'info',
       title: 'Project Info',
-      subtitle: `${project?.productType} · ${project?.city}`,
+      subtitle: `${project?.city}`,
       children: (
         <div className="space-y-2.5">
           {[
             { label: 'Project No.', value: project?.number      },
             { label: 'Client',      value: project?.client      },
             { label: 'Phone',       value: project?.clientPhone },
-            { label: 'Product',     value: project?.productType ?? '—' },
             { label: 'City',        value: project?.city        },
             { label: 'Created',     value: project?.createdAt   },
             { label: 'Due Date',    value: project?.dueDate     },

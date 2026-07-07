@@ -106,9 +106,11 @@ export function ProjectRow({ project, onClick, role, balanceAmount }: Props) {
           </div>
           <p className="text-xs text-slate-500 truncate mt-0.5">{project.client}</p>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${stageCls}`}>
-              {stageLabel}
-            </span>
+            {stage !== 'new_project' && (
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${stageCls}`}>
+                {stageLabel}
+              </span>
+            )}
             {daysLabel && (
               <span className={`text-[10px] font-semibold ${daysLabel.color}`}>
                 {daysLabel.text}
