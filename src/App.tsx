@@ -56,7 +56,7 @@ function AppShell() {
             <Route path="/projects"     element={<ProtectedRoute screenPath="projects">     <ProjectsScreen />     </ProtectedRoute>} />
             <Route path="/project/:id"  element={<ProtectedRoute screenPath="projects">     <ProjectDetailScreen /></ProtectedRoute>} />
             <Route path="/leads"        element={<ProtectedRoute screenPath="leads">        <LeadsScreen />        </ProtectedRoute>} />
-            <Route path="/leads/qualified" element={<ProtectedRoute screenPath="leads">     <LeadsScreen />        </ProtectedRoute>} />
+            <Route path="/leads/negotiation" element={<ProtectedRoute screenPath="leads">   <LeadsScreen />        </ProtectedRoute>} />
             <Route path="/site-visits"  element={<ProtectedRoute screenPath="site-visits">  <SiteVisitScreen />    </ProtectedRoute>} />
             <Route path="/quotations"   element={<ProtectedRoute screenPath="quotations">   <QuotationsScreen />   </ProtectedRoute>} />
             <Route path="/orders"       element={<ProtectedRoute screenPath="orders">       <OrdersScreen />       </ProtectedRoute>} />

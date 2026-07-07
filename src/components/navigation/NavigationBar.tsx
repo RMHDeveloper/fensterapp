@@ -9,7 +9,7 @@ const ALL_ITEMS: NavItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard'   },
   { icon: LayoutDashboard, label: 'Task',      path: '/home'        },
   { icon: CalendarCheck,   label: 'Today',     path: '/tasks'       },
-  { icon: UserCheck,       label: 'Qualified', path: '/leads/qualified' },
+  { icon: UserCheck,       label: 'Negotiation', path: '/leads/negotiation' },
   { icon: Users,           label: 'Leads',     path: '/leads'       },
   { icon: FolderOpen,      label: 'Projects',  path: '/projects'    },
   { icon: Layers,          label: 'Production',path: '/production'  },
@@ -21,7 +21,7 @@ const ALL_ITEMS: NavItem[] = [
 const ROLE_PATHS: Record<UserRole, string[]> = {
   // MD/ED: leads replace today; approvals in bar
   owner:                ['/dashboard', '/leads', '/approvals', '/projects', '/settings'],
-  lead_manager:         ['/home', '/leads/qualified', '/leads', '/projects', '/settings'],
+  lead_manager:         ['/home', '/leads/negotiation', '/leads', '/projects', '/settings'],
   site_engineer:        ['/home', '/tasks', '/site-visits', '/projects',   '/settings'],
   production_admin:     ['/home', '/tasks', '/production',  '/projects',   '/settings'],
   production_manager:   ['/home', '/tasks', '/production',  '/projects',   '/settings'],

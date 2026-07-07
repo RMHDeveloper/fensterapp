@@ -14,20 +14,27 @@ import { BottomSheet } from '../../components/feedback/BottomSheet'
 import { Snackbar } from '../../components/feedback/Snackbar'
 import { createProjectFromForm, createSiteAssignTask } from '../../utils/workflow'
 import { loadManagedUsers } from '../../utils/userStorage'
+import { normalizeRole, isCompletedProject, isConvertedProject, getProjectFilterStage, type ProjectFilterStage } from '../../utils/stageHelpers'
 import type { Project, Task } from '../../types'
 
 type Filter = 'active' | 'pre_production' | 'production' | 'ready_to_dispatch' | 'installation' | 'collection' | 'completed'
+type Bucket = ProjectFilterStage
 
-function getChipsForRole(role?: string): { value: Filter; label: string }[] {
+function getChipsForRole(rawRole?: string): { value: Filter; label: string }[] {
+  const role = normalizeRole(rawRole)
   if (role === 'production_admin' || role === 'production_manager') return [
+    { value: 'active',         label: 'Active'         },
     { value: 'pre_production', label: 'Pre-Production' },
     { value: 'production',     label: 'Production'     },
+    { value: 'completed',      label: 'Complete'       },
   ]
-  if (role === 'technician' || role === 'installation_incharge') return [
+  if (role === 'technician') return [
+    { value: 'active',            label: 'Active'            },
     { value: 'ready_to_dispatch', label: 'Ready to Dispatch' },
     { value: 'installation',      label: 'Installation'      },
+    { value: 'completed',         label: 'Complete'          },
   ]
-  if (role === 'site_engineer') return [
+  if (role === 'viewer' || role === 'site_engineer') return [
     { value: 'active',    label: 'Active'   },
     { value: 'completed', label: 'Complete' },
   ]
@@ -42,38 +49,10 @@ function getChipsForRole(role?: string): { value: Filter; label: string }[] {
   ]
 }
 
-function isProjectCompleted(p: Project): boolean {
-  return (
-    p.status === 'completed' ||
-    p.isCompleted === true ||
-    Boolean(p.completedAt) ||
-    p.workflowStatus === 'Finished' ||
-    p.currentStage === 'completed'
-  )
-}
-
-type Bucket = 'pre_production' | 'production' | 'ready_to_dispatch' | 'installation' | 'collection' | null
-
-// Bucketed by the project's actual active flow task, not project.currentStage —
-// currentStage reuses the same string ('advance_payment') for both "waiting on
-// advance payment" and "job sheet sent to Production Incharge", so it can't tell
-// those apart. The flow task's stage/status can.
-function getProjectBucket(p: Project, allTasks: Task[]): Bucket {
-  const activeTask = allTasks.find(t => t.projectId === p.id && t.flowStage && t.flowStage !== 'completed')
-  const stage  = activeTask?.flowStage
-  const status = activeTask?.flowStatus
-  if (stage === 'production_assign' || stage === 'production_check') return 'pre_production'
-  if (stage === 'production_work') return status === 'ready_to_pack' ? 'ready_to_dispatch' : 'production'
-  if (stage === 'installation_assign') return 'ready_to_dispatch'
-  if (stage === 'installation_update') return 'installation'
-  if (stage === 'final_payment' || stage === 'final_completion') return 'collection'
-  return null
-}
-
 function matchesFilter(p: Project, filter: Filter, bucket: Bucket): boolean {
-  if (filter === 'active')    return !isProjectCompleted(p)
-  if (filter === 'completed') return isProjectCompleted(p)
-  if (isProjectCompleted(p)) return false
+  if (filter === 'active')    return !isCompletedProject(p)
+  if (filter === 'completed') return isCompletedProject(p)
+  if (isCompletedProject(p)) return false
   return bucket === filter
 }
 
@@ -83,11 +62,7 @@ export default function ProjectsScreen() {
   const navigate = useNavigate()
   const { projects, addProject, addTask, tasks: allTasks } = useAppData()
   const { user } = useAuth()
-  const defaultFilter: Filter =
-    (user?.role === 'technician' || user?.role === 'installation_incharge') ? 'ready_to_dispatch'
-    : (user?.role === 'production_admin' || user?.role === 'production_manager') ? 'pre_production'
-    : 'active'
-  const [filter, setFilter] = useState<Filter>(defaultFilter)
+  const [filter, setFilter] = useState<Filter>('active')
   const [search, setSearch] = useState('')
   const [showNew, setShowNew] = useState(false)
   const [snack,   setSnack]   = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
@@ -112,7 +87,7 @@ export default function ProjectsScreen() {
   const chips = getChipsForRole(user?.role)
 
   function matchesRoleVisibility(p: Project, bucket: Bucket): boolean {
-    const role = user?.role
+    const role = normalizeRole(user?.role)
     if (!role || role === 'owner') return true
     if (role === 'lead_manager') return p.ownerId === user!.id
     if (role === 'site_engineer') {
@@ -123,18 +98,18 @@ export default function ProjectsScreen() {
       )
     }
     if (role === 'production_admin' || role === 'production_manager') {
-      return bucket === 'pre_production' || bucket === 'production'
+      return isCompletedProject(p) || bucket === 'pre_production' || bucket === 'production'
     }
-    if (role === 'technician' || role === 'installation_incharge') {
-      return bucket === 'ready_to_dispatch' || bucket === 'installation'
+    if (role === 'technician') {
+      return isCompletedProject(p) || bucket === 'ready_to_dispatch' || bucket === 'installation'
     }
     return true
   }
 
   const filtered = projects.filter(p => {
     // Not yet converted from its lead (still managed from the Leads page) — hidden everywhere, including for MD
-    if (p.pendingConversion) return false
-    const bucket = getProjectBucket(p, allTasks)
+    if (!isConvertedProject(p)) return false
+    const bucket = getProjectFilterStage(p, allTasks)
     if (!matchesRoleVisibility(p, bucket)) return false
     const matchF = matchesFilter(p, filter, bucket)
     const matchS = !search

@@ -13,40 +13,77 @@ import { Snackbar } from '../../components/feedback/Snackbar'
 import { AppHeader } from '../../components/layout/AppHeader'
 import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { loadManagedUsers } from '../../utils/userStorage'
-import type { Lead, LeadStatus, LeadSource, LeadInterest, Task } from '../../types'
+import type { Lead, LeadStatus, LeadSource, LeadInterest, Task, Project, FlowStage } from '../../types'
 
-type Filter = 'active' | 'contact' | 'measurement' | 'quotation' | 'won' | 'lost'
+type Filter = 'active' | 'contact' | 'measurement' | 'quotation'
 
 const CHIPS: { value: Filter; label: string }[] = [
   { value: 'active',      label: 'Active'      },
-  { value: 'contact',     label: 'Contact'     },
+  { value: 'contact',     label: 'Contacted'   },
   { value: 'measurement', label: 'Measurement' },
   { value: 'quotation',   label: 'Quotation'   },
-  { value: 'won',         label: 'Won'         },
-  { value: 'lost',        label: 'Lost'        },
 ]
 
-// Measurement: from site-engineer assignment through the LM preparing the quotation
-// (still hasn't been sent to MD/ED yet)
-const LEAD_MEASUREMENT_STAGES = new Set([
-  'new_project','measurement','site_visit_assigned','site_visit','site_visit_completed',
-  'waiting_site_visit_review','reschedule_requested','reschedule_approved',
-  'quotation_preparation',
-])
-// Quotation: from the moment the LM sends the quotation to MD/ED, through MD/ED approval,
-// sending to client, negotiation, and collecting advance payment — until Convert to Project
-const LEAD_QUOTATION_STAGES = new Set([
-  'quotation_sent_owner','quotation_sent_md_ed',
-  'owner_approved','md_ed_approved','quotation_rework','owner_disapproved','md_ed_rejected',
-  'sent_to_client','waiting_client_approval','client_rejected','client_not_approved','negotiation',
-  'client_approved','advance_payment','advance_payment_pending','waiting_advance_payment',
-])
+// 'won' is kept as a legacy alias for leads converted before this status was renamed —
+// treated identically to 'converted' everywhere in this screen.
+function isLeadConverted(lead: Lead): boolean {
+  return lead.status === 'won' || lead.status === 'converted'
+}
 
-// Flow stages reached only after advance payment has actually been recorded
-const STAGES_AFTER_ADVANCE_PAYMENT = new Set([
-  'production_assign','production_check','production_work',
-  'installation_assign','installation_update','final_payment','final_completion','completed',
-])
+// Real runtime order of flow stages (NOT the declaration order in FlowStage) —
+// derived from how each stage's submit handler actually transitions to the next one.
+const FLOW_ORDER: FlowStage[] = [
+  'site_assign', 'site_visit', 'reschedule_review', 'site_review',
+  'owner_approval', 'send_to_client', 'advance_payment',
+  'production_assign', 'production_check', 'production_work',
+  'installation_assign', 'installation_update', 'final_payment', 'final_completion', 'completed',
+]
+function flowReached(stage: FlowStage | undefined, target: FlowStage): boolean {
+  if (!stage) return false
+  return FLOW_ORDER.indexOf(stage) >= FLOW_ORDER.indexOf(target)
+}
+
+// Measurement: from assigning the Site Engineer through the LM preparing the quotation
+// (still hasn't been sent to MD/ED yet). Everything else on the linked project's active
+// flow task — MD/ED approval through advance payment — counts as Quotation, right up
+// until the LM clicks Convert to Project.
+const LEAD_MEASUREMENT_FLOW_STAGES = new Set<FlowStage>(['site_assign', 'site_visit', 'reschedule_review', 'site_review'])
+
+function getLeadFlowBucket(lead: Lead, projects: Project[], tasks: Task[]): 'measurement' | 'quotation' | null {
+  if (lead.status !== 'qualified') return null
+  const proj = projects.find(p => p.leadId === lead.id)
+  if (!proj) return 'measurement'
+  const activeTask = tasks.find(t => t.projectId === proj.id && t.flowStage && t.flowStage !== 'completed')
+  if (!activeTask?.flowStage) return 'measurement'
+  return LEAD_MEASUREMENT_FLOW_STAGES.has(activeTask.flowStage) ? 'measurement' : 'quotation'
+}
+
+// Advance payment has been recorded once the linked project's active flow task has moved
+// at or past the advance_payment stage — gates the "Convert to Project" button while the
+// project is still pendingConversion.
+function isAdvanceReceived(projectId: string, tasks: Task[]): boolean {
+  const activeTask = tasks.find(t => t.projectId === projectId && t.flowStage && t.flowStage !== 'completed')
+  return flowReached(activeTask?.flowStage, 'advance_payment')
+}
+
+// Negotiation view status lines — Quotation / MD Approval / Client Approval / Advance Payment
+function getNegotiationStatus(task: Task | undefined) {
+  const stage  = task?.flowStage
+  const status = task?.flowStatus
+  const quotation =
+    !stage || stage === 'site_review'        ? 'Preparing Quotation' :
+    flowReached(stage, 'owner_approval')     ? 'Quotation Sent' : 'Pending'
+  const mdApproval =
+    stage === 'owner_approval' ? (status === 'rejected' ? 'Rejected' : status === 'approved' ? 'Approved' : 'Waiting MD Approval') :
+    flowReached(stage, 'send_to_client')     ? 'Approved' : '—'
+  const clientApproval =
+    stage === 'send_to_client' ? (status === 'client_rejected' ? 'Rejected' : status === 'client_approved' ? 'Client Approved' : 'Waiting Client Approval') :
+    flowReached(stage, 'advance_payment')    ? 'Client Approved' : '—'
+  const advance =
+    stage === 'advance_payment' ? 'Advance Pending' :
+    flowReached(stage, 'production_assign')  ? 'Advance Received' : '—'
+  return { quotation, mdApproval, clientApproval, advance }
+}
 
 const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: 'existing_customer', label: 'Existing Client'    },
@@ -89,7 +126,7 @@ export default function LeadsScreen() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const isQualifiedView = pathname === '/leads/qualified'
+  const isNegotiationView = pathname === '/leads/negotiation'
 
   const isMdEd = user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED')
   const isLO   = user?.role === 'lead_manager'
@@ -107,7 +144,6 @@ export default function LeadsScreen() {
   const [showStatusOptions, setShowStatusOptions] = useState(false)
   const [convertingProjectId, setConvertingProjectId] = useState<string | null>(null)
   const [convertDueDate, setConvertDueDate] = useState('')
-  const [convertProjectName, setConvertProjectName] = useState('')
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
 
   // Once the project + "Assign Site Engineer" task exist, open the real flow popup for it
@@ -169,37 +205,25 @@ export default function LeadsScreen() {
 
   const filtered = leads.filter(l => {
     if (user?.role === 'lead_manager' && l.assignee && l.assignee !== user.name) return false
-    const matchSearchOnly = !search
-      || l.name.toLowerCase().includes(search.toLowerCase())
-      || l.phone.includes(search)
-      || l.city.toLowerCase().includes(search.toLowerCase())
-    if (isQualifiedView) return l.status === 'qualified' && matchSearchOnly
-    const proj = projects.find(p => p.leadId === l.id)
-    const projStage = proj?.currentStage
-    // A won lead still shows in Measurement/Quotation by its real project stage until
-    // it's actually converted (pendingConversion flips to false once "Convert to Project" is clicked)
-    const wonPending = l.status === 'won' && !!proj?.pendingConversion
-    let matchFilter = false
-    if (filter === 'lost') {
-      matchFilter = l.status === 'lost'
-    } else if (filter === 'won') {
-      matchFilter = l.status === 'won'
-    } else if (l.status === 'lost' || (l.status === 'won' && !proj?.pendingConversion)) {
-      matchFilter = false
-    } else if (filter === 'active') {
-      matchFilter = true
-    } else if (filter === 'contact') {
-      matchFilter = l.status === 'new' || l.status === 'contacted'
-    } else if (filter === 'measurement') {
-      matchFilter = l.status === 'qualified'
-        || (wonPending && (!projStage || LEAD_MEASUREMENT_STAGES.has(projStage)))
-    } else if (filter === 'quotation') {
-      matchFilter = wonPending && !!projStage && LEAD_QUOTATION_STAGES.has(projStage)
-    }
     const matchSearch = !search
       || l.name.toLowerCase().includes(search.toLowerCase())
       || l.phone.includes(search)
       || l.city.toLowerCase().includes(search.toLowerCase())
+    if (isNegotiationView) {
+      // Negotiation: MD approval through advance received, not yet converted
+      return getLeadFlowBucket(l, projects, tasks) === 'quotation' && matchSearch
+    }
+    const converted = isLeadConverted(l)
+    let matchFilter = false
+    if (filter === 'active') {
+      matchFilter = l.status !== 'lost' && !converted
+    } else if (filter === 'contact') {
+      matchFilter = l.status === 'contacted'
+    } else if (filter === 'measurement') {
+      matchFilter = !converted && l.status !== 'lost' && getLeadFlowBucket(l, projects, tasks) === 'measurement'
+    } else if (filter === 'quotation') {
+      matchFilter = !converted && l.status !== 'lost' && getLeadFlowBucket(l, projects, tasks) === 'quotation'
+    }
     return matchFilter && matchSearch
   })
 
@@ -394,23 +418,20 @@ export default function LeadsScreen() {
   }
 
   function openConvertToProject(projectId: string) {
-    const proj = projects.find(p => p.id === projectId)
     setConvertingProjectId(projectId)
     setConvertDueDate('')
-    setConvertProjectName(proj?.name ?? '')
   }
 
+  // dueDate is set when the LM clicks "Done"; omitted when they click "Skip"
   function finishConvertToProject(dueDate?: string) {
     if (!convertingProjectId) return
     const projectId = convertingProjectId
-    const nameToSave = convertProjectName.trim() || undefined
     updateProject(projectId, {
       pendingConversion: false,
-      ...(nameToSave ? { name: nameToSave } : {}),
       ...(dueDate ? { dueDate } : {}),
     })
     const proj = projects.find(p => p.id === projectId)
-    if (proj?.leadId) updateLeadStatus(proj.leadId, 'won')
+    if (proj?.leadId) updateLeadStatus(proj.leadId, 'converted')
     setConvertingProjectId(null)
     setSelected(null)
     setSnack({ open: true, msg: 'Project created!', type: 'success' })
@@ -472,8 +493,8 @@ export default function LeadsScreen() {
             </button>
           </PermissionGate>
         </div>
-        {isQualifiedView ? (
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Qualified Leads</p>
+        {isNegotiationView ? (
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Negotiation — MD Approval to Advance Received</p>
         ) : (
           <FilterChips chips={CHIPS} active={filter} onChange={setFilter} />
         )}
@@ -481,11 +502,13 @@ export default function LeadsScreen() {
 
       <div className="px-4 pt-4 space-y-2.5">
         {filtered.map(lead => {
-          const linkedProject = (lead.status === 'won' || lead.status === 'qualified')
+          const linkedProject = (isLeadConverted(lead) || lead.status === 'qualified')
             ? projects.find(p => p.leadId === lead.id)
             : undefined
-          const showFlowUpdate = !!linkedProject?.pendingConversion
-          const showStatusUpdate = lead.status !== 'won' && lead.status !== 'lost' && !showFlowUpdate
+          const pendingLinked = linkedProject?.pendingConversion ? linkedProject : undefined
+          const showConvert = !!pendingLinked && isAdvanceReceived(pendingLinked.id, tasks)
+          const showFlowUpdate = !!pendingLinked && !showConvert
+          const showStatusUpdate = !isLeadConverted(lead) && lead.status !== 'lost' && !showFlowUpdate && !showConvert
           return (
             <div key={lead.id} onClick={() => { setSelected(lead); setShowStatusOptions(false) }}
               className="w-full text-left bg-white rounded-2xl shadow-card border border-slate-100 p-4 active:scale-[0.98] transition-transform cursor-pointer">
@@ -521,6 +544,35 @@ export default function LeadsScreen() {
                 <p className="mt-2 text-[11px] text-red-500 border-t border-slate-100 pt-2">
                   Lost reason: {lead.lostReason}
                 </p>
+              )}
+              {isNegotiationView && linkedProject && (() => {
+                const activeTask = tasks.find(t => t.projectId === linkedProject.id && t.flowStage && t.flowStage !== 'completed')
+                const { quotation, mdApproval, clientApproval, advance } = getNegotiationStatus(activeTask)
+                return (
+                  <div className="mt-2.5 pt-2.5 border-t border-slate-100 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                    {[
+                      { label: 'Phone',            value: lead.phone      },
+                      { label: 'Quotation',        value: quotation       },
+                      { label: 'MD Approval',      value: mdApproval      },
+                      { label: 'Client Approval',  value: clientApproval  },
+                      { label: 'Advance Payment',  value: advance         },
+                    ].map(({ label, value }) => (
+                      <div key={label}>
+                        <p className="text-[10px] text-slate-400">{label}</p>
+                        <p className="text-[11px] font-semibold text-slate-700">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+              {showConvert && (
+                <PermissionGate permission="edit_lead">
+                  <button
+                    onClick={e => { e.stopPropagation(); openConvertToProject(pendingLinked!.id) }}
+                    className="w-full mt-2.5 py-2 rounded-lg border-2 border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px] font-bold active:bg-emerald-100">
+                    Convert to Project
+                  </button>
+                </PermissionGate>
               )}
               {(showFlowUpdate || showStatusUpdate) && (
                 <PermissionGate permission="edit_lead">
@@ -567,7 +619,7 @@ export default function LeadsScreen() {
               )}
             </div>
 
-            {selected.status !== 'won' && selected.status !== 'lost' && !hasActiveProject && (
+            {!isLeadConverted(selected) && selected.status !== 'lost' && !hasActiveProject && (
               <PermissionGate permission="edit_lead">
                 <button onClick={() => setShowStatusOptions(v => !v)}
                   className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold active:bg-indigo-100">
@@ -597,7 +649,7 @@ export default function LeadsScreen() {
               ))}
             </div>
 
-            {showStatusOptions && selected.status !== 'won' && selected.status !== 'lost' && (
+            {showStatusOptions && !isLeadConverted(selected) && selected.status !== 'lost' && (
               <PermissionGate permission="edit_lead">
                 <div>
                   <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Set Status</label>
@@ -635,7 +687,7 @@ export default function LeadsScreen() {
             )}
 
             {/* Assign Site Engineer — disabled until lead is qualified */}
-            {selected.status !== 'won' && selected.status !== 'qualified' && selected.status !== 'lost' && (
+            {!isLeadConverted(selected) && selected.status !== 'qualified' && selected.status !== 'lost' && (
               <PermissionGate permission="create_project">
                 <button
                   disabled
@@ -645,23 +697,32 @@ export default function LeadsScreen() {
               </PermissionGate>
             )}
 
-            {(selected.status === 'won' || hasActiveProject) && (() => {
+            {(isLeadConverted(selected) || hasActiveProject) && (() => {
               const linkedProject = selectedLinkedProject
               if (!linkedProject) return null
 
               if (linkedProject.pendingConversion) {
                 const activeTask = tasks.find(t => t.projectId === linkedProject.id && t.flowStage && t.flowStage !== 'completed')
+                const advanceReceived = isAdvanceReceived(linkedProject.id, tasks)
                 return (
                   <div className="space-y-2.5">
                     <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
                       <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Current Stage</p>
                       <p className="text-sm font-bold text-slate-700">{activeTask?.title ?? 'In progress'}</p>
                     </div>
-                    <button
-                      onClick={() => openLeadFlowUpdate(linkedProject.id)}
-                      className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-blue-700">
-                      Update Status →
-                    </button>
+                    {advanceReceived ? (
+                      <button
+                        onClick={() => openConvertToProject(linkedProject.id)}
+                        className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-emerald-700">
+                        Convert to Project →
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => openLeadFlowUpdate(linkedProject.id)}
+                        className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-blue-700">
+                        Update Status →
+                      </button>
+                    )}
                   </div>
                 )
               }
@@ -812,32 +873,32 @@ export default function LeadsScreen() {
         />
       )}
 
-      {/* ── Convert to Project — name + optional due date ── */}
+      {/* ── Convert to Project — optional due date, Done or Skip ── */}
       {convertingProjectId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setConvertingProjectId(null)} />
           <div className="relative bg-white rounded-2xl shadow-sheet w-full max-w-[340px] p-5 space-y-4">
             <div>
-              <h3 className="text-base font-bold text-slate-800">Create Project</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Advance received — confirm the project details.</p>
-            </div>
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Project Name *</label>
-              <input type="text" value={convertProjectName} onChange={e => setConvertProjectName(e.target.value)}
-                placeholder="e.g. Rajesh Kumar — Living Room Windows"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
+              <h3 className="text-base font-bold text-slate-800">Convert to Project</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Advance received — set a due date, or skip.</p>
             </div>
             <div>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Due Date <span className="font-normal text-slate-300">(optional)</span></label>
               <input type="date" value={convertDueDate} onChange={e => setConvertDueDate(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
             </div>
-            <button
-              onClick={() => { if (convertProjectName.trim()) finishConvertToProject(convertDueDate || undefined) }}
-              disabled={!convertProjectName.trim()}
-              className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-indigo-700 disabled:opacity-40">
-              Create Project →
-            </button>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => finishConvertToProject(undefined)}
+                className="w-full bg-white border-2 border-slate-200 text-slate-600 rounded-xl py-3 text-sm font-bold active:bg-slate-50">
+                Skip
+              </button>
+              <button
+                onClick={() => finishConvertToProject(convertDueDate || undefined)}
+                className="w-full bg-indigo-600 text-white rounded-xl py-3 text-sm font-bold active:bg-indigo-700">
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

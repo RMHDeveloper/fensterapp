@@ -14,7 +14,7 @@ async function persistVoiceBlob(id: string, blob: Blob) {
   } catch { /* keep the blob:// url for this session */ }
 }
 
-function VoiceNoteItem({ id, onRemove }: { id: string; onRemove: () => void }) {
+function VoiceNoteItem({ id, label, onRemove }: { id: string; label: string; onRemove: () => void }) {
   const [playing, setPlaying] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const url = voiceBlobStore.get(id) ?? resolveFileUrl(id)
@@ -35,7 +35,7 @@ function VoiceNoteItem({ id, onRemove }: { id: string; onRemove: () => void }) {
           : <Play  size={12} className="text-white ml-0.5" />
         }
       </button>
-      <p className="flex-1 text-xs font-semibold text-purple-700">Voice note</p>
+      <p className="flex-1 text-xs font-semibold text-purple-700">{label}</p>
       <button type="button" onClick={onRemove} className="p-1 active:opacity-70">
         <Trash2 size={14} className="text-red-400" />
       </button>
@@ -104,9 +104,9 @@ export function VoiceRecorder({ label, savedIds, onAdd, onRemove, helperText }: 
     <div className="space-y-2">
       <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block">{label}</label>
 
-      {/* Saved recordings list */}
-      {savedIds.map(id => (
-        <VoiceNoteItem key={id} id={id} onRemove={() => onRemove(id)} />
+      {/* Saved recordings — numbered by upload order (1 = first uploaded), newest first */}
+      {savedIds.map((id, i) => ({ id, num: i + 1 })).reverse().map(({ id, num }) => (
+        <VoiceNoteItem key={id} id={id} label={`Voice Note ${num}`} onRemove={() => onRemove(id)} />
       ))}
 
       {/* Recording in progress */}

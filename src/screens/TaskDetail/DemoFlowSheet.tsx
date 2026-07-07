@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   X, CheckCircle2, AlertTriangle, Camera, Clock, Send, PhoneCall,
   Package, Wrench, CreditCard, Eye, Download, FileText, Copy, Check,
@@ -11,7 +10,7 @@ import { VoiceRecorder } from '../../components/forms/VoiceRecorder'
 import { LocationPinField } from '../../components/forms/LocationPinField'
 import { TimePickerField } from '../../components/forms/TimePickerField'
 import { NoteWithFilesField } from '../../components/forms/NoteWithFilesField'
-import type { Task, Project, LocationPin, StatusHistoryItem, FlowStage, CostBreakdown, ProjectStage, LeadStatus } from '../../types'
+import type { Task, Project, LocationPin, StatusHistoryItem, FlowStage, CostBreakdown, ProjectStage } from '../../types'
 import { PROJECT_STAGE_LABEL, PROJECT_STAGE_PROGRESS } from '../../types'
 import { filePreviewStore, voicePreviewStore, isImageFileName, resolveFileUrl } from '../../utils/sessionStore'
 import { MediaPreviewList } from '../../components/media/MediaPreviewList'
@@ -442,8 +441,7 @@ const DEFAULT_AVAIL: AvailItem[] = [
 
 export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const { user, can }                        = useAuth()
-  const { updateTask: ctxUpdateTask, updateProject, updateLeadStatus, tasks, projects, leads } = useAppData()
-  const navigate = useNavigate()
+  const { updateTask: ctxUpdateTask, updateProject, tasks, projects, leads } = useAppData()
   const role                                 = user?.role ?? 'lead_manager'
   const todayStr                             = new Date().toISOString().slice(0, 10)
   const project                              = projects.find(p => p.id === task.projectId)
@@ -544,8 +542,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [advBalAmt,        setAdvBalAmt]        = useState('')
   const [advNote,          setAdvNote]          = useState('')
   const [advPayScreenshot, setAdvPayScreenshot] = useState<string[]>([])
-  const [advProjectName,   setAdvProjectName]   = useState('')
-  const [advDueDate,       setAdvDueDate]       = useState('')
   const [finalPayScreenshot, setFinalPayScreenshot] = useState<string[]>([])
 
   // ── PRODUCTION WORK ───────────────────────────────────────────────────────
@@ -659,8 +655,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setAdvPayScreenshot(task.advancePaymentScreenshot ?? [])
     setAdvBalAmt(task.balanceAmount ? String(task.balanceAmount) : '')
     setAdvNote('')
-    setAdvProjectName(projects.find(p => p.id === task.projectId)?.name ?? '')
-    setAdvDueDate('')
     setOverdueNote(task.productionOverdueReason ?? '')
     setOverdueFiles([]); setOverdueNewDate(task.productionNewDate ?? todayStr)
     setLmNewDate(todayStr); setLmNote('')
@@ -1240,11 +1234,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       save({ flowStatus: 'pending', status: 'pending' }, 'Advance payment pending'); return
     }
     if (!advPaidAmt) { setError('Enter paid amount.'); return }
-    const isPendingConversion = project?.pendingConversion === true
-    if (isPendingConversion && !advProjectName.trim()) { setError('Enter a project name.'); return }
     const paid    = Number(advPaidAmt)
     const total   = task.quotationAmount ?? 0
     const balance = advBalAmt ? Number(advBalAmt) : Math.max(0, total - paid)
+    // Advance received — stays in Lead workflow (project.pendingConversion untouched)
+    // until the LM explicitly clicks "Convert to Project" on the Leads screen.
     save({
       flowStage: 'production_assign', flowStatus: 'ready', status: 'pending',
       title: 'Upload Job Sheet to Admin',
@@ -1253,15 +1247,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       paymentNote: advNote || undefined,
       advancePaymentScreenshot: advPayScreenshot.length > 0 ? advPayScreenshot : undefined,
     }, `Advance ₹${paid.toLocaleString('en-IN')} received`, advPayScreenshot)
-    if (isPendingConversion && project) {
-      updateProject(project.id, {
-        pendingConversion: false,
-        name: advProjectName.trim(),
-        ...(advDueDate ? { dueDate: advDueDate } : {}),
-      })
-      if (project.leadId) updateLeadStatus(project.leadId, 'won' as LeadStatus)
-      setTimeout(() => navigate(`/project/${project.id}`), 400)
-    }
   }
 
   function submitProductionWork() {
@@ -1762,7 +1747,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                         <p className="text-xs text-teal-700 font-semibold">All fields below are required.</p>
                       </div>
 
-                      <MultiFileUploadField label="Site Photos" required accept="image/*"
+                      <MultiFileUploadField label="Site Photos" required accept="image/*,.png,.jpg,.jpeg,.webp,.heic"
                         files={sitePhotos} onChange={setSitePhotos}
                         helperText="Upload photos of the site — minimum 1 required" />
 
@@ -1941,7 +1926,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <p className="text-xs text-teal-700 font-semibold">Upload site visit data below.</p>
               </div>
 
-              <MultiFileUploadField label="Site Photos" required accept="image/*"
+              <MultiFileUploadField label="Site Photos" required accept="image/*,.png,.jpg,.jpeg,.webp,.heic"
                 files={sitePhotos} onChange={setSitePhotos}
                 helperText="Upload photos of the site — minimum 1 required" />
 
@@ -2885,28 +2870,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                               placeholder="Payment method, reference number…" className={`${inp} resize-none`} />
                           </div>
                           <MultiFileUploadField label="Payment Screenshot" accept="image/*,.pdf" files={advPayScreenshot} onChange={setAdvPayScreenshot} helperText="Optional — upload payment proof" />
-                          {project?.pendingConversion && (
-                            <>
-                              <div className="h-px bg-slate-200 my-1" />
-                              <div>
-                                <label className={lbl}>Project Name {req}</label>
-                                <input type="text" value={advProjectName} onChange={e => setAdvProjectName(e.target.value)}
-                                  placeholder="e.g. Rajesh Kumar — Living Room Windows" className={inp} />
-                              </div>
-                              <div>
-                                <label className={lbl}>Due Date <span className="text-slate-300 font-normal">(optional)</span></label>
-                                <input type="date" value={advDueDate} onChange={e => setAdvDueDate(e.target.value)} className={inp} />
-                              </div>
-                            </>
-                          )}
                         </div>
                       )}
                       {sel && (
                         <button type="button" onClick={submitAdvancePayment}
                           className="w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 bg-emerald-600">
-                          {project?.pendingConversion
-                            ? '✓ Confirm & Create Project'
-                            : `✓ ${sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production`}
+                          {`✓ ${sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production`}
                         </button>
                       )}
                     </>
@@ -3307,29 +3276,13 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       placeholder="Payment method, reference number…" className={`${inp} resize-none`} />
                   </div>
                   <MultiFileUploadField label="Payment Screenshot" accept="image/*,.pdf" files={advPayScreenshot} onChange={setAdvPayScreenshot} helperText="Optional — upload payment proof" />
-                  {project?.pendingConversion && (
-                    <>
-                      <div className="h-px bg-slate-200 my-1" />
-                      <div>
-                        <label className={lbl}>Project Name {req}</label>
-                        <input type="text" value={advProjectName} onChange={e => setAdvProjectName(e.target.value)}
-                          placeholder="e.g. Rajesh Kumar — Living Room Windows" className={inp} />
-                      </div>
-                      <div>
-                        <label className={lbl}>Due Date <span className="text-slate-300 font-normal">(optional)</span></label>
-                        <input type="date" value={advDueDate} onChange={e => setAdvDueDate(e.target.value)} className={inp} />
-                      </div>
-                    </>
-                  )}
                 </div>
               )}
 
               {sel && (
                 <button type="button" onClick={submitAdvancePayment}
                   className="w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 bg-emerald-600">
-                  {project?.pendingConversion
-                    ? '✓ Confirm & Create Project'
-                    : `✓ ${sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production`}
+                  {`✓ ${sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production`}
                 </button>
               )}
             </>
@@ -3904,7 +3857,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   <MultiFileUploadField
                     label="Installation Photos"
                     required
-                    accept="image/*"
+                    accept="image/*,.png,.jpg,.jpeg,.webp,.heic"
                     files={instCompletedPhotos}
                     onChange={setInstCompletedPhotos}
                     helperText="Upload at least 1 photo to confirm installation" />
