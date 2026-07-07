@@ -32,6 +32,10 @@ function getChipsForRole(role?: string): { value: Filter; label: string }[] {
     { value: 'ready_to_dispatch', label: 'Ready to Dispatch' },
     { value: 'installation',      label: 'Installation'      },
   ]
+  if (role === 'site_engineer') return [
+    { value: 'active',    label: 'Active'   },
+    { value: 'completed', label: 'Complete' },
+  ]
   return [
     { value: 'active',            label: 'Active'            },
     { value: 'pre_production',    label: 'Pre-Production'    },
