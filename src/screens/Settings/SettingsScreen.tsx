@@ -342,7 +342,7 @@ export default function SettingsScreen() {
         )}
 
         {/* TEMP DEBUG: Role Switcher opened to all users — REMOVE after testing */}
-        {user && <div>
+        {user && (user.role === 'owner' || hasLocalStorageData()) && <div>
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-2">Prototype</p>
           <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
             {user?.role === 'owner' && (
@@ -408,19 +408,23 @@ export default function SettingsScreen() {
               </button>
             </>)}
 
-            <div className="h-px bg-slate-100 mx-4" />
-            <button
-              onClick={() => setShowReset(true)}
-              className="w-full flex items-center gap-3 px-4 py-3.5 active:bg-slate-50 text-left"
-            >
-              <div className="w-8 h-8 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                <RefreshCw size={16} className="text-amber-600" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-slate-700">Clear All Data</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">Delete all projects, tasks, leads and payments</p>
-              </div>
-            </button>
+            {user?.role === 'owner' && (
+              <>
+                <div className="h-px bg-slate-100 mx-4" />
+                <button
+                  onClick={() => setShowReset(true)}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 active:bg-slate-50 text-left"
+                >
+                  <div className="w-8 h-8 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <RefreshCw size={16} className="text-amber-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-slate-700">Clear All Data</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Delete all projects, tasks, leads and payments</p>
+                  </div>
+                </button>
+              </>
+            )}
           </div>
         </div>}
 

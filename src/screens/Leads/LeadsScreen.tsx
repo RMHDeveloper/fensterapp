@@ -16,8 +16,8 @@ import { loadManagedUsers } from '../../utils/userStorage'
 import { getLeadFlowBucket, isAdvanceReceived, flowReached, isLeadConverted } from '../../utils/stageHelpers'
 import type { Lead, LeadStatus, LeadSource, LeadInterest, Task } from '../../types'
 
-type Filter = 'active' | 'contact' | 'measurement' | 'quotation' | 'negotiation'
-const FILTER_VALUES = new Set<string>(['active', 'contact', 'measurement', 'quotation', 'negotiation'])
+type Filter = 'active' | 'contact' | 'measurement' | 'quotation' | 'negotiation' | 'won' | 'lost'
+const FILTER_VALUES = new Set<string>(['active', 'contact', 'measurement', 'quotation', 'negotiation', 'won', 'lost'])
 
 const CHIPS: { value: Filter; label: string }[] = [
   { value: 'active',      label: 'Active'      },
@@ -25,6 +25,8 @@ const CHIPS: { value: Filter; label: string }[] = [
   { value: 'measurement', label: 'Measurement' },
   { value: 'quotation',   label: 'Quotation'   },
   { value: 'negotiation', label: 'Negotiation' },
+  { value: 'won',         label: 'Won'         },
+  { value: 'lost',        label: 'Lost'        },
 ]
 
 // Negotiation view status lines — Quotation / MD Approval / Client Approval / Advance Payment
@@ -247,6 +249,10 @@ export default function LeadsScreen() {
       matchFilter = !converted && l.status !== 'lost' && getLeadFlowBucket(l, projects, tasks) === 'quotation'
     } else if (filter === 'negotiation') {
       matchFilter = !converted && l.status !== 'lost' && getLeadFlowBucket(l, projects, tasks) === 'negotiation'
+    } else if (filter === 'won') {
+      matchFilter = converted
+    } else if (filter === 'lost') {
+      matchFilter = l.status === 'lost'
     }
     return matchFilter && matchSearch
   })

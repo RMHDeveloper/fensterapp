@@ -35,10 +35,12 @@ export function SidebarNavigation() {
           const visible = section.items.filter(i => can(i.permission))
           if (visible.length === 0) return null
           return (
-            <div key={section.label}>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">
-                {section.label}
-              </p>
+            <div key={section.label || 'operations'}>
+              {section.label && (
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">
+                  {section.label}
+                </p>
+              )}
               <div className="space-y-0.5">
                 {visible.map(({ icon: Icon, label, path }) => {
                   const active = path.includes('?')

@@ -31,7 +31,7 @@ export function getMainItems(isOwner: boolean): NavItem[] {
 
 export const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
   {
-    label: 'Operations',
+    label: '',
     items: [
       { icon: Users,          label: 'Leads',        path: '/leads',        permission: 'view_leads'       },
       { icon: MapPin,         label: 'Site Visits',  path: '/site-visits',  permission: 'view_site_visit'  },
@@ -54,6 +54,8 @@ export const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
       { icon: Circle, label: 'Measurement', path: '/leads?filter=measurement', permission: 'view_leads' },
       { icon: Circle, label: 'Quotation',   path: '/leads?filter=quotation',   permission: 'view_leads' },
       { icon: Circle, label: 'Negotiation', path: '/leads?filter=negotiation', permission: 'view_leads' },
+      { icon: Circle, label: 'Won',         path: '/leads?filter=won',         permission: 'view_leads' },
+      { icon: Circle, label: 'Lost',        path: '/leads?filter=lost',        permission: 'view_leads' },
     ],
   },
   {
