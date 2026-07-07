@@ -19,6 +19,10 @@ export async function initUsersFromSupabase(): Promise<void> {
     const migrated = users.map(u =>
       u.id === 'prod_owner_md' && (u.email === 'haroon@fenster.in' || u.fullName === 'Haroon Khan')
         ? { ...u, email: 'deepak@fenster.in', fullName: 'Deepak', updatedAt: new Date().toISOString() }
+        // One-time migration: "Production Incharge" users created before the
+        // DISPLAY_ROLE_TO_INTERNAL fix were saved with role: production_manager
+        : u.displayRole === 'Production Incharge' && u.role === 'production_manager'
+        ? { ...u, role: 'production_admin' as UserRole, updatedAt: new Date().toISOString() }
         : u
     )
     const changed = migrated.some((u, i) => u !== users[i])
