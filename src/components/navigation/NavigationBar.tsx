@@ -46,8 +46,15 @@ export function NavigationBar() {
   const { user }     = useAuth()
 
   const allowed = user ? getNavPaths(user) : ['/home', '/settings']
+  const role    = user?.role ?? 'lead_manager'
+  const isDateRole = role === 'site_engineer' || role === 'technician' || role === 'installation_incharge'
   const items   = allowed
-    .map(path => ALL_ITEMS.find(i => i.path === path))
+    .map(path => {
+      const item = ALL_ITEMS.find(i => i.path === path)
+      if (!item) return null
+      if (path === '/tasks') return { ...item, label: isDateRole ? 'Today' : 'Pending' }
+      return item
+    })
     .filter((i): i is NavItem => Boolean(i))
     .slice(0, 5)
 
