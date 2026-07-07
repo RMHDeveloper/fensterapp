@@ -15,10 +15,10 @@ export type AuthResult =
   | { ok: true;  user: MockUser }
   | { ok: false; reason: 'not_found' | 'inactive' }
 
-export function authenticateUser(email: string, password: string): AuthResult {
-  const norm    = email.trim().toLowerCase()
+export function authenticateUser(mobile: string, password: string): AuthResult {
+  const norm    = mobile.replace(/\D/g, '')
   const managed = loadManagedUsers()
-  const found   = managed.find((u: ManagedUser) => u.email.toLowerCase() === norm)
+  const found   = managed.find((u: ManagedUser) => u.mobile.replace(/\D/g, '') === norm)
   if (!found)                      return { ok: false, reason: 'not_found' }
   if (found.password !== password) return { ok: false, reason: 'not_found' }
   if (found.status === 'inactive') return { ok: false, reason: 'inactive'  }

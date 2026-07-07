@@ -15,7 +15,7 @@ interface AuthContextValue {
   user:                 AuthUser | null
   isLoggedIn:           boolean
   isAuthReady:          boolean
-  loginWithCredentials: (email: string, password: string) => LoginResult
+  loginWithCredentials: (mobile: string, password: string) => LoginResult
   login:                (role: UserRole) => void
   logout:               () => void
   can:                  (permission: Permission) => boolean
@@ -49,13 +49,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, [user])
 
-  function loginWithCredentials(email: string, password: string): LoginResult {
-    const result = authenticateUser(email, password)
+  function loginWithCredentials(mobile: string, password: string): LoginResult {
+    const result = authenticateUser(mobile, password)
     if (!result.ok) {
       if (result.reason === 'inactive') {
         return { success: false, error: 'This user is inactive. Please contact Admin.' }
       }
-      return { success: false, error: 'Invalid email or password.' }
+      return { success: false, error: 'Invalid phone number or password.' }
     }
     const account = result.user
     setUser({

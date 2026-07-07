@@ -12,19 +12,37 @@ export function saveManagedUsers(users: ManagedUser[]): void {
   upsertManagedUsers(users).catch(() => {})
 }
 
+// One-time migration: seeded production accounts' mobile numbers were
+// regenerated when login switched from email to phone number
+const SEED_MOBILE_MIGRATION: Record<string, string> = {
+  prod_owner_md:    '7010356801',
+  prod_lead_mgr:    '8892147365',
+  prod_site_eng:    '9345678210',
+  prod_prod_admin:  '7789234561',
+  prod_prod_mgr:    '8123456790',
+  prod_tech:        '9987612345',
+  prod_viewer:      '7654321098',
+}
+
 export async function initUsersFromSupabase(): Promise<void> {
   const users = await getAllManagedUsers()
   if (users.length > 0) {
     // One-time migration: update owner email + name from haroon→deepak
-    const migrated = users.map(u =>
-      u.id === 'prod_owner_md' && (u.email === 'haroon@fenster.in' || u.fullName === 'Haroon Khan')
-        ? { ...u, email: 'deepak@fenster.in', fullName: 'Deepak', updatedAt: new Date().toISOString() }
-        // One-time migration: "Production Incharge" users created before the
-        // DISPLAY_ROLE_TO_INTERNAL fix were saved with role: production_manager
-        : u.displayRole === 'Production Incharge' && u.role === 'production_manager'
-        ? { ...u, role: 'production_admin' as UserRole, updatedAt: new Date().toISOString() }
-        : u
-    )
+    const migrated = users.map(u => {
+      if (u.id === 'prod_owner_md' && (u.email === 'haroon@fenster.in' || u.fullName === 'Haroon Khan')) {
+        return { ...u, email: 'deepak@fenster.in', fullName: 'Deepak', updatedAt: new Date().toISOString() }
+      }
+      // One-time migration: "Production Incharge" users created before the
+      // DISPLAY_ROLE_TO_INTERNAL fix were saved with role: production_manager
+      if (u.displayRole === 'Production Incharge' && u.role === 'production_manager') {
+        return { ...u, role: 'production_admin' as UserRole, updatedAt: new Date().toISOString() }
+      }
+      const newMobile = SEED_MOBILE_MIGRATION[u.id]
+      if (newMobile && u.mobile !== newMobile) {
+        return { ...u, mobile: newMobile, updatedAt: new Date().toISOString() }
+      }
+      return u
+    })
     const changed = migrated.some((u, i) => u !== users[i])
     _cache = migrated
     if (changed) upsertManagedUsers(migrated).catch(() => {})
@@ -38,6 +56,11 @@ export function isEmailTaken(email: string, excludeId?: string): boolean {
   return _cache.some(u => u.email.toLowerCase() === norm && u.id !== excludeId)
 }
 
+export function isMobileTaken(mobile: string, excludeId?: string): boolean {
+  const norm = mobile.replace(/\D/g, '')
+  return _cache.some(u => u.mobile.replace(/\D/g, '') === norm && u.id !== excludeId)
+}
+
 // ─── Production users — one per role ──────────────────────────────────────────
 
 const SEED_DATE = '2025-01-01T00:00:00.000Z'
@@ -46,7 +69,7 @@ export const DEFAULT_PRODUCTION_USERS: ManagedUser[] = [
   {
     id:            'prod_owner_md',
     fullName:      'Deepak',
-    mobile:        '9000000001',
+    mobile:        '7010356801',
     email:         'deepak@fenster.in',
     password:      'Fenster@MD25',
     role:          'owner',
@@ -61,7 +84,7 @@ export const DEFAULT_PRODUCTION_USERS: ManagedUser[] = [
   {
     id:            'prod_lead_mgr',
     fullName:      'Priya Sharma',
-    mobile:        '9000000002',
+    mobile:        '8892147365',
     email:         'priya@fenster.in',
     password:      'Fenster@LO25',
     role:          'lead_manager',
@@ -76,7 +99,7 @@ export const DEFAULT_PRODUCTION_USERS: ManagedUser[] = [
   {
     id:            'prod_site_eng',
     fullName:      'Arjun Singh',
-    mobile:        '9000000003',
+    mobile:        '9345678210',
     email:         'arjun@fenster.in',
     password:      'Fenster@SE25',
     role:          'site_engineer',
@@ -91,7 +114,7 @@ export const DEFAULT_PRODUCTION_USERS: ManagedUser[] = [
   {
     id:            'prod_prod_admin',
     fullName:      'Kavitha R',
-    mobile:        '9000000007',
+    mobile:        '7789234561',
     email:         'kavitha@fenster.in',
     password:      'Fenster@PI25',
     role:          'production_admin',
@@ -106,7 +129,7 @@ export const DEFAULT_PRODUCTION_USERS: ManagedUser[] = [
   {
     id:            'prod_prod_mgr',
     fullName:      'Mohan Das',
-    mobile:        '9000000004',
+    mobile:        '8123456790',
     email:         'mohan@fenster.in',
     password:      'Fenster@PM25',
     role:          'production_manager',
@@ -121,7 +144,7 @@ export const DEFAULT_PRODUCTION_USERS: ManagedUser[] = [
   {
     id:            'prod_tech',
     fullName:      'Rajan Pillai',
-    mobile:        '9000000005',
+    mobile:        '9987612345',
     email:         'rajan@fenster.in',
     password:      'Fenster@TK25',
     role:          'technician',
@@ -136,7 +159,7 @@ export const DEFAULT_PRODUCTION_USERS: ManagedUser[] = [
   {
     id:            'prod_viewer',
     fullName:      'Guest User',
-    mobile:        '9000000006',
+    mobile:        '7654321098',
     email:         'guest@fenster.in',
     password:      'Fenster@GU25',
     role:          'viewer',

@@ -45,7 +45,7 @@ const { authenticateUser } = await import('../../data/mockUsers')
 
 describe('authenticateUser', () => {
   it('returns ok with correct user data for valid credentials', () => {
-    const result = authenticateUser('owner@test.com', 'OwnerPass123')
+    const result = authenticateUser('9000000001', 'OwnerPass123')
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.user.role).toBe('owner')
@@ -55,37 +55,32 @@ describe('authenticateUser', () => {
   })
 
   it('generates correct initials from full name', () => {
-    const result = authenticateUser('owner@test.com', 'OwnerPass123')
+    const result = authenticateUser('9000000001', 'OwnerPass123')
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.user.initials).toBe('TO')
     }
   })
 
-  it('is case-insensitive for email matching', () => {
-    const result = authenticateUser('OWNER@TEST.COM', 'OwnerPass123')
+  it('trims whitespace from phone number before matching', () => {
+    const result = authenticateUser('  9000000001  ', 'OwnerPass123')
     expect(result.ok).toBe(true)
   })
 
-  it('trims whitespace from email before matching', () => {
-    const result = authenticateUser('  owner@test.com  ', 'OwnerPass123')
-    expect(result.ok).toBe(true)
-  })
-
-  it('returns not_found for unknown email', () => {
-    const result = authenticateUser('nobody@test.com', 'AnyPass')
+  it('returns not_found for unknown phone number', () => {
+    const result = authenticateUser('9999999999', 'AnyPass')
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toBe('not_found')
   })
 
-  it('returns not_found for correct email but wrong password', () => {
-    const result = authenticateUser('owner@test.com', 'WrongPassword')
+  it('returns not_found for correct phone number but wrong password', () => {
+    const result = authenticateUser('9000000001', 'WrongPassword')
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toBe('not_found')
   })
 
   it('returns inactive for a user with inactive status', () => {
-    const result = authenticateUser('inactive@test.com', 'Pass123')
+    const result = authenticateUser('9000000002', 'Pass123')
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toBe('inactive')
   })

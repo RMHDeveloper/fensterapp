@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { Phone, Lock, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
 export default function LoginScreen() {
   const { loginWithCredentials, isAuthReady } = useAuth()
   const navigate = useNavigate()
 
-  const [email,    setEmail]    = useState('')
+  const [phone,    setPhone]    = useState('')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [error,    setError]    = useState('')
@@ -16,13 +16,14 @@ export default function LoginScreen() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
-    if (!email.trim()) { setError('Please enter your email.'); return }
-    if (!password)     { setError('Please enter your password.'); return }
+    if (!phone.trim())      { setError('Please enter your phone number.'); return }
+    if (phone.length !== 10) { setError('Enter a valid 10-digit phone number.'); return }
+    if (!password)          { setError('Please enter your password.'); return }
     setLoading(true)
-    const result = loginWithCredentials(email.trim(), password)
+    const result = loginWithCredentials(phone, password)
     setLoading(false)
     if (!result.success) {
-      setError(result.error ?? 'Invalid email or password.')
+      setError(result.error ?? 'Invalid phone number or password.')
       return
     }
     navigate('/home', { replace: true })
@@ -50,17 +51,19 @@ export default function LoginScreen() {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Email</label>
-            <div className="relative">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                <Mail size={16} className="text-slate-400" />
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Phone Number</label>
+            <div className="relative flex items-center">
+              <div className="absolute left-3.5 flex items-center gap-1.5 pointer-events-none">
+                <Phone size={16} className="text-slate-400" />
+                <span className="text-sm font-semibold text-slate-500">+91</span>
               </div>
               <input
-                type="email" inputMode="email" autoComplete="email" autoFocus
-                value={email}
-                onChange={e => { setEmail(e.target.value); setError('') }}
-                placeholder="your@email.com"
-                className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl pl-10 pr-4 py-3.5 text-sm focus:outline-none focus:border-green-500 transition-colors"
+                type="tel" inputMode="numeric" autoComplete="tel" autoFocus
+                maxLength={10}
+                value={phone}
+                onChange={e => { setPhone(e.target.value.replace(/\D/g, '').slice(0, 10)); setError('') }}
+                placeholder="10-digit number"
+                className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl pl-[4.75rem] pr-4 py-3.5 text-sm focus:outline-none focus:border-green-500 transition-colors"
               />
             </div>
           </div>
