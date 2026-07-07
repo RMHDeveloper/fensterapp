@@ -1628,7 +1628,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {task.projectId && !project?.pendingConversion && (
-              <button type="button" onClick={() => navigate(`/project/${task.projectId}`)}
+              <button type="button" onClick={() => { onClose(); navigate(`/project/${task.projectId}`) }}
                 className="flex items-center gap-1.5 px-3 h-8 bg-white/20 rounded-xl text-white text-xs font-bold active:bg-white/30">
                 <FolderOpen size={13} /> View Project
               </button>

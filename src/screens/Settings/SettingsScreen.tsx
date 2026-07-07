@@ -345,46 +345,50 @@ export default function SettingsScreen() {
         {user && <div>
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-2">Prototype</p>
           <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-            <button
-              onClick={() => setShowSwitcher(v => !v)}
-              className="w-full flex items-center gap-3 px-4 py-3.5 active:bg-slate-50 text-left"
-            >
-              <div className="w-8 h-8 bg-violet-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                <UserCog size={16} className="text-violet-600" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-slate-700">Switch Role</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Currently: {user ? getRoleDisplayLabel(user.role, user.displayRole) : '—'}
-                </p>
-              </div>
-              <ChevronRight size={15} className={`text-slate-300 flex-shrink-0 transition-transform ${showSwitcher ? 'rotate-90' : ''}`} />
-            </button>
+            {user?.role === 'owner' && (
+              <>
+                <button
+                  onClick={() => setShowSwitcher(v => !v)}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 active:bg-slate-50 text-left"
+                >
+                  <div className="w-8 h-8 bg-violet-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <UserCog size={16} className="text-violet-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-slate-700">Switch Role</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Currently: {user ? getRoleDisplayLabel(user.role, user.displayRole) : '—'}
+                    </p>
+                  </div>
+                  <ChevronRight size={15} className={`text-slate-300 flex-shrink-0 transition-transform ${showSwitcher ? 'rotate-90' : ''}`} />
+                </button>
 
-            {showSwitcher && (
-              <div className="border-t border-slate-100 px-3 py-2 space-y-1">
-                {ROLES.map(role => (
-                  <button
-                    key={role}
-                    onClick={() => handleSwitchRole(role)}
-                    className={[
-                      'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-colors',
-                      user?.role === role
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'hover:bg-slate-50 active:bg-slate-100 text-slate-700',
-                    ].join(' ')}
-                  >
-                    <span className="text-lg">{ROLE_ICONS[role]}</span>
-                    <div>
-                      <p className="text-sm font-semibold leading-tight">{ROLE_LABELS[role]}</p>
-                      <p className="text-[10px] text-slate-400">{ROLE_DESCRIPTIONS[role]}</p>
-                    </div>
-                    {user?.role === role && (
-                      <span className="ml-auto text-[10px] font-bold text-green-700">Current</span>
-                    )}
-                  </button>
-                ))}
-              </div>
+                {showSwitcher && (
+                  <div className="border-t border-slate-100 px-3 py-2 space-y-1">
+                    {ROLES.map(role => (
+                      <button
+                        key={role}
+                        onClick={() => handleSwitchRole(role)}
+                        className={[
+                          'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-colors',
+                          user?.role === role
+                            ? 'bg-blue-50 text-blue-700'
+                            : 'hover:bg-slate-50 active:bg-slate-100 text-slate-700',
+                        ].join(' ')}
+                      >
+                        <span className="text-lg">{ROLE_ICONS[role]}</span>
+                        <div>
+                          <p className="text-sm font-semibold leading-tight">{ROLE_LABELS[role]}</p>
+                          <p className="text-[10px] text-slate-400">{ROLE_DESCRIPTIONS[role]}</p>
+                        </div>
+                        {user?.role === role && (
+                          <span className="ml-auto text-[10px] font-bold text-green-700">Current</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
             {hasLocalStorageData() && (<>
