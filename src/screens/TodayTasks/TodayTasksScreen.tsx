@@ -10,7 +10,7 @@ import { Snackbar } from '../../components/feedback/Snackbar'
 import { AppHeader } from '../../components/layout/AppHeader'
 import { FilterChips } from '../../components/forms/FilterChips'
 import type { Task } from '../../types'
-import { isDateFuture } from '../../utils/taskFilters'
+import { isDateFuture, isTaskForToday } from '../../utils/taskFilters'
 
 type SortBy = 'status' | 'priority' | 'date'
 
@@ -57,7 +57,7 @@ export default function TodayTasksScreen() {
   const { user }                          = useAuth()
   const [flowTaskId, setFlowTaskId]       = useState<string | null>(null)
   const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
-  const [snack, setSnack]                 = useState({ open: false, msg: '' })
+  const [snack, setSnack]                 = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
   const [sortBy, setSortBy]               = useState<SortBy>('status')
 
   const role = user?.role ?? 'lead_manager'
@@ -116,11 +116,12 @@ export default function TodayTasksScreen() {
     ? flowTasks.filter(t => t.flowStage === 'completed' && myProjectIds.has(t.projectId))
     : []
 
-  // Regular tasks (no flowStage), any due date — grouped by status, per-user scoping
+  // Regular tasks (no flowStage) — only today's + overdue + in-progress, per-user scoping
   const regular = sortRegular(
     tasks.filter(t => {
       if (t.flowStage) return false
       if (role === 'viewer') return false
+      if (t.status !== 'overdue' && t.status !== 'in_progress' && !isTaskForToday(t)) return false
       if (role === 'owner') return true
       const hasAssignee = t.assignedTo || t.assignee
       return !hasAssignee || isAssignedToMe(t)
@@ -136,7 +137,7 @@ export default function TodayTasksScreen() {
     if (!flowTask) return
     updateTask(flowTask.id, updates)
     const nextStage = (updates.flowStage ?? flowTask.flowStage) as string
-    setSnack({ open: true, msg: STAGE_MSG[nextStage] ?? 'Status updated!' })
+    setSnack({ open: true, msg: STAGE_MSG[nextStage] ?? 'Status updated!', type: 'success' })
     setFlowTaskId(null)
   }
 
@@ -154,11 +155,13 @@ export default function TodayTasksScreen() {
             <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">
               {role === 'owner' ? 'Pending Approvals' :
                role === 'site_engineer' ? 'My Site Visits' :
-               role === 'production_team' ? 'Production Tasks' :
+               role === 'production_admin' ? 'Production Checks' :
+               role === 'production_manager' || role === 'production_team' ? 'Production Tasks' :
+               role === 'technician' || role === 'installation_incharge' ? 'Installations' :
                'Active Projects'}
             </p>
             {activeFTs.map(t => (
-              <FlowTaskCard key={t.id} task={t} onClick={() => setFlowTaskId(t.id)} />
+              <FlowTaskCard key={t.id} task={t} role={role} onClick={() => setFlowTaskId(t.id)} />
             ))}
           </div>
         )}
@@ -224,7 +227,9 @@ export default function TodayTasksScreen() {
             <p className="text-sm text-slate-400 mb-5">
               {role === 'owner' ? 'No quotations pending your approval.' :
                role === 'site_engineer' ? 'No site visits assigned to you.' :
-               role === 'production_team' ? 'No production tasks at the moment.' :
+               role === 'production_admin' ? 'No production checks at the moment.' :
+               role === 'production_manager' || role === 'production_team' ? 'No production tasks at the moment.' :
+               role === 'technician' || role === 'installation_incharge' ? 'No installations assigned to you.' :
                'No tasks for today. Qualify a lead to get started.'}
             </p>
           </div>
@@ -235,7 +240,7 @@ export default function TodayTasksScreen() {
           <div className="opacity-60">
             <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-2">Completed Projects</p>
             {completedFTs.map(t => (
-              <FlowTaskCard key={t.id} task={t} onClick={() => {}} />
+              <FlowTaskCard key={t.id} task={t} role={role} onClick={() => {}} />
             ))}
           </div>
         )}
@@ -269,7 +274,7 @@ export default function TodayTasksScreen() {
       <Snackbar
         isOpen={snack.open}
         message={snack.msg}
-        type="success"
+        type={snack.type}
         onClose={() => setSnack(s => ({ ...s, open: false }))}
       />
     </div>

@@ -355,7 +355,7 @@ export default function HomeScreen() {
                 </span>
               </div>
               {activeFTs.slice(0, 3).map(t => (
-                <FlowTaskCard key={t.id} task={t} onClick={() => setFlowTaskId(t.id)} />
+                <FlowTaskCard key={t.id} task={t} role={role} onClick={() => setFlowTaskId(t.id)} />
               ))}
             </section>
           )

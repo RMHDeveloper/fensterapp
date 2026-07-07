@@ -92,7 +92,8 @@ export function ProjectRow({ project, onClick, role, balanceAmount }: Props) {
             <p className="text-sm font-bold text-slate-800 truncate leading-tight flex-1">{project.name}</p>
             {(() => {
               const val = project.quotationAmount ?? project.value
-              if (!val) return null
+              const canSeeAmt = role === 'owner' || role === 'lead_manager'
+              if (!val || !canSeeAmt) return null
               const isOwner = role === 'owner'
               return (
                 <div className="flex-shrink-0 text-right">
