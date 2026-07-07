@@ -2955,6 +2955,18 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   className={`${inp} resize-none`} />
               </div>
 
+              {productionAdminOptions.length > 0 && (
+                <div>
+                  <label className={lbl}>Assign to Production Incharge <span className="text-slate-300 font-normal">(optional)</span></label>
+                  <select value={jobSheetAssignee} onChange={e => setJobSheetAssignee(e.target.value)} className={inp}>
+                    <option value="">Any available Production Incharge</option>
+                    {productionAdminOptions.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className={lbl}>Glass Sheet <span className="text-slate-300 font-normal">(optional)</span></label>
                 <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={glassSheetFiles} onChange={setGlassSheetFiles} maxFiles={1} />
@@ -2969,18 +2981,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <label className={lbl}>Additional Documents <span className="text-slate-300 font-normal">(optional)</span></label>
                 <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx,.doc,.docx" files={additionalDocs} onChange={setAdditionalDocs} helperText="Any extra reference files" />
               </div>
-
-              {productionAdminOptions.length > 0 && (
-                <div>
-                  <label className={lbl}>Assign to Production Incharge <span className="text-slate-300 font-normal">(optional)</span></label>
-                  <select value={jobSheetAssignee} onChange={e => setJobSheetAssignee(e.target.value)} className={inp}>
-                    <option value="">Any available Production Incharge</option>
-                    {productionAdminOptions.map(name => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
 
               {extraSheets.map((files, idx) => (
                 <div key={idx} className="space-y-1">

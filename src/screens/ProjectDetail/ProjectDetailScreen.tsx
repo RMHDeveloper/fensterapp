@@ -263,9 +263,10 @@ export default function ProjectDetailScreen() {
   // MD-only edit mode — unlocks editing of payment fields and note/activity text
   const isMD = user?.role === 'owner'
   const [mdEditMode, setMdEditMode] = useState(false)
-  const [editQuoted,  setEditQuoted]  = useState('')
-  const [editPaid,    setEditPaid]    = useState('')
-  const [editBalance, setEditBalance] = useState('')
+  const [editQuoted,      setEditQuoted]      = useState('')
+  const [editPaid,        setEditPaid]        = useState('')
+  const [editBalance,     setEditBalance]     = useState('')
+  const [editExtraCharge, setEditExtraCharge] = useState('')
   const [editingNote, setEditingNote] = useState<{ taskId: string; index: number; text: string } | null>(null)
 
   const activeFlowTask = tasks.find(t => t.flowStage && t.flowStage !== 'completed')
@@ -312,11 +313,20 @@ export default function ProjectDetailScreen() {
     const paid = Number(editPaid.replace(/[^0-9]/g, '')) || 0
     const balance = Number(editBalance.replace(/[^0-9]/g, '')) || 0
     const quoted = Number(editQuoted.replace(/[^0-9]/g, '')) || 0
+    const extraCharge = Number(editExtraCharge.replace(/[^0-9]/g, '')) || 0
     updateTask(advTaskId, { paidAmount: paid, balanceAmount: balance })
-    if (quoted > 0) {
+    if (quoted > 0 || project.actualCosts) {
       updateProject(project.id, {
-        quotationAmount: quoted,
-        ...(project.costBreakdown ? { costBreakdown: { ...project.costBreakdown, quotationAmount: quoted } } : {}),
+        ...(quoted > 0 ? { quotationAmount: quoted } : {}),
+        ...(project.costBreakdown ? { costBreakdown: { ...project.costBreakdown, quotationAmount: quoted || project.costBreakdown.quotationAmount } } : {}),
+        ...(project.actualCosts ? {
+          actualCosts: {
+            ...project.actualCosts,
+            extraCharge,
+            profit: ((quoted || project.actualCosts.quotationAmount) + extraCharge)
+              - (project.actualCosts.materialCost + project.actualCosts.productionCost + project.actualCosts.installationCost + project.actualCosts.transportCost),
+          },
+        } : {}),
       })
     }
     setSnack({ open: true, msg: 'Payment updated.', type: 'success' })
@@ -471,6 +481,12 @@ function handleSaveTask() {
                       defaultValue={balance} onChange={e => setEditBalance(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-blue-400" />
                   </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-400 mb-1 block">Extra Charge (₹)</label>
+                  <input type="text" inputMode="numeric"
+                    defaultValue={project.actualCosts?.extraCharge ?? 0} onChange={e => setEditExtraCharge(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-blue-400" />
                 </div>
                 <button onClick={() => handleSavePayment(advTask.id)}
                   className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-xs font-bold active:opacity-90">
