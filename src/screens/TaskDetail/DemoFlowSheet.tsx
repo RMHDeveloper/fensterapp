@@ -15,7 +15,7 @@ import type { Task, Project, LocationPin, StatusHistoryItem, FlowStage, CostBrea
 import { PROJECT_STAGE_LABEL, PROJECT_STAGE_PROGRESS } from '../../types'
 import { filePreviewStore, voicePreviewStore, isImageFileName, resolveFileUrl } from '../../utils/sessionStore'
 import { MediaPreviewList } from '../../components/media/MediaPreviewList'
-import { getActiveManagedUsersByDisplayRole } from '../../utils/userStorage'
+import { getActiveManagedUsersByDisplayRole, loadManagedUsers } from '../../utils/userStorage'
 import { Dialog } from '../../components/feedback/Dialog'
 import { recordUploadedFile, getQuotationVersions, subscribeToProjectFiles, type FileRow } from '../../services/fileService'
 import { getFileUrl } from '../../utils/fileStorage'
@@ -460,9 +460,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     ...getActiveManagedUsersByDisplayRole('Installation Incharge').filter(n => !DEFAULT_INSTALLERS.includes(n)),
     ...getActiveManagedUsersByDisplayRole('Installation Technician').filter(n => !DEFAULT_INSTALLERS.includes(n)),
   ]
+  // Matched by internal role, not displayRole string — "Production Incharge" as a
+  // displayRole label is ambiguously reused for both production_admin and
+  // production_manager elsewhere in the app, so role is the only reliable filter.
+  const productionAdminOptions = loadManagedUsers()
+    .filter(u => u.role === 'production_admin' && u.status === 'active').map(u => u.fullName)
+  const productionManagerOptions = loadManagedUsers()
+    .filter(u => u.role === 'production_manager' && u.status === 'active').map(u => u.fullName)
 
   const [sel,   setSel]   = useState('')
   const [error, setError] = useState('')
+  const [jobSheetAssignee, setJobSheetAssignee] = useState('')
+  const [pmAssignee, setPmAssignee] = useState('')
+  const [pmDueDate,  setPmDueDate]  = useState('')
   const [showLossWarn, setShowLossWarn] = useState(false)
   const lossConfirmCb = useRef<(() => void) | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
@@ -1158,7 +1168,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       cuttingSheet: cuttingSheetFiles[0] ?? undefined,
       additionalDocs: [...additionalDocs, ...extraSheets.flat()].length > 0 ? [...additionalDocs, ...extraSheets.flat()] : undefined,
       productionSheetNote: prodAssignNote || undefined,
-    }, 'Job sheet sent to Production Incharge — checking material availability', [...jobSheetFiles, ...glassSheetFiles, ...cuttingSheetFiles, ...additionalDocs, ...extraSheets.flat()])
+      assignee: jobSheetAssignee || undefined,
+    }, `Job sheet sent to ${jobSheetAssignee || 'Production Incharge'} — checking material availability`, [...jobSheetFiles, ...glassSheetFiles, ...cuttingSheetFiles, ...additionalDocs, ...extraSheets.flat()])
   }
 
   function submitProductionCheck() {
@@ -1197,7 +1208,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       title: 'Start Production Work',
       notAvailableReason: undefined,
       availabilityChecklist: savedChecklist,
-    }, `Materials checked${glassNote}${orderedNote} — starting production`)
+      assignee: pmAssignee || undefined,
+      dueDate: pmDueDate || 'Today',
+    }, `Materials checked${glassNote}${orderedNote} — assigned to ${pmAssignee || 'Production Manager'}`)
   }
 
   function submitNotAvailLmAction() {
@@ -1212,10 +1225,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       }, 'Sales Team sent back to Production Incharge for recheck')
     } else if (notAvailLmAction === 'assign_pm') {
       save({
-        flowStage: 'production_check', flowStatus: 'waiting', status: 'pending',
-        title: 'Check Material Availability',
+        flowStage: 'production_work', flowStatus: 'ready', status: 'pending',
+        title: 'Start Production Work',
         notAvailableReason: undefined,
-      }, 'Materials resolved — sent back to Production Incharge')
+      }, 'Materials resolved — assigned to Production Manager')
     }
   }
 
@@ -2959,6 +2972,18 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx,.doc,.docx" files={additionalDocs} onChange={setAdditionalDocs} helperText="Any extra reference files" />
               </div>
 
+              {productionAdminOptions.length > 0 && (
+                <div>
+                  <label className={lbl}>Assign to Production Incharge <span className="text-slate-300 font-normal">(optional)</span></label>
+                  <select value={jobSheetAssignee} onChange={e => setJobSheetAssignee(e.target.value)} className={inp}>
+                    <option value="">Any available Production Incharge</option>
+                    {productionAdminOptions.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {extraSheets.map((files, idx) => (
                 <div key={idx} className="space-y-1">
                   <div className="flex items-center justify-between">
@@ -3050,10 +3075,27 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 const mandatory = availChecklist.filter(i => i.id !== 'glass')
                 const allMandOk = mandatory.every(i => i.status !== 'not_available')
                 return allMandOk ? (
-                  <button type="button" onClick={submitProductionCheck}
-                    className="w-full py-4 rounded-2xl bg-emerald-600 text-white text-sm font-extrabold active:opacity-90">
-                    ✓ Confirm — Start Production
-                  </button>
+                  <>
+                    {productionManagerOptions.length > 0 && (
+                      <div>
+                        <label className={lbl}>Assign to Production Manager <span className="text-slate-300 font-normal">(optional)</span></label>
+                        <select value={pmAssignee} onChange={e => setPmAssignee(e.target.value)} className={inp}>
+                          <option value="">Any available Production Manager</option>
+                          {productionManagerOptions.map(name => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div>
+                      <label className={lbl}>Due Date <span className="text-slate-300 font-normal">(optional)</span></label>
+                      <input type="date" value={pmDueDate} onChange={e => setPmDueDate(e.target.value)} className={inp} />
+                    </div>
+                    <button type="button" onClick={submitProductionCheck}
+                      className="w-full py-4 rounded-2xl bg-emerald-600 text-white text-sm font-extrabold active:opacity-90">
+                      ✓ Confirm — Start Production
+                    </button>
+                  </>
                 ) : (
                   <button type="button" onClick={submitProductionCheck}
                     className="w-full py-4 rounded-2xl bg-red-600 text-white text-sm font-extrabold active:opacity-90">
@@ -3174,12 +3216,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Sales Team Action</p>
               <Opt value="wait"      label="Wait for Stock"               sub="Keep status and wait for material arrival"       accent="border-slate-200"  sel={notAvailLmAction} onPick={setNotAvailLmAction} />
               <Opt value="recheck"   label="Recheck Availability"         sub="Send back to Production Incharge to recheck"         accent="border-amber-200"  sel={notAvailLmAction} onPick={setNotAvailLmAction} />
-              <Opt value="assign_pm" label="Assign to Production Incharge" sub="Materials resolved — proceed with production"     accent="border-emerald-200" sel={notAvailLmAction} onPick={setNotAvailLmAction} />
+              <Opt value="assign_pm" label="Assign to Production Manager" sub="Materials resolved — proceed with production"     accent="border-emerald-200" sel={notAvailLmAction} onPick={setNotAvailLmAction} />
 
               {notAvailLmAction && (
                 <button type="button" onClick={submitNotAvailLmAction}
                   className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${notAvailLmAction === 'assign_pm' ? 'bg-emerald-600' : notAvailLmAction === 'recheck' ? 'bg-amber-600' : 'bg-slate-500'}`}>
-                  {notAvailLmAction === 'wait' ? 'Keep Waiting' : notAvailLmAction === 'recheck' ? 'Send Back to Production Incharge' : '✓ Assign to Production Incharge'}
+                  {notAvailLmAction === 'wait' ? 'Keep Waiting' : notAvailLmAction === 'recheck' ? 'Send Back to Production Incharge' : '✓ Assign to Production Manager'}
                 </button>
               )}
             </>
@@ -4015,14 +4057,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       <>
                         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Actual Project Expenses</p>
                         {([
-                          { label: 'Material Cost (₹)',     val: actualMaterial,     set: setActualMaterial     },
-                          { label: 'Production Cost (₹)',   val: actualProduction,   set: setActualProduction   },
-                          { label: 'Installation Cost (₹)', val: actualInstallation, set: setActualInstallation },
-                          { label: 'Transport Cost (₹)',    val: actualTransport,    set: setActualTransport    },
-                          { label: 'Other Costs (₹)',       val: actualOther,        set: setActualOther        },
-                        ] as { label: string; val: string; set: (v: string) => void }[]).map(({ label, val, set }) => (
+                          { label: 'Material Cost (₹)',     val: actualMaterial,     set: setActualMaterial,     required: false },
+                          { label: 'Production Cost (₹)',   val: actualProduction,   set: setActualProduction,   required: false },
+                          { label: 'Installation Cost (₹)', val: actualInstallation, set: setActualInstallation, required: false },
+                          { label: 'Transport Cost (₹)',    val: actualTransport,    set: setActualTransport,    required: false },
+                          { label: 'Other Costs (₹)',       val: actualOther,        set: setActualOther,        required: true  },
+                        ] as { label: string; val: string; set: (v: string) => void; required: boolean }[]).map(({ label, val, set, required }) => (
                           <div key={label}>
-                            <label className={lbl}>{label} <span className="text-slate-300 font-normal">(optional)</span></label>
+                            <label className={lbl}>{label} {required ? req : <span className="text-slate-300 font-normal">(optional)</span>}</label>
                             <input type="text" inputMode="numeric" value={val}
                               onChange={e => set(e.target.value.replace(/[^0-9]/g, ''))}
                               placeholder="0" className={inp} />
@@ -4092,6 +4134,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                         })()}
                         <button type="button"
                           onClick={() => {
+                            if (!actualOther.trim()) { setError('Enter Other Costs (enter 0 if none).'); return }
                             const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport, actualOther]
                               .reduce((s, v) => s + (Number(v) || 0), 0)
                             const extraCharge = Number(extraChargeAmt) || 0
@@ -4157,14 +4200,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Actual Project Expenses</p>
 
               {[
-                { label: 'Material Cost (₹)',    val: actualMaterial,     set: setActualMaterial     },
-                { label: 'Production Cost (₹)',  val: actualProduction,   set: setActualProduction   },
-                { label: 'Installation Cost (₹)',val: actualInstallation, set: setActualInstallation },
-                { label: 'Transport Cost (₹)',   val: actualTransport,    set: setActualTransport    },
-                { label: 'Other Costs (₹)',      val: actualOther,        set: setActualOther        },
-              ].map(({ label, val, set }) => (
+                { label: 'Material Cost (₹)',    val: actualMaterial,     set: setActualMaterial,     required: false },
+                { label: 'Production Cost (₹)',  val: actualProduction,   set: setActualProduction,   required: false },
+                { label: 'Installation Cost (₹)',val: actualInstallation, set: setActualInstallation, required: false },
+                { label: 'Transport Cost (₹)',   val: actualTransport,    set: setActualTransport,    required: false },
+                { label: 'Other Costs (₹)',      val: actualOther,        set: setActualOther,        required: true  },
+              ].map(({ label, val, set, required }) => (
                 <div key={label}>
-                  <label className={lbl}>{label} <span className="text-slate-300 font-normal">(optional)</span></label>
+                  <label className={lbl}>{label} {required ? req : <span className="text-slate-300 font-normal">(optional)</span>}</label>
                   <input type="text" inputMode="numeric" value={val}
                     onChange={e => set(e.target.value.replace(/[^0-9]/g, ''))}
                     placeholder="0" className={inp} />
@@ -4196,6 +4239,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <button type="button"
                 onClick={() => {
+                  if (!actualOther.trim()) { setError('Enter Other Costs (enter 0 if none).'); return }
                   const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport, actualOther]
                     .reduce((s, v) => s + (Number(v) || 0), 0)
                   if (task.projectId) {

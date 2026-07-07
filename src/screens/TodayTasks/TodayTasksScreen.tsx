@@ -86,6 +86,7 @@ export default function TodayTasksScreen() {
     if (role === 'owner') {
       return t.flowStage === 'owner_approval' ||
         t.flowStage === 'installation_assign' ||
+        t.flowStage === 'reschedule_review' ||
         (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
     }
     if (role === 'production_admin') {

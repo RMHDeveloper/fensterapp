@@ -55,16 +55,6 @@ const NEGOTIATION_STAGES = new Set([
   'negotiation','client_approved','advance_payment','client_rejected','client_not_approved',
   'advance_payment_pending','waiting_advance_payment','owner_disapproved','md_ed_rejected'
 ])
-// Lead-originated projects stay in Leads screen until client approves quotation
-// Once client_approved / advance_payment → project appears in Projects/Active for all
-const LEAD_PIPELINE_STAGES = new Set([
-  'new_project','measurement','site_visit_assigned','site_visit','site_visit_completed',
-  'waiting_site_visit_review','reschedule_requested','reschedule_approved',
-  'quotation_preparation','quotation_sent_owner','quotation_sent_md_ed','owner_approved',
-  'owner_disapproved','md_ed_approved','md_ed_rejected','sent_to_client',
-  'waiting_client_approval','quotation_rework','client_rejected',
-  'client_not_approved','negotiation',
-])
 const PRE_PRODUCTION_STAGES = new Set([
   'production_sheet_preparation','production_admin_check','waiting_material_availability'
 ])
@@ -171,11 +161,6 @@ export default function ProjectsScreen() {
   const filtered = projects.filter(p => {
     // Not yet converted from its lead (still managed from the Leads page) — hidden everywhere, including for MD
     if (p.pendingConversion) return false
-    // Lead-originated projects in pipeline stages: show to assigned LO and owner; hide from others
-    if (p.leadId && (!p.currentStage || LEAD_PIPELINE_STAGES.has(p.currentStage))) {
-      const role = user?.role
-      if (role !== 'owner' && !(role === 'lead_manager' && p.ownerId === user?.id)) return false
-    }
     if (!matchesRoleVisibility(p)) return false
     const matchF = matchesFilter(p, filter, user?.role)
     const matchS = !search

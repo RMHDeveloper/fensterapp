@@ -334,7 +334,7 @@ export default function HomeScreen() {
           const activeFTs = tasks.filter(t => {
             if (t.flowStage == null || t.flowStage === 'completed') return false
             if (role === 'site_engineer') return t.flowStage === 'site_visit' && isAssignedToMe(t)
-            if (role === 'owner') return t.flowStage === 'owner_approval' || (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
+            if (role === 'owner') return t.flowStage === 'owner_approval' || t.flowStage === 'reschedule_review' || (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
             if (role === 'production_admin') return t.flowStage === 'production_check'
             if (role === 'production_manager') return t.flowStage === 'production_work'
             if (role === 'production_team') return t.flowStage === 'production_check' || t.flowStage === 'production_work'
@@ -345,19 +345,14 @@ export default function HomeScreen() {
           if (activeFTs.length === 0) return null
           return (
             <section>
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center">
-                    <CalendarCheck size={13} className="text-blue-600" aria-hidden="true" />
-                  </div>
-                  <h2 className="text-sm font-extrabold text-slate-800">Ready for Next Step</h2>
-                  <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
-                    {activeFTs.length}
-                  </span>
+              <div className="flex items-center gap-2 mb-2.5">
+                <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center">
+                  <CalendarCheck size={13} className="text-blue-600" aria-hidden="true" />
                 </div>
-                <button onClick={() => navigate('/tasks')} className="flex items-center gap-0.5 text-xs font-semibold text-blue-600 min-h-[36px] active:opacity-70">
-                  See all <ChevronRight size={13} aria-hidden="true" />
-                </button>
+                <h2 className="text-sm font-extrabold text-slate-800">Ready for Next Step</h2>
+                <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
+                  {activeFTs.length}
+                </span>
               </div>
               {activeFTs.slice(0, 3).map(t => (
                 <FlowTaskCard key={t.id} task={t} onClick={() => setFlowTaskId(t.id)} />

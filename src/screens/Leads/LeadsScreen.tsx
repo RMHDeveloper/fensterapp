@@ -26,19 +26,19 @@ const CHIPS: { value: Filter; label: string }[] = [
   { value: 'lost',        label: 'Lost'        },
 ]
 
+// Measurement: from site-engineer assignment through the LM preparing the quotation
+// (still hasn't been sent to MD/ED yet)
 const LEAD_MEASUREMENT_STAGES = new Set([
   'new_project','measurement','site_visit_assigned','site_visit','site_visit_completed',
   'waiting_site_visit_review','reschedule_requested','reschedule_approved',
+  'quotation_preparation',
 ])
+// Quotation: from the moment the LM sends the quotation to MD/ED, through MD/ED approval,
+// sending to client, negotiation, and collecting advance payment — until Convert to Project
 const LEAD_QUOTATION_STAGES = new Set([
-  'quotation_preparation','quotation_sent_owner','quotation_sent_md_ed',
-  'owner_approved','md_ed_approved','quotation_rework',
-  // Send-to-client phase: quotation with client, negotiating, or rejected
-  'sent_to_client','waiting_client_approval','client_rejected',
-  'client_not_approved','negotiation','owner_disapproved','md_ed_rejected',
-])
-// Once client approves → project moves to Active in Projects screen (no longer in Leads filters)
-const LEAD_NEGOTIATION_STAGES = new Set([
+  'quotation_sent_owner','quotation_sent_md_ed',
+  'owner_approved','md_ed_approved','quotation_rework','owner_disapproved','md_ed_rejected',
+  'sent_to_client','waiting_client_approval','client_rejected','client_not_approved','negotiation',
   'client_approved','advance_payment','advance_payment_pending','waiting_advance_payment',
 ])
 
@@ -176,12 +176,15 @@ export default function LeadsScreen() {
     if (isQualifiedView) return l.status === 'qualified' && matchSearchOnly
     const proj = projects.find(p => p.leadId === l.id)
     const projStage = proj?.currentStage
+    // A won lead still shows in Measurement/Quotation by its real project stage until
+    // it's actually converted (pendingConversion flips to false once "Convert to Project" is clicked)
+    const wonPending = l.status === 'won' && !!proj?.pendingConversion
     let matchFilter = false
     if (filter === 'lost') {
       matchFilter = l.status === 'lost'
     } else if (filter === 'won') {
       matchFilter = l.status === 'won'
-    } else if (l.status === 'lost' || l.status === 'won') {
+    } else if (l.status === 'lost' || (l.status === 'won' && !proj?.pendingConversion)) {
       matchFilter = false
     } else if (filter === 'active') {
       matchFilter = true
@@ -189,9 +192,9 @@ export default function LeadsScreen() {
       matchFilter = l.status === 'new' || l.status === 'contacted'
     } else if (filter === 'measurement') {
       matchFilter = l.status === 'qualified'
-        || !!(projStage && LEAD_MEASUREMENT_STAGES.has(projStage))
+        || (wonPending && (!projStage || LEAD_MEASUREMENT_STAGES.has(projStage)))
     } else if (filter === 'quotation') {
-      matchFilter = !!(projStage && LEAD_QUOTATION_STAGES.has(projStage))
+      matchFilter = wonPending && !!projStage && LEAD_QUOTATION_STAGES.has(projStage)
     }
     const matchSearch = !search
       || l.name.toLowerCase().includes(search.toLowerCase())
