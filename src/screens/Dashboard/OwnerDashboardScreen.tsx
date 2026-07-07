@@ -244,10 +244,9 @@ export default function OwnerDashboardScreen() {
   const totalFullyPaidAmt   = fullyPaidProjects.reduce((s, p) => s + projectQuota(p), 0)
 
   // ── LO Performance ───────────────────────────────────────────────────────
-  const allLOs = useMemo(
-    () => loadManagedUsers().filter(u => u.status === 'active' && u.role === 'lead_manager'),
-    []
-  )
+  // Not memoized with an empty dep array on purpose: managed users load
+  // asynchronously from Supabase and may still be empty on first mount.
+  const allLOs = loadManagedUsers().filter(u => u.status === 'active' && u.role === 'lead_manager')
 
   // For each LO, get their projects from ALL projects (not just date-filtered) for performance view
   const loStats = useMemo(() => {
