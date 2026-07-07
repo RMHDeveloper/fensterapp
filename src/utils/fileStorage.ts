@@ -31,8 +31,11 @@ async function uploadToHostinger(file: File): Promise<string> {
     throw new Error('File upload is not configured. Contact your administrator.')
   }
   const form = new FormData()
-  // Use a unique filename when uploading to avoid server-side overwrites
-  const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  // Use a unique filename when uploading to avoid server-side overwrites. The random
+  // segment is padded to a fixed length — Math.random().toString(36) can yield fewer
+  // than 6 chars, which used to break getDisplayFileName's prefix-stripping regex and
+  // left the ugly upload prefix showing instead of the original file name.
+  const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8).padEnd(6, '0')}`
   const uploadName = `${uniqueSuffix}_${file.name}`
   const fileForUpload = new File([file], uploadName, { type: file.type })
   form.append('file', fileForUpload)
@@ -90,7 +93,7 @@ export function getDisplayFileName(nameOrUrl: string): string {
   const raw = nameOrUrl.startsWith('http')
     ? decodeURIComponent(nameOrUrl.split('/').pop() ?? nameOrUrl)
     : nameOrUrl
-  return raw.replace(/^\d+_[a-z0-9]{4,8}_/i, '')
+  return raw.replace(/^\d+_[a-z0-9]{1,8}_/i, '')
 }
 
 export function getFileUrl(nameOrUrl: string): string | undefined {

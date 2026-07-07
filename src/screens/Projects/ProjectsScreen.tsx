@@ -6,8 +6,6 @@ import { useAuth } from '../../context/AuthContext'
 import { ProjectRow } from '../../components/cards/ProjectRow'
 import { FilterChips } from '../../components/forms/FilterChips'
 import { SearchBar } from '../../components/forms/SearchBar'
-import { FloatingActionButton } from '../../components/navigation/FloatingActionButton'
-import { PermissionGate } from '../../components/layout/PermissionGate'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { AppHeader } from '../../components/layout/AppHeader'
 import { BottomSheet } from '../../components/feedback/BottomSheet'
@@ -291,10 +289,6 @@ export default function ProjectsScreen() {
           })
         )}
       </div>
-
-      <PermissionGate permission="create_project">
-        <FloatingActionButton onClick={() => setShowNew(true)} />
-      </PermissionGate>
 
       {/* Add New Project Sheet */}
       <BottomSheet isOpen={showNew} onClose={() => { setShowNew(false); resetForm() }} title="New Project" height="full">

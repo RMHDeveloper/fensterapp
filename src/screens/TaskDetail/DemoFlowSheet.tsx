@@ -486,7 +486,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [error, setError] = useState('')
   const [jobSheetAssignee, setJobSheetAssignee] = useState('')
   const [pmAssignee, setPmAssignee] = useState('')
-  const [pmDueDate,  setPmDueDate]  = useState('')
   const [showLossWarn, setShowLossWarn] = useState(false)
   const lossConfirmCb = useRef<(() => void) | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
@@ -1259,7 +1258,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       notAvailableReason: undefined,
       availabilityChecklist: savedChecklist,
       assignee: pmAssignee || undefined,
-      dueDate: pmDueDate || 'Today',
+      dueDate: 'Today',
     }, `Materials checked${glassNote}${hardwareNote} — assigned to ${pmAssignee || 'Production Manager'}`)
   }
 
@@ -2972,7 +2971,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       )}
                       <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Advance Payment</p>
                       <Opt value="advance_paid" label="Advance Paid" sub="Client paid advance — start production" accent="border-emerald-200" sel={sel} onPick={pick} />
-                      <Opt value="partial_paid" label="Partial Paid" sub="Partial payment received"                accent="border-amber-200"   sel={sel} onPick={pick} />
                       <Opt value="full_paid"    label="Full Paid"    sub="Complete payment received"              accent="border-green-200"   sel={sel} onPick={pick} />
                       {(sel === 'advance_paid' || sel === 'partial_paid' || sel === 'full_paid') && (
                         <div className="space-y-3">
@@ -3010,7 +3008,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                             <textarea rows={2} value={advNote} onChange={e => setAdvNote(e.target.value)}
                               placeholder="Payment method, reference number…" className={`${inp} resize-none`} />
                           </div>
-                          <MultiFileUploadField label="Payment Screenshot" accept="image/*,.pdf" files={advPayScreenshot} onChange={setAdvPayScreenshot} helperText="Optional — upload payment proof" />
+                          <MultiFileUploadField label="Payment Screenshot" accept=".jpg,.jpeg,.png,.webp,.pdf" files={advPayScreenshot} onChange={setAdvPayScreenshot} helperText="Optional — upload payment proof" />
                         </div>
                       )}
                       {sel && (
@@ -3202,10 +3200,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                         </select>
                       </div>
                     )}
-                    <div>
-                      <label className={lbl}>Due Date <span className="text-slate-300 font-normal">(optional)</span></label>
-                      <input type="date" value={pmDueDate} onChange={e => setPmDueDate(e.target.value)} className={inp} />
-                    </div>
                     <button type="button" onClick={submitProductionCheck}
                       className="w-full py-4 rounded-2xl bg-emerald-600 text-white text-sm font-extrabold active:opacity-90">
                       ✓ Confirm — Start Production
@@ -3410,7 +3404,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               )}
 
               <Opt value="advance_paid" label="Advance Paid" sub="Client paid advance — start production" accent="border-emerald-200" sel={sel} onPick={pick} />
-              <Opt value="partial_paid" label="Partial Paid" sub="Partial payment received"                accent="border-amber-200"   sel={sel} onPick={pick} />
               <Opt value="full_paid"    label="Full Paid"    sub="Complete payment received"              accent="border-green-200"   sel={sel} onPick={pick} />
 
               {(sel === 'advance_paid' || sel === 'partial_paid' || sel === 'full_paid') && (
@@ -3449,7 +3442,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                     <textarea rows={2} value={advNote} onChange={e => setAdvNote(e.target.value)}
                       placeholder="Payment method, reference number…" className={`${inp} resize-none`} />
                   </div>
-                  <MultiFileUploadField label="Payment Screenshot" accept="image/*,.pdf" files={advPayScreenshot} onChange={setAdvPayScreenshot} helperText="Optional — upload payment proof" />
+                  <MultiFileUploadField label="Payment Screenshot" accept=".jpg,.jpeg,.png,.webp,.pdf" files={advPayScreenshot} onChange={setAdvPayScreenshot} helperText="Optional — upload payment proof" />
                 </div>
               )}
 
