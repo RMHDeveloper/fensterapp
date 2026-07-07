@@ -38,11 +38,13 @@ function HomeRoute() {
   return user?.role === 'owner' ? <Navigate to="/dashboard" replace /> : <HomeScreen />
 }
 
-// Leave Application — visible only to Admin and MD (owner role), not ED or any other role
+// Leave Application — full management for Admin/MD (owner role, not ED); technicians
+// get self-service access to apply for their own leave (gated inside the screen itself)
 function LeaveApplicationRoute() {
   const { user } = useAuth()
-  const canAccess = user?.role === 'owner' && (user.displayRole?.includes('MD') || user.displayRole?.includes('Admin'))
-  return canAccess ? <LeaveApplicationScreen /> : <Navigate to="/home" replace />
+  const canManage = user?.role === 'owner' && (user.displayRole?.includes('MD') || user.displayRole?.includes('Admin'))
+  const canApply  = user?.role === 'technician' || user?.role === 'installation_incharge'
+  return (canManage || canApply) ? <LeaveApplicationScreen /> : <Navigate to="/home" replace />
 }
 
 // Dashboard shell — only rendered after login

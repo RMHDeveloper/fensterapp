@@ -4,7 +4,7 @@ import {
   Home, CalendarCheck, FolderOpen, Layers, Wallet,
   BarChart2, Settings, Users, MapPin, FileText,
   Wrench, AlertTriangle, CheckSquare, File,
-  LayoutDashboard, ClipboardCheck,
+  LayoutDashboard, ClipboardCheck, Circle,
 } from 'lucide-react'
 import type { Permission } from '../../types'
 
@@ -44,6 +44,27 @@ export const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
       { icon: Wallet,         label: 'Payments',     path: '/payments',     permission: 'view_payments'    },
       { icon: Wrench,         label: 'Installation', path: '/installation', permission: 'view_installation'},
       { icon: File,           label: 'Files',        path: '/files',        permission: 'view_files'       },
+    ],
+  },
+  {
+    label: 'Lead Sort',
+    items: [
+      { icon: Circle, label: 'Active',      path: '/leads?filter=active',      permission: 'view_leads' },
+      { icon: Circle, label: 'Contacted',   path: '/leads?filter=contact',     permission: 'view_leads' },
+      { icon: Circle, label: 'Measurement', path: '/leads?filter=measurement', permission: 'view_leads' },
+      { icon: Circle, label: 'Quotation',   path: '/leads?filter=quotation',   permission: 'view_leads' },
+    ],
+  },
+  {
+    label: 'Project Sort',
+    items: [
+      { icon: Circle, label: 'Active',            path: '/projects?filter=active',            permission: 'view_projects' },
+      { icon: Circle, label: 'Pre-Production',     path: '/projects?filter=pre_production',     permission: 'view_projects' },
+      { icon: Circle, label: 'Production',         path: '/projects?filter=production',         permission: 'view_projects' },
+      { icon: Circle, label: 'Ready to Dispatch',  path: '/projects?filter=ready_to_dispatch',  permission: 'view_projects' },
+      { icon: Circle, label: 'Installation',       path: '/projects?filter=installation',       permission: 'view_projects' },
+      { icon: Circle, label: 'Collection',         path: '/projects?filter=collection',         permission: 'view_projects' },
+      { icon: Circle, label: 'Complete',           path: '/projects?filter=completed',          permission: 'view_projects' },
     ],
   },
   {

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FolderOpen, FileDown } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
@@ -18,6 +18,7 @@ import { normalizeRole, isCompletedProject, isConvertedProject, getProjectFilter
 import type { Project, Task } from '../../types'
 
 type Filter = 'active' | 'pre_production' | 'production' | 'ready_to_dispatch' | 'installation' | 'collection' | 'completed'
+const FILTER_VALUES = new Set<string>(['active', 'pre_production', 'production', 'ready_to_dispatch', 'installation', 'collection', 'completed'])
 type Bucket = ProjectFilterStage
 
 function getChipsForRole(rawRole?: string): { value: Filter; label: string }[] {
@@ -60,9 +61,16 @@ const inp = 'w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 tex
 
 export default function ProjectsScreen() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { projects, addProject, addTask, tasks: allTasks } = useAppData()
   const { user } = useAuth()
   const [filter, setFilter] = useState<Filter>('active')
+
+  // Menu shortcuts link directly into a stage, e.g. /projects?filter=pre_production
+  useEffect(() => {
+    const f = searchParams.get('filter')
+    if (f && FILTER_VALUES.has(f)) setFilter(f as Filter)
+  }, [searchParams])
   const [search, setSearch] = useState('')
   const [showNew, setShowNew] = useState(false)
   const [snack,   setSnack]   = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })

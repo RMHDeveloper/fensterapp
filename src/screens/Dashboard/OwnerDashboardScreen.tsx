@@ -2,54 +2,11 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../../context/AppDataContext'
 import { AppHeader } from '../../components/layout/AppHeader'
-import { Calendar, ChevronRight, X } from 'lucide-react'
+import { Calendar, ChevronDown, ChevronRight, X } from 'lucide-react'
 import { loadManagedUsers } from '../../utils/userStorage'
 import { getLeadFlowBucket, isCompletedProject } from '../../utils/stageHelpers'
+import { type DateFilter, DATE_FILTERS, getDateRange, inRange, leadDate } from '../../utils/dateRange'
 import type { Project, Task, Lead } from '../../types'
-
-type DateFilter = 'today' | 'week' | 'month' | 'custom'
-
-function getDateRange(filter: DateFilter, customFrom: string, customTo: string): { from: Date; to: Date } {
-  const now = new Date()
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-  const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
-  if (filter === 'today') return { from: todayStart, to: todayEnd }
-  if (filter === 'week') {
-    const day = now.getDay()
-    const diff = day === 0 ? 6 : day - 1
-    const weekStart = new Date(todayStart)
-    weekStart.setDate(todayStart.getDate() - diff)
-    return { from: weekStart, to: todayEnd }
-  }
-  if (filter === 'month') {
-    return { from: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0), to: todayEnd }
-  }
-  const from = customFrom ? new Date(customFrom + 'T00:00:00') : todayStart
-  const to   = customTo   ? new Date(customTo   + 'T23:59:59') : todayEnd
-  return { from, to }
-}
-
-function parseFlexDate(dateStr: string): Date {
-  // ISO: YYYY-MM-DD or YYYY-MM-DDTHH:...
-  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return new Date(dateStr)
-  // en-IN locale: D/M/YYYY (day first)
-  const parts = dateStr.split('/')
-  if (parts.length === 3) {
-    const [d, m, y] = parts.map(Number)
-    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) return new Date(y, m - 1, d)
-  }
-  return new Date(dateStr)
-}
-
-function inRange(dateStr: string | undefined, from: Date, to: Date): boolean {
-  if (!dateStr) return false
-  const d = parseFlexDate(dateStr)
-  return !isNaN(d.getTime()) && d >= from && d <= to
-}
-
-function leadDate(l: { createdAt?: string; lastContact?: string }): string | undefined {
-  return l.createdAt || l.lastContact
-}
 
 function projectArea(p: Project): number {
   return p.costBreakdown?.numberOfSqft ?? (p as { totalArea?: number }).totalArea ?? 0
@@ -71,12 +28,6 @@ function fmt(n: number): string {
   return `₹${n}`
 }
 
-const DATE_FILTERS: { value: DateFilter; label: string }[] = [
-  { value: 'today', label: 'Today' },
-  { value: 'week',  label: 'This Week' },
-  { value: 'month', label: 'This Month' },
-  { value: 'custom',label: 'Custom' },
-]
 
 const STAGE_COLOR: Record<string, string> = {
   measurement:  'bg-cyan-400',
@@ -249,6 +200,7 @@ function LOPanel({ loName, negotiationLeads, productionProjects, doneProjects, a
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function OwnerDashboardScreen() {
+  const navigate = useNavigate()
   const { projects: allProjects, tasks, leads, mistakes } = useAppData()
   // Not yet converted from their lead — stay off the MD dashboard until the LM converts them
   const projects = allProjects.filter(p => !p.pendingConversion)
@@ -358,9 +310,8 @@ export default function OwnerDashboardScreen() {
   // Production (their converted, not-yet-completed projects), Done (completed projects).
   const loStats = useMemo(() => {
     return allLOs.map(lo => {
-      const negotiationLeads = leads.filter(l =>
-        l.assignee === lo.fullName && getLeadFlowBucket(l, allProjects, tasks) === 'quotation'
-      )
+      const loLeads = leads.filter(l => l.assignee === lo.fullName)
+      const negotiationLeads = loLeads.filter(l => getLeadFlowBucket(l, allProjects, tasks) === 'quotation')
       const negotiationAmt = negotiationLeads.reduce((s, l) => {
         const proj = allProjects.find(p => p.leadId === l.id)
         return s + (proj ? projectQuota(proj) : 0)
@@ -378,11 +329,12 @@ export default function OwnerDashboardScreen() {
 
       return {
         lo,
+        totalLeads:  loLeads.length,
         negotiation: { count: negotiationLeads.length, amt: negotiationAmt, items: negotiationLeads },
         production:  { count: productionProjects.length, amt: productionAmt, items: productionProjects },
         done:        { count: doneProjects.length, amt: doneAmt, items: doneProjects },
       }
-    }).filter(s => s.negotiation.count > 0 || s.production.count > 0 || s.done.count > 0 || s.lo.status === 'active')
+    }).filter(s => s.totalLeads > 0 || s.production.count > 0 || s.done.count > 0 || s.lo.status === 'active')
   }, [allLOs, projects, allProjects, leads, tasks])
 
   const selectedLOData = selectedLO
@@ -430,6 +382,12 @@ export default function OwnerDashboardScreen() {
       </div>
 
       <div className="px-4 pt-4 space-y-4">
+
+        <button onClick={() => navigate('/reports')}
+          className="w-full flex items-center justify-between bg-indigo-600 rounded-2xl px-4 py-3 shadow-sm active:bg-indigo-700">
+          <span className="text-sm font-bold text-white">View Full Reports</span>
+          <ChevronRight size={16} className="text-white/80" />
+        </button>
 
         {filteredLeads.length === 0 && (
           <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-6 text-center">
@@ -525,34 +483,68 @@ export default function OwnerDashboardScreen() {
                 <p className="text-sm text-slate-400">No Lead Owners found</p>
               </div>
             )}
-            {loStats.map(({ lo, negotiation, production, done }) => (
-              <div key={lo.id} className="w-full bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-                <div className="flex items-center gap-2.5 mb-3">
-                  <div className="w-9 h-9 bg-teal-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <span className="text-white text-sm font-extrabold">
-                      {lo.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-                    </span>
-                  </div>
-                  <p className="text-sm font-extrabold text-slate-800">{lo.fullName}</p>
-                </div>
+            {loStats.map(({ lo, totalLeads, negotiation, production, done }) => {
+              const pipelineTotal = negotiation.count + production.count + done.count
+              const pctNeg  = pipelineTotal > 0 ? (negotiation.count / pipelineTotal) * 100 : 0
+              const pctProd = pipelineTotal > 0 ? (production.count  / pipelineTotal) * 100 : 0
+              const pctDone = pipelineTotal > 0 ? (done.count        / pipelineTotal) * 100 : 0
 
-                <div className="grid grid-cols-3 gap-2">
-                  {([
-                    { key: 'negotiation' as LOStage, label: 'Negotiation', ...negotiation, color: 'text-violet-600' },
-                    { key: 'production'  as LOStage, label: 'Production',  ...production,  color: 'text-amber-600'  },
-                    { key: 'done'        as LOStage, label: 'Done',        ...done,         color: 'text-emerald-600'},
-                  ]).map(({ key, label, count, amt, color }) => (
-                    <button key={key}
-                      onClick={() => { setSelectedLO(lo.id); setSelectedLOStage(key) }}
-                      className="bg-slate-50 rounded-xl p-2.5 text-center active:bg-slate-100">
-                      <p className={`text-sm font-extrabold ${color} break-all`}>{fmt(amt)}</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">({count})</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{label}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
+              return (
+                <button key={lo.id}
+                  onClick={() => { setSelectedLO(lo.id); setSelectedLOStage('negotiation') }}
+                  className="w-full bg-white rounded-2xl border border-slate-200 p-4 text-left active:bg-slate-50 shadow-sm">
+
+                  {/* Header row */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 bg-teal-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-sm font-extrabold">
+                          {lo.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-extrabold text-slate-800">{lo.fullName}</p>
+                        <p className="text-[11px] text-slate-400">{totalLeads} total lead{totalLeads !== 1 ? 's' : ''}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-right">
+                        <p className="text-lg font-extrabold text-emerald-600">{done.count}</p>
+                        <p className="text-[10px] text-slate-400">done</p>
+                      </div>
+                      <ChevronDown size={14} className="text-slate-300" />
+                    </div>
+                  </div>
+
+                  {/* Bar chart */}
+                  {pipelineTotal > 0 ? (
+                    <>
+                      <div className="h-3 rounded-full overflow-hidden bg-slate-100 flex">
+                        {pctNeg  > 0 && <div className="bg-violet-400 h-full transition-all"  style={{ width: `${pctNeg}%`  }} />}
+                        {pctProd > 0 && <div className="bg-amber-400 h-full transition-all"   style={{ width: `${pctProd}%` }} />}
+                        {pctDone > 0 && <div className="bg-emerald-500 h-full transition-all" style={{ width: `${pctDone}%` }} />}
+                      </div>
+                      <div className="flex gap-3 mt-2 flex-wrap">
+                        {[
+                          { key: 'negotiation' as LOStage, label: 'Negotiation', count: negotiation.count, color: 'bg-violet-400'  },
+                          { key: 'production'  as LOStage, label: 'Projects',    count: production.count,  color: 'bg-amber-400'   },
+                          { key: 'done'        as LOStage, label: 'Completed',   count: done.count,         color: 'bg-emerald-500' },
+                        ].filter(i => i.count > 0).map(({ key, label, count, color }) => (
+                          <div key={label}
+                            onClick={e => { e.stopPropagation(); setSelectedLO(lo.id); setSelectedLOStage(key) }}
+                            className="flex items-center gap-1">
+                            <span className={`w-2 h-2 rounded-full ${color}`} />
+                            <span className="text-[10px] text-slate-500">{label} <span className="font-bold text-slate-700">{count}</span></span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">No leads or projects yet</p>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
 

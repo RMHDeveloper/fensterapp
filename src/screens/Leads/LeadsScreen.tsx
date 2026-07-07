@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Plus, UserPlus, HardHat, Phone, Pencil, FileDown } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { PermissionGate } from '../../components/layout/PermissionGate'
 import { StatusBadge } from '../../components/badges/StatusBadge'
 import { FilterChips } from '../../components/forms/FilterChips'
@@ -17,6 +17,7 @@ import { getLeadFlowBucket, isAdvanceReceived, flowReached, isLeadConverted } fr
 import type { Lead, LeadStatus, LeadSource, LeadInterest, Task } from '../../types'
 
 type Filter = 'active' | 'contact' | 'measurement' | 'quotation'
+const FILTER_VALUES = new Set<string>(['active', 'contact', 'measurement', 'quotation'])
 
 const CHIPS: { value: Filter; label: string }[] = [
   { value: 'active',      label: 'Active'      },
@@ -85,6 +86,7 @@ export default function LeadsScreen() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const [searchParams] = useSearchParams()
   const isNegotiationView = pathname === '/leads/negotiation'
 
   const isMdEd = user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED')
@@ -95,6 +97,11 @@ export default function LeadsScreen() {
     .filter(u => u.status === 'active' && u.role === 'lead_manager')
     .map(u => u.fullName)
   const [filter,   setFilter]   = useState<Filter>('active')
+  // Menu shortcuts link directly into a stage, e.g. /leads?filter=measurement
+  useEffect(() => {
+    const f = searchParams.get('filter')
+    if (f && FILTER_VALUES.has(f)) setFilter(f as Filter)
+  }, [searchParams])
   const [search,   setSearch]   = useState('')
   const [selected, setSelected] = useState<Lead | null>(null)
   const [showNew,  setShowNew]  = useState(false)

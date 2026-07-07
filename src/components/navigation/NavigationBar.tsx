@@ -1,4 +1,4 @@
-import { LayoutDashboard, CalendarCheck, FolderOpen, Layers, Settings, Users, MapPin, CheckSquare, UserCheck } from 'lucide-react'
+import { LayoutDashboard, CalendarCheck, FolderOpen, Layers, Settings, Users, MapPin, CheckSquare, UserCheck, CalendarOff } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import type { UserRole } from '../../types'
@@ -15,6 +15,7 @@ const ALL_ITEMS: NavItem[] = [
   { icon: Layers,          label: 'Production',path: '/production'  },
   { icon: MapPin,          label: 'Visits',    path: '/site-visits' },
   { icon: CheckSquare,     label: 'Approvals', path: '/approvals'   },
+  { icon: CalendarOff,     label: 'Leave',     path: '/leave-applications' },
   { icon: Settings,        label: 'Settings',  path: '/settings'    },
 ]
 
@@ -25,8 +26,8 @@ const ROLE_PATHS: Record<UserRole, string[]> = {
   site_engineer:        ['/home', '/tasks', '/site-visits', '/projects',   '/settings'],
   production_admin:     ['/home', '/tasks', '/production',  '/projects',   '/settings'],
   production_manager:   ['/home', '/tasks', '/production',  '/projects',   '/settings'],
-  technician:           ['/home', '/tasks', '/projects',    '/settings'],
-  installation_incharge:['/home', '/tasks', '/projects',    '/settings'],  // legacy
+  technician:           ['/home', '/tasks', '/projects', '/leave-applications', '/settings'],
+  installation_incharge:['/home', '/tasks', '/projects', '/leave-applications', '/settings'],  // legacy
   production_team:      ['/home', '/tasks', '/production',  '/projects',   '/settings'],
   viewer:               ['/home', '/projects', '/settings'],
 }

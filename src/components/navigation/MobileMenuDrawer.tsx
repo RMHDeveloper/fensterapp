@@ -12,8 +12,9 @@ interface Props {
 }
 
 export function MobileMenuDrawer({ isOpen, onClose }: Props) {
-  const navigate     = useNavigate()
-  const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const { pathname, search } = useLocation()
+  const fullPath = pathname + search
   const { user, can, logout } = useAuth()
 
   useEffect(() => {
@@ -65,7 +66,9 @@ export function MobileMenuDrawer({ isOpen, onClose }: Props) {
                 </p>
                 <div className="space-y-0.5">
                   {visible.map(({ icon: Icon, label, path }) => {
-                    const active = pathname === path || (path !== '/home' && pathname.startsWith(path))
+                    const active = path.includes('?')
+                      ? fullPath === path
+                      : pathname === path || (path !== '/home' && pathname.startsWith(path))
                     return (
                       <button
                         key={path}

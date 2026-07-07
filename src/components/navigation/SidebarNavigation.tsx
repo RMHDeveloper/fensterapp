@@ -5,8 +5,9 @@ import { getRoleDisplayLabel } from '../../data/permissions'
 import { getMainItems, NAV_SECTIONS } from './navItems'
 
 export function SidebarNavigation() {
-  const navigate     = useNavigate()
-  const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const { pathname, search } = useLocation()
+  const fullPath = pathname + search
   const { user, can, logout } = useAuth()
   const isOwner = user?.role === 'owner'
   const sections = [{ label: 'Main', items: getMainItems(isOwner) }, ...NAV_SECTIONS]
@@ -40,7 +41,9 @@ export function SidebarNavigation() {
               </p>
               <div className="space-y-0.5">
                 {visible.map(({ icon: Icon, label, path }) => {
-                  const active = pathname === path || (path !== '/home' && pathname.startsWith(path))
+                  const active = path.includes('?')
+                    ? fullPath === path
+                    : pathname === path || (path !== '/home' && pathname.startsWith(path))
                   return (
                     <button
                       key={path}

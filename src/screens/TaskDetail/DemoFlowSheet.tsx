@@ -1239,11 +1239,13 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     if (notAvailLmAction === 'wait') {
       save({ flowStatus: 'waiting_stock', status: 'overdue' }, 'Waiting for stock to arrive')
     } else if (notAvailLmAction === 'recheck') {
+      const note = notAvailNote.trim()
       save({
         flowStage: 'production_check', flowStatus: 'waiting', status: 'pending',
         title: 'Check Material Availability',
         notAvailableReason: undefined,
-      }, 'Sales Team sent back to Admin for recheck')
+        note: note || undefined,
+      }, `Sales Team sent back to Admin for recheck${note ? `: ${note}` : ''}`)
     }
   }
 
@@ -3250,6 +3252,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                     className="w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 bg-orange-600">
                     Submit Restock Update
                   </button>
+                </div>
+              )}
+
+              {notAvailLmAction === 'recheck' && (
+                <div>
+                  <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
+                  <textarea rows={2} value={notAvailNote} onChange={e => setNotAvailNote(e.target.value)}
+                    placeholder="Anything Admin should know before rechecking…" className={`${inp} resize-none`} />
                 </div>
               )}
 

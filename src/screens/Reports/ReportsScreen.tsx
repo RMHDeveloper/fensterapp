@@ -1,10 +1,11 @@
-import { useState } from 'react'
-import { BarChart3, TrendingUp, TrendingDown, IndianRupee, FolderOpen, CheckCircle2, AlertTriangle } from 'lucide-react'
-import { PROJECTS, MISTAKES } from '../../data/mockData'
+import { useMemo, useState } from 'react'
+import { Calendar, BarChart3, TrendingUp, TrendingDown, IndianRupee, FolderOpen, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { MISTAKES } from '../../data/mockData'
 import { useAppData } from '../../context/AppDataContext'
 import { AppHeader } from '../../components/layout/AppHeader'
 import { BackButton } from '../../components/layout/BackButton'
-import { getLeadFlowBucket, isLeadConverted } from '../../utils/stageHelpers'
+import { getLeadFlowBucket, isLeadConverted, isCompletedProject } from '../../utils/stageHelpers'
+import { type DateFilter, DATE_FILTERS, getDateRange, inRange, leadDate } from '../../utils/dateRange'
 import type { LeadSource } from '../../types'
 
 const LEAD_SOURCE_ORDER: { value: LeadSource; label: string }[] = [
@@ -24,15 +25,6 @@ const LEAD_SOURCE_ORDER: { value: LeadSource; label: string }[] = [
   { value: 'other',             label: 'Other'             },
 ]
 
-type Period = 'this_month' | 'last_month' | 'quarter' | 'year'
-
-const PERIOD_LABELS: Record<Period, string> = {
-  this_month:  'This Month',
-  last_month:  'Last Month',
-  quarter:     'Quarter',
-  year:        'This Year',
-}
-
 const BAR_DATA = [
   { month: 'Jan', value: 42 },
   { month: 'Feb', value: 58 },
@@ -44,29 +36,43 @@ const BAR_DATA = [
 
 export default function ReportsScreen() {
   const { payments, leads, projects, tasks } = useAppData()
-  const [period, setPeriod] = useState<Period>('this_month')
+  const [dateFilter, setDateFilter] = useState<DateFilter>('month')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo,   setCustomTo]   = useState('')
+
+  const { from, to } = useMemo(
+    () => getDateRange(dateFilter, customFrom, customTo),
+    [dateFilter, customFrom, customTo]
+  )
+
+  // Date-sorted leads/projects — everything below derives from these, not the full unfiltered set
+  const filteredLeads = useMemo(() => leads.filter(l => inRange(leadDate(l), from, to)), [leads, from, to])
+  const filteredProjects = useMemo(
+    () => projects.filter(p => inRange(p.createdAt, from, to)),
+    [projects, from, to]
+  )
 
   const totalRevenue      = payments.reduce((s, p) => s + p.received, 0)
   const totalOutstanding  = payments.reduce((s, p) => s + p.pending, 0)
-  const activeProjects    = PROJECTS.filter(p => p.status === 'active').length
-  const completedProjects = PROJECTS.filter(p => p.status === 'completed').length
+  const activeProjects    = filteredProjects.filter(p => !isCompletedProject(p)).length
+  const completedProjects = filteredProjects.filter(isCompletedProject).length
   const openMistakes      = MISTAKES.filter(m => m.status !== 'resolved').length
-  const wonLeads          = leads.filter(l => l.status === 'won').length
+  const wonLeads          = filteredLeads.filter(isLeadConverted).length
 
   const maxBar = Math.max(...BAR_DATA.map(b => b.value))
 
   const kpiCards = [
-    { label: 'Revenue Collected', value: `₹${(totalRevenue / 100000).toFixed(1)}L`, sub: '+12% vs last month', icon: IndianRupee, color: 'bg-emerald-50 text-emerald-700', trend: 'up' },
-    { label: 'Outstanding',       value: `₹${(totalOutstanding / 100000).toFixed(1)}L`, sub: '3 overdue', icon: TrendingDown, color: 'bg-red-50 text-red-600', trend: 'down' },
+    { label: 'Revenue Collected', value: `₹${(totalRevenue / 100000).toFixed(1)}L`, sub: 'In selected period', icon: IndianRupee, color: 'bg-emerald-50 text-emerald-700', trend: 'up' },
+    { label: 'Outstanding',       value: `₹${(totalOutstanding / 100000).toFixed(1)}L`, sub: 'Pending collection', icon: TrendingDown, color: 'bg-red-50 text-red-600', trend: 'down' },
     { label: 'Active Projects',   value: activeProjects.toString(), sub: `${completedProjects} completed`, icon: FolderOpen, color: 'bg-indigo-50 text-indigo-700', trend: 'neutral' },
     { label: 'Open Mistakes',     value: openMistakes.toString(), sub: 'Needs attention', icon: AlertTriangle, color: 'bg-amber-50 text-amber-700', trend: 'down' },
-    { label: 'Leads Won',         value: wonLeads.toString(), sub: `of ${leads.length} total`, icon: CheckCircle2, color: 'bg-teal-50 text-teal-700', trend: 'up' },
-    { label: 'Conversion Rate',   value: `${Math.round((wonLeads / leads.length) * 100)}%`, sub: 'Leads to orders', icon: TrendingUp, color: 'bg-violet-50 text-violet-700', trend: 'up' },
+    { label: 'Leads Converted',   value: wonLeads.toString(), sub: `of ${filteredLeads.length} in period`, icon: CheckCircle2, color: 'bg-teal-50 text-teal-700', trend: 'up' },
+    { label: 'Conversion Rate',   value: filteredLeads.length > 0 ? `${Math.round((wonLeads / filteredLeads.length) * 100)}%` : '0%', sub: 'Leads to orders', icon: TrendingUp, color: 'bg-violet-50 text-violet-700', trend: 'up' },
   ]
 
   // Lead Source Conversion — real data from leads/projects, no hardcoded sample values
   const leadSourceRows = LEAD_SOURCE_ORDER.map(({ value, label }) => {
-    const sourceLeads = leads.filter(l => l.source === value)
+    const sourceLeads = filteredLeads.filter(l => l.source === value)
     const total = sourceLeads.length
     const contacted = sourceLeads.filter(l => l.status !== 'new').length
     const measurement = sourceLeads.filter(l => {
@@ -102,16 +108,28 @@ export default function ReportsScreen() {
         </div>
       </div>
 
-      {/* Period selector */}
-      <div className="px-4 pt-4">
-        <div className="bg-white rounded-2xl border border-slate-100 p-1 flex gap-1">
-          {(Object.keys(PERIOD_LABELS) as Period[]).map(p => (
-            <button key={p} onClick={() => setPeriod(p)}
-              className={`flex-1 py-2 rounded-xl text-[11px] font-semibold transition-colors ${period === p ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>
-              {PERIOD_LABELS[p]}
+      {/* Date filter */}
+      <div className="px-4 pt-4 space-y-2">
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+          {DATE_FILTERS.map(f => (
+            <button key={f.value} onClick={() => setDateFilter(f.value)}
+              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${dateFilter === f.value ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-100 text-slate-600'}`}>
+              {f.label}
             </button>
           ))}
         </div>
+        {dateFilter === 'custom' && (
+          <div className="flex items-center gap-2 py-1">
+            <Calendar size={13} className="text-slate-400 flex-shrink-0" />
+            <input type="date" value={customFrom} max={customTo || undefined}
+              onChange={e => setCustomFrom(e.target.value)}
+              className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-indigo-400" />
+            <span className="text-xs text-slate-400 font-semibold flex-shrink-0">to</span>
+            <input type="date" value={customTo} min={customFrom || undefined}
+              onChange={e => setCustomTo(e.target.value)}
+              className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-indigo-400" />
+          </div>
+        )}
       </div>
 
       <div className="px-4 pt-4 space-y-4">
@@ -195,17 +213,17 @@ export default function ReportsScreen() {
           <p className="text-sm font-bold text-slate-700 mb-3">Lead Pipeline</p>
           <div className="space-y-2">
             {[
-              { label: 'New Leads',    value: leads.filter(l => l.status === 'new').length,       color: 'bg-slate-400' },
-              { label: 'Contacted',    value: leads.filter(l => l.status === 'contacted').length, color: 'bg-blue-400' },
-              { label: 'Qualified',    value: leads.filter(l => l.status === 'qualified').length, color: 'bg-indigo-400' },
-              { label: 'Proposal Sent',value: leads.filter(l => l.status === 'proposal').length,  color: 'bg-violet-500' },
-              { label: 'Won',          value: leads.filter(l => l.status === 'won').length,       color: 'bg-emerald-500' },
-              { label: 'Lost',         value: leads.filter(l => l.status === 'lost').length,      color: 'bg-red-400' },
+              { label: 'New Leads',    value: filteredLeads.filter(l => l.status === 'new').length,       color: 'bg-slate-400' },
+              { label: 'Contacted',    value: filteredLeads.filter(l => l.status === 'contacted').length, color: 'bg-blue-400' },
+              { label: 'Qualified',    value: filteredLeads.filter(l => l.status === 'qualified').length, color: 'bg-indigo-400' },
+              { label: 'Proposal Sent',value: filteredLeads.filter(l => l.status === 'proposal').length,  color: 'bg-violet-500' },
+              { label: 'Converted',    value: filteredLeads.filter(isLeadConverted).length,                color: 'bg-emerald-500' },
+              { label: 'Lost',         value: filteredLeads.filter(l => l.status === 'lost').length,      color: 'bg-red-400' },
             ].map(({ label, value, color }) => (
               <div key={label} className="flex items-center gap-3">
                 <span className="text-[11px] text-slate-500 w-24 flex-shrink-0">{label}</span>
                 <div className="flex-1 h-6 bg-slate-100 rounded-lg overflow-hidden">
-                  <div className={`h-full rounded-lg flex items-center px-2 ${color}`} style={{ width: `${Math.max((value / leads.length) * 100, 8)}%` }}>
+                  <div className={`h-full rounded-lg flex items-center px-2 ${color}`} style={{ width: `${filteredLeads.length > 0 ? Math.max((value / filteredLeads.length) * 100, 8) : 0}%` }}>
                     <span className="text-[9px] font-bold text-white">{value}</span>
                   </div>
                 </div>
