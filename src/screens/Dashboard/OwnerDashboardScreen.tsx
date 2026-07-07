@@ -28,9 +28,21 @@ function getDateRange(filter: DateFilter, customFrom: string, customTo: string):
   return { from, to }
 }
 
+function parseFlexDate(dateStr: string): Date {
+  // ISO: YYYY-MM-DD or YYYY-MM-DDTHH:...
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return new Date(dateStr)
+  // en-IN locale: D/M/YYYY (day first)
+  const parts = dateStr.split('/')
+  if (parts.length === 3) {
+    const [d, m, y] = parts.map(Number)
+    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) return new Date(y, m - 1, d)
+  }
+  return new Date(dateStr)
+}
+
 function inRange(dateStr: string | undefined, from: Date, to: Date): boolean {
   if (!dateStr) return false
-  const d = new Date(dateStr)
+  const d = parseFlexDate(dateStr)
   return !isNaN(d.getTime()) && d >= from && d <= to
 }
 
@@ -75,6 +87,7 @@ const STAGE_COLOR: Record<string, string> = {
 }
 
 const MEASUREMENT_STAGES = new Set(['new_project','measurement','site_visit_assigned','site_visit','site_visit_completed','waiting_site_visit_review','reschedule_requested','reschedule_approved','quotation_preparation','quotation_sent_owner','quotation_sent_md_ed','owner_approved','md_ed_approved','quotation_rework','sent_to_client','waiting_client_approval','client_approved','client_rejected','client_not_approved','negotiation'])
+const ADVANCE_STAGES     = new Set(['advance_payment','advance_payment_pending','waiting_advance_payment'])
 const PRODUCTION_STAGES  = new Set(['advance_payment','advance_payment_pending','waiting_advance_payment','production_sheet_preparation','production_admin_check','waiting_material_availability','production_manager_work','ready_to_dispatch'])
 const INSTALL_STAGES     = new Set(['installation_assigned','installation','installation_in_progress','installation_not_completed','installation_mistake','installation_completed','final_payment','payment_pending','partial_paid','remaining_payment_pending'])
 
@@ -193,17 +206,26 @@ export default function OwnerDashboardScreen() {
   )
   const openMistakes = filteredMistakes.filter(m => (m as { status?: string }).status === 'open').length
 
-  // ── Section 1: Lead Overview ──────────────────────────────────────────────
+  // ── Section 1: Lead Overview — projects still in lead/quotation/advance-pending phase
+  const leadPhaseProjects = linkedProjects.filter(p =>
+    MEASUREMENT_STAGES.has(p.currentStage ?? '') ||
+    ADVANCE_STAGES.has(p.currentStage ?? '') ||
+    !p.currentStage
+  )
   const totalLeads    = filteredLeads.length
-  const totalLeadArea = linkedProjects.reduce((s, p) => s + projectArea(p), 0)
-  const proposedAmt   = linkedProjects.reduce((s, p) => s + projectQuota(p), 0)
+  const totalLeadArea = leadPhaseProjects.reduce((s, p) => s + projectArea(p), 0)
+  const proposedAmt   = leadPhaseProjects.reduce((s, p) => s + projectQuota(p), 0)
 
-  // ── Section 2: Production Overview ───────────────────────────────────────
-  const convertedProjects    = linkedProjects  // leads that became projects
+  // ── Section 2: Production Overview — projects where advance has been collected
+  const convertedProjects = linkedProjects.filter(p =>
+    (PRODUCTION_STAGES.has(p.currentStage ?? '') && !ADVANCE_STAGES.has(p.currentStage ?? '')) ||
+    INSTALL_STAGES.has(p.currentStage ?? '') ||
+    isCompleted(p)
+  )
+  const convertedProjectIds  = new Set(convertedProjects.map(p => p.id))
   const movedToProject       = convertedProjects.length
   const convertedArea        = convertedProjects.reduce((s, p) => s + projectArea(p), 0)
-  // Total collected from customers (sum paidAmount across all tasks of these projects)
-  const totalCollected       = linkedTasks.reduce((s, t) => s + (t.paidAmount ?? 0), 0)
+  const totalCollected       = linkedTasks.filter(t => convertedProjectIds.has(t.projectId ?? '')).reduce((s, t) => s + (t.paidAmount ?? 0), 0)
   const completedProjects    = convertedProjects.filter(isCompleted)
   const completedCount       = completedProjects.length
 

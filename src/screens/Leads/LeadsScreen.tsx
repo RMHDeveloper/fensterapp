@@ -273,7 +273,7 @@ export default function LeadsScreen() {
       followUpDate: undefined,
       priority:    'medium',
       assignee:    newAssignee.trim() || (isLO ? user!.name : 'Sales Team'),
-      createdAt:   new Date().toLocaleDateString('en-IN'),
+      createdAt:   new Date().toISOString().slice(0, 10),
     })
     setNewName(''); setNewPhone(''); setNewEmail(''); setNewCity('')
     setNewReq(''); setNewNotes(''); setNewAssignee('')
@@ -338,7 +338,7 @@ export default function LeadsScreen() {
       stage:        'Lead Converted',
       city:         lead.city,
       productType:  lead.requirement ?? '',
-      createdAt:    new Date().toLocaleDateString('en-IN'),
+      createdAt:    new Date().toISOString().slice(0, 10),
       description:  lead.notes ?? lead.requirement ?? '',
       leadId:       lead.id,
       pendingConversion: true,
@@ -357,7 +357,7 @@ export default function LeadsScreen() {
       location:          lead.city,
       requiredProofType: 'none',
       proofUploads:      [],
-      createdAt:         new Date().toLocaleDateString('en-IN'),
+      createdAt:         new Date().toISOString().slice(0, 10),
       flowStage:         'site_assign',
       flowStatus:        'ready',
       clientName:        lead.name,
