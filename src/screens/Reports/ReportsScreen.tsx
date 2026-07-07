@@ -78,9 +78,13 @@ export default function ReportsScreen() {
     const measurement = sourceLeads.filter(l => {
       if (isLeadConverted(l)) return true
       const bucket = getLeadFlowBucket(l, projects, tasks)
-      return bucket === 'measurement' || bucket === 'quotation'
+      return bucket === 'measurement' || bucket === 'quotation' || bucket === 'negotiation'
     }).length
-    const quotation = sourceLeads.filter(l => isLeadConverted(l) || getLeadFlowBucket(l, projects, tasks) === 'quotation').length
+    const quotation = sourceLeads.filter(l => {
+      if (isLeadConverted(l)) return true
+      const bucket = getLeadFlowBucket(l, projects, tasks)
+      return bucket === 'quotation' || bucket === 'negotiation'
+    }).length
     const converted = sourceLeads.filter(isLeadConverted)
     const convertedCount = converted.length
     const conversionPct = total > 0 ? (convertedCount / total) * 100 : 0

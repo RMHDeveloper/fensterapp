@@ -349,9 +349,10 @@ export default function HomeScreen() {
             if (t.flowStage == null || t.flowStage === 'completed') return false
             if (role === 'site_engineer') return t.flowStage === 'site_visit' && isAssignedToMe(t)
             if (role === 'owner') return t.flowStage === 'owner_approval' || t.flowStage === 'reschedule_review' || (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
-            if (role === 'production_admin') return t.flowStage === 'production_check'
+            if (role === 'production_admin') return t.flowStage === 'production_check' || t.flowStage === 'admin_availability_check'
             if (role === 'production_manager') return t.flowStage === 'production_work'
             if (role === 'production_team') return t.flowStage === 'production_check' || t.flowStage === 'production_work'
+            if (role === 'site_engineer_lead') return t.flowStage === 'site_lead_approval'
             if (role === 'technician' || role === 'installation_incharge') return (t.flowStage === 'installation_assign' || t.flowStage === 'installation_update') && isAssignedToMe(t)
             if (role === 'lead_manager') return myProjectIds.has(t.projectId)
             return false

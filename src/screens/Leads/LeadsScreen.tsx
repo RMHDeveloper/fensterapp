@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, UserPlus, HardHat, Phone, Pencil, FileDown } from 'lucide-react'
+import { Plus, UserPlus, HardHat, Phone, Pencil, FileDown, FileUp, Upload } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
@@ -16,14 +16,15 @@ import { loadManagedUsers } from '../../utils/userStorage'
 import { getLeadFlowBucket, isAdvanceReceived, flowReached, isLeadConverted } from '../../utils/stageHelpers'
 import type { Lead, LeadStatus, LeadSource, LeadInterest, Task } from '../../types'
 
-type Filter = 'active' | 'contact' | 'measurement' | 'quotation'
-const FILTER_VALUES = new Set<string>(['active', 'contact', 'measurement', 'quotation'])
+type Filter = 'active' | 'contact' | 'measurement' | 'quotation' | 'negotiation'
+const FILTER_VALUES = new Set<string>(['active', 'contact', 'measurement', 'quotation', 'negotiation'])
 
 const CHIPS: { value: Filter; label: string }[] = [
   { value: 'active',      label: 'Active'      },
   { value: 'contact',     label: 'Contacted'   },
   { value: 'measurement', label: 'Measurement' },
   { value: 'quotation',   label: 'Quotation'   },
+  { value: 'negotiation', label: 'Negotiation' },
 ]
 
 // Negotiation view status lines — Quotation / MD Approval / Client Approval / Advance Payment
@@ -43,6 +44,54 @@ function getNegotiationStatus(task: Task | undefined) {
     stage === 'advance_payment' ? 'Advance Pending' :
     flowReached(stage, 'production_assign')  ? 'Advance Received' : '—'
   return { quotation, mdApproval, clientApproval, advance }
+}
+
+interface ImportRow {
+  name: string
+  phone: string
+  email?: string
+  city: string
+  requirement?: string
+  notes?: string
+  source: LeadSource
+  interest: LeadInterest
+  valid: boolean
+  error?: string
+}
+
+// Minimal CSV parser — handles quoted fields (with embedded commas/newlines) so it
+// stays symmetric with exportCSV's quoting, since the sample file round-trips through it.
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let field = ''
+  let inQuotes = false
+  const clean = text.replace(/^﻿/, '')
+  for (let i = 0; i < clean.length; i++) {
+    const c = clean[i]
+    if (inQuotes) {
+      if (c === '"') {
+        if (clean[i + 1] === '"') { field += '"'; i++ }
+        else inQuotes = false
+      } else field += c
+    } else if (c === '"') {
+      inQuotes = true
+    } else if (c === ',') {
+      row.push(field); field = ''
+    } else if (c === '\n' || c === '\r') {
+      if (c === '\r' && clean[i + 1] === '\n') i++
+      row.push(field); field = ''
+      if (row.some(f => f.trim() !== '')) rows.push(row)
+      row = []
+    } else {
+      field += c
+    }
+  }
+  if (field !== '' || row.length > 0) {
+    row.push(field)
+    if (row.some(f => f.trim() !== '')) rows.push(row)
+  }
+  return rows
 }
 
 const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
@@ -105,6 +154,10 @@ export default function LeadsScreen() {
   const [search,   setSearch]   = useState('')
   const [selected, setSelected] = useState<Lead | null>(null)
   const [showNew,  setShowNew]  = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [importFileName, setImportFileName] = useState('')
+  const [importRows, setImportRows] = useState<ImportRow[]>([])
+  const [importAssignee, setImportAssignee] = useState('')
   const [pendingAssignProjectId, setPendingAssignProjectId] = useState<string | null>(null)
   const [assignFlowTaskId, setAssignFlowTaskId] = useState<string | null>(null)
   const [showStatusOptions, setShowStatusOptions] = useState(false)
@@ -179,8 +232,8 @@ export default function LeadsScreen() {
       || l.phone.includes(search)
       || l.city.toLowerCase().includes(search.toLowerCase())
     if (isNegotiationView) {
-      // Negotiation: MD approval through advance received, not yet converted
-      return getLeadFlowBucket(l, projects, tasks) === 'quotation' && matchSearch
+      // Negotiation: client approval through advance received, not yet converted
+      return getLeadFlowBucket(l, projects, tasks) === 'negotiation' && matchSearch
     }
     const converted = isLeadConverted(l)
     let matchFilter = false
@@ -192,6 +245,8 @@ export default function LeadsScreen() {
       matchFilter = !converted && l.status !== 'lost' && getLeadFlowBucket(l, projects, tasks) === 'measurement'
     } else if (filter === 'quotation') {
       matchFilter = !converted && l.status !== 'lost' && getLeadFlowBucket(l, projects, tasks) === 'quotation'
+    } else if (filter === 'negotiation') {
+      matchFilter = !converted && l.status !== 'lost' && getLeadFlowBucket(l, projects, tasks) === 'negotiation'
     }
     return matchFilter && matchSearch
   })
@@ -452,6 +507,67 @@ export default function LeadsScreen() {
     exportCSV(`Fenster_Leads_${new Date().toISOString().slice(0, 10)}.csv`, rows)
   }
 
+  function downloadSampleLeadsFile() {
+    exportCSV('Fenster_Leads_Sample.csv', [['Name', 'Phone', 'Email', 'City', 'Requirement', 'Source', 'Interest', 'Notes']])
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = () => {
+      const rows = parseCSV(String(reader.result ?? ''))
+      if (rows.length < 2) { setImportRows([]); return }
+      const header = rows[0].map(h => h.trim().toLowerCase())
+      const col = (name: string) => header.indexOf(name)
+      const nameIdx = col('name'), phoneIdx = col('phone'), emailIdx = col('email'), cityIdx = col('city')
+      const reqIdx = col('requirement'), sourceIdx = col('source'), interestIdx = col('interest'), notesIdx = col('notes')
+      const get = (r: string[], idx: number) => (idx >= 0 ? (r[idx] ?? '').trim() : '')
+      const parsed: ImportRow[] = rows.slice(1).map(r => {
+        const name = get(r, nameIdx)
+        const phone = get(r, phoneIdx)
+        const city = get(r, cityIdx)
+        const sourceRaw = get(r, sourceIdx).toLowerCase()
+        const interestRaw = get(r, interestIdx).toLowerCase()
+        const matchedSource = SOURCE_OPTIONS.find(o => o.value === sourceRaw || o.label.toLowerCase() === sourceRaw)
+        const matchedInterest = INTEREST_OPTIONS.find(o => o.value === interestRaw || o.label.toLowerCase().includes(interestRaw))
+        const phoneErr = phone ? validatePhone(phone) : ''
+        const error = !name ? 'Missing name' : !phone ? 'Missing phone' : !city ? 'Missing city' : phoneErr || undefined
+        return {
+          name, phone, city,
+          email:       get(r, emailIdx) || undefined,
+          requirement: get(r, reqIdx) || undefined,
+          notes:       get(r, notesIdx) || undefined,
+          source:      matchedSource?.value ?? 'other',
+          interest:    matchedInterest?.value ?? 'medium',
+          valid: !error, error,
+        }
+      })
+      setImportRows(parsed)
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  function confirmImportLeads() {
+    const validRows = importRows.filter(r => r.valid)
+    const assignee = importAssignee.trim() || (isLO ? user!.name : 'Sales Team')
+    validRows.forEach(r => {
+      addLead({
+        name: r.name, phone: r.phone, email: r.email, city: r.city, location: r.city,
+        requirement: r.requirement, notes: r.notes, source: r.source, interest: r.interest,
+        status: 'new', followUpDate: undefined, priority: 'medium',
+        assignee, createdAt: new Date().toISOString().slice(0, 10),
+      })
+    })
+    setSnack({ open: true, msg: `Imported ${validRows.length} lead${validRows.length === 1 ? '' : 's'}!`, type: 'success' })
+    setShowImport(false)
+    setImportRows([])
+    setImportFileName('')
+    setImportAssignee('')
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
       <AppHeader />
@@ -465,6 +581,12 @@ export default function LeadsScreen() {
             </button>
           )}
           <PermissionGate permission="create_lead">
+            <button onClick={() => setShowImport(true)} aria-label="Import Leads"
+              className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-fab active:bg-blue-700 flex-shrink-0">
+              <FileUp size={18} className="text-white" />
+            </button>
+          </PermissionGate>
+          <PermissionGate permission="create_lead">
             <button onClick={() => setShowNew(true)} aria-label="Add new lead"
               className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-fab active:bg-indigo-700 flex-shrink-0">
               <Plus size={19} className="text-white" strokeWidth={2.5} />
@@ -472,7 +594,7 @@ export default function LeadsScreen() {
           </PermissionGate>
         </div>
         {isNegotiationView ? (
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Negotiation — MD Approval to Advance Received</p>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Negotiation — Client Approval to Advance Received</p>
         ) : (
           <FilterChips chips={CHIPS} active={filter} onChange={setFilter} />
         )}
@@ -523,7 +645,7 @@ export default function LeadsScreen() {
                   Lost reason: {lead.lostReason}
                 </p>
               )}
-              {isNegotiationView && linkedProject && (() => {
+              {(isNegotiationView || filter === 'negotiation') && linkedProject && (() => {
                 const activeTask = tasks.find(t => t.projectId === linkedProject.id && t.flowStage && t.flowStage !== 'completed')
                 const { quotation, mdApproval, clientApproval, advance } = getNegotiationStatus(activeTask)
                 return (
@@ -971,6 +1093,60 @@ export default function LeadsScreen() {
             className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-indigo-700 disabled:opacity-50">
             Add Lead
           </button>
+        </div>
+      </BottomSheet>
+
+      {/* ── Import Leads Sheet ── */}
+      <BottomSheet isOpen={showImport} onClose={() => { setShowImport(false); setImportRows([]); setImportFileName('') }} title="Import Leads" height="full">
+        <div className="space-y-4">
+          <label className="w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed border-indigo-200 bg-indigo-50 rounded-xl py-6 cursor-pointer active:bg-indigo-100">
+            <Upload size={22} className="text-indigo-500" />
+            <span className="text-sm font-bold text-indigo-700 text-center px-4">{importFileName || 'Tap to upload CSV file'}</span>
+            <input type="file" accept=".csv" className="hidden" onChange={handleImportFile} />
+          </label>
+
+          <button onClick={downloadSampleLeadsFile}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 active:bg-slate-50">
+            <FileDown size={14} /> Download Sample File
+          </button>
+
+          {importRows.length > 0 && (
+            <>
+              <div className="bg-slate-50 rounded-xl px-4 py-2.5">
+                <span className="text-xs font-semibold text-slate-600">
+                  {importRows.filter(r => r.valid).length} valid · {importRows.filter(r => !r.valid).length} invalid
+                </span>
+              </div>
+
+              <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                {importRows.map((r, i) => (
+                  <div key={i} className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-xs
+                    ${r.valid ? 'border-slate-200 bg-white' : 'border-red-200 bg-red-50'}`}>
+                    <span className="font-semibold text-slate-700 truncate">{r.name || '—'} · {r.phone || '—'}</span>
+                    {!r.valid && <span className="text-red-500 font-bold flex-shrink-0">{r.error}</span>}
+                  </div>
+                ))}
+              </div>
+
+              {isMdEd && leadManagers.length > 0 && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Assign To</label>
+                  <select value={importAssignee} onChange={e => setImportAssignee(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 appearance-none">
+                    <option value="">Select lead owner…</option>
+                    {leadManagers.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <button onClick={confirmImportLeads} disabled={importRows.filter(r => r.valid).length === 0}
+                className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-indigo-700 disabled:opacity-50">
+                Import {importRows.filter(r => r.valid).length} Lead{importRows.filter(r => r.valid).length === 1 ? '' : 's'}
+              </button>
+            </>
+          )}
         </div>
       </BottomSheet>
 

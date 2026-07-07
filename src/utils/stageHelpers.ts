@@ -83,12 +83,12 @@ export function flowReached(stage: FlowStage | undefined, target: FlowStage): bo
 }
 
 // Measurement: from assigning the Site Engineer through the LM preparing the quotation
-// (still hasn't been sent to MD/ED yet). Everything else on the linked project's active
-// flow task — MD/ED approval through advance payment — counts as Quotation/Negotiation,
-// right up until the LM clicks Convert to Project.
+// (still hasn't been sent to MD/ED yet). Quotation: sitting with MD/ED for approval.
+// Negotiation: sent to the client through advance received — right up until the LM
+// clicks Convert to Project.
 const LEAD_MEASUREMENT_FLOW_STAGES = new Set<FlowStage>(['site_assign', 'site_visit', 'reschedule_review', 'site_review'])
 
-export type LeadFlowBucket = 'measurement' | 'quotation' | null
+export type LeadFlowBucket = 'measurement' | 'quotation' | 'negotiation' | null
 
 // A lead's "in-progress" bucket, derived from its linked (still pendingConversion)
 // project's active flow task — mirrors getProjectFilterStage's approach of trusting
@@ -98,8 +98,11 @@ export function getLeadFlowBucket(lead: Lead, projects: Project[], tasks: Task[]
   const proj = projects.find(p => p.leadId === lead.id)
   if (!proj) return 'measurement'
   const activeTask = tasks.find(t => t.projectId === proj.id && t.flowStage && t.flowStage !== 'completed')
-  if (!activeTask?.flowStage) return 'measurement'
-  return LEAD_MEASUREMENT_FLOW_STAGES.has(activeTask.flowStage) ? 'measurement' : 'quotation'
+  const stage = activeTask?.flowStage
+  if (!stage) return 'measurement'
+  if (LEAD_MEASUREMENT_FLOW_STAGES.has(stage)) return 'measurement'
+  if (stage === 'owner_approval') return 'quotation'
+  return 'negotiation'
 }
 
 // Advance payment has been recorded once the linked project's active flow task has moved

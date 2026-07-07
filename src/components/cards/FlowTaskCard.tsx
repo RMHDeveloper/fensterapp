@@ -87,9 +87,8 @@ export function FlowTaskCard({ task, onClick, role }: Props) {
     <div className={`bg-white rounded-2xl border shadow-sm p-4 space-y-3 mb-2
       ${isDone ? 'border-emerald-200' : isAlert ? 'border-red-200' : isWarn ? 'border-amber-300' : 'border-slate-200'}`}>
 
-      {/* Top row: project + stage badge */}
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-bold text-blue-500 truncate">{task.projectName}</p>
+      {/* Top row: stage badge */}
+      <div className="flex items-center justify-end gap-2">
         <span className={`flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${STAGE_COLOR[stage] ?? 'bg-slate-100 text-slate-500'}`}>
           {STAGE_LABEL[stage] ?? stage}
         </span>

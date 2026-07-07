@@ -53,6 +53,7 @@ export const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
       { icon: Circle, label: 'Contacted',   path: '/leads?filter=contact',     permission: 'view_leads' },
       { icon: Circle, label: 'Measurement', path: '/leads?filter=measurement', permission: 'view_leads' },
       { icon: Circle, label: 'Quotation',   path: '/leads?filter=quotation',   permission: 'view_leads' },
+      { icon: Circle, label: 'Negotiation', path: '/leads?filter=negotiation', permission: 'view_leads' },
     ],
   },
   {

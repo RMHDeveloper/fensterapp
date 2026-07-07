@@ -311,7 +311,10 @@ export default function OwnerDashboardScreen() {
   const loStats = useMemo(() => {
     return allLOs.map(lo => {
       const loLeads = leads.filter(l => l.assignee === lo.fullName)
-      const negotiationLeads = loLeads.filter(l => getLeadFlowBucket(l, allProjects, tasks) === 'quotation')
+      const negotiationLeads = loLeads.filter(l => {
+        const bucket = getLeadFlowBucket(l, allProjects, tasks)
+        return bucket === 'quotation' || bucket === 'negotiation'
+      })
       const negotiationAmt = negotiationLeads.reduce((s, l) => {
         const proj = allProjects.find(p => p.leadId === l.id)
         return s + (proj ? projectQuota(proj) : 0)
