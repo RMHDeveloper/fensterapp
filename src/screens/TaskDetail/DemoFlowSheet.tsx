@@ -3968,7 +3968,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
           {displayStage === 'final_payment' && (role === 'lead_manager' || demoOverride) && (
             <>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Final Collection</p>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Project Payment Details</p>
 
               {(() => {
                 const total   = task.quotationAmount ?? 0
@@ -3996,29 +3996,60 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
                     {!allPaid && (
                       <div className="space-y-3">
-                        <MultiFileUploadField
-                          label="Payment Screenshot"
-                          accept="image/*,.pdf"
-                          files={finalPayScreenshot}
-                          onChange={setFinalPayScreenshot}
-                          helperText="Upload payment proof / bank screenshot (optional)" />
-                        <button type="button"
-                          onClick={() => {
-                            const totalPaid = paid + balance
-                            save({
-                              paidAmount: totalPaid,
-                              balanceAmount: 0,
-                              flowStatus: 'full_paid',
-                              finalPaymentScreenshot: finalPayScreenshot.length > 0 ? finalPayScreenshot : undefined,
-                            }, `Payment ₹${balance.toLocaleString('en-IN')} received — fully paid`, finalPayScreenshot)
-                          }}
-                          className="w-full py-4 rounded-2xl bg-green-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
-                          <CreditCard size={15} /> Payment Paid — Complete
-                        </button>
-                        <button type="button" disabled
-                          className="w-full py-3.5 rounded-2xl bg-slate-100 text-slate-400 text-sm font-extrabold flex items-center justify-center gap-2 cursor-not-allowed">
-                          <CheckCircle2 size={15} /> Complete Project (Balance Pending)
-                        </button>
+                        <Opt value="partial_paid" label="Partial Paid" sub="Enter the amount received now" accent="border-amber-200" sel={sel} onPick={pick} />
+                        <Opt value="full_paid"    label="Balance Paid" sub="Full remaining balance received" accent="border-green-200" sel={sel} onPick={pick} />
+
+                        {sel === 'partial_paid' && (
+                          <div>
+                            <label className={lbl}>Amount Received (₹) {req}</label>
+                            <input type="text" inputMode="numeric" value={finalPaidAmt}
+                              onChange={e => setFinalPaidAmt(e.target.value.replace(/[^0-9]/g, ''))}
+                              placeholder="e.g. 20000" className={inp} />
+                          </div>
+                        )}
+                        {sel === 'full_paid' && (
+                          <div className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-2.5">
+                            <span className="text-xs text-slate-500">Balance to be Paid</span>
+                            <span className="text-sm font-bold text-slate-700">₹{balance.toLocaleString('en-IN')}</span>
+                          </div>
+                        )}
+
+                        {sel && (
+                          <>
+                            <MultiFileUploadField
+                              label="Payment Screenshot"
+                              accept="image/*,.pdf"
+                              files={finalPayScreenshot}
+                              onChange={setFinalPayScreenshot}
+                              helperText="Upload payment proof / bank screenshot (optional)" />
+                            <button type="button"
+                              onClick={() => {
+                                if (sel === 'partial_paid') {
+                                  const amt = Number(finalPaidAmt) || 0
+                                  if (amt <= 0) { setError('Enter the amount received.'); return }
+                                  const totalPaid = paid + amt
+                                  const newBalance = Math.max(0, total - totalPaid)
+                                  save({
+                                    paidAmount: totalPaid,
+                                    balanceAmount: newBalance,
+                                    flowStatus: newBalance <= 0 ? 'full_paid' : 'partial_paid',
+                                    finalPaymentScreenshot: finalPayScreenshot.length > 0 ? finalPayScreenshot : undefined,
+                                  }, `Partial payment ₹${amt.toLocaleString('en-IN')} received`, finalPayScreenshot)
+                                } else {
+                                  const totalPaid = paid + balance
+                                  save({
+                                    paidAmount: totalPaid,
+                                    balanceAmount: 0,
+                                    flowStatus: 'full_paid',
+                                    finalPaymentScreenshot: finalPayScreenshot.length > 0 ? finalPayScreenshot : undefined,
+                                  }, `Payment ₹${balance.toLocaleString('en-IN')} received — fully paid`, finalPayScreenshot)
+                                }
+                              }}
+                              className="w-full py-4 rounded-2xl bg-green-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
+                              <CreditCard size={15} /> Complete Project
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
 
@@ -4030,7 +4061,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           { label: 'Production Cost (₹)',   val: actualProduction,   set: setActualProduction,   required: false },
                           { label: 'Installation Cost (₹)', val: actualInstallation, set: setActualInstallation, required: false },
                           { label: 'Transport Cost (₹)',    val: actualTransport,    set: setActualTransport,    required: false },
-                          { label: 'Other Costs (₹)',       val: actualOther,        set: setActualOther,        required: true  },
                         ] as { label: string; val: string; set: (v: string) => void; required: boolean }[]).map(({ label, val, set, required }) => (
                           <div key={label}>
                             <label className={lbl}>{label} {required ? req : <span className="text-slate-300 font-normal">(optional)</span>}</label>
@@ -4050,7 +4080,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                         )}
 
                         {(() => {
-                          const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport, actualOther]
+                          const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport]
                             .reduce((s, v) => s + (Number(v) || 0), 0)
                           const quotation  = task.quotationAmount ?? task.costBreakdown?.quotationAmount ?? 0
                           const extraCharge = Number(extraChargeAmt) || 0
@@ -4103,9 +4133,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                         })()}
                         <button type="button"
                           onClick={() => {
-                            if (!actualOther.trim()) { setError('Enter Other Costs (enter 0 if none).'); return }
                             if (role === 'owner' && !extraChargeAmt.trim()) { setError('Enter Extra Charge (enter 0 if none).'); return }
-                            const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport, actualOther]
+                            const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport]
                               .reduce((s, v) => s + (Number(v) || 0), 0)
                             const extraCharge = Number(extraChargeAmt) || 0
                             if (task.projectId) {
