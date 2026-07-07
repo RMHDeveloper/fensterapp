@@ -128,7 +128,7 @@ export default function ProjectsScreen() {
   const [filter, setFilter] = useState<Filter>(defaultFilter)
   const [search, setSearch] = useState('')
   const [showNew, setShowNew] = useState(false)
-  const [snack,   setSnack]   = useState({ open: false, msg: '' })
+  const [snack,   setSnack]   = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
   const [showExport, setShowExport] = useState(false)
   const [exportFrom, setExportFrom] = useState('')
   const [exportTo,   setExportTo]   = useState('')
@@ -228,7 +228,7 @@ export default function ProjectsScreen() {
 
     setShowNew(false)
     resetForm()
-    setSnack({ open: true, msg: 'Project created! Site Engineer assignment task ready.' })
+    setSnack({ open: true, msg: 'Project created! Site Engineer assignment task ready.', type: 'success' })
     setTimeout(() => navigate(`/project/${projectId}`), 800)
   }
 
@@ -475,7 +475,7 @@ export default function ProjectsScreen() {
         </div>
       </BottomSheet>
 
-      <Snackbar isOpen={snack.open} message={snack.msg} type="success" onClose={() => setSnack(s => ({ ...s, open: false }))} />
+      <Snackbar isOpen={snack.open} message={snack.msg} type={snack.type} onClose={() => setSnack(s => ({ ...s, open: false }))} />
     </div>
   )
 }

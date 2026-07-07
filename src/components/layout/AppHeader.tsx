@@ -23,7 +23,7 @@ export function AppHeader() {
         <img
           src="/brand/fenster-logo.png"
           alt="Fenster"
-          className="object-contain"
+          className="lg:hidden object-contain"
           style={{ height: 28, maxWidth: 140 }}
         />
       </div>

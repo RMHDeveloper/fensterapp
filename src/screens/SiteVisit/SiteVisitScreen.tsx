@@ -53,7 +53,7 @@ export default function SiteVisitScreen() {
   const [filter, setFilter]                = useState<Filter>('all')
   const [flowTaskId, setFlowTaskId]        = useState<string | null>(null)
   const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
-  const [snack, setSnack]                  = useState({ open: false, msg: '' })
+  const [snack, setSnack]                  = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
 
   const role = user?.role ?? 'viewer'
 
@@ -84,7 +84,7 @@ export default function SiteVisitScreen() {
   function handleFlowUpdate(updates: Partial<Task>) {
     if (!flowTask) return
     updateTask(flowTask.id, updates)
-    setSnack({ open: true, msg: 'Site visit updated!' })
+    setSnack({ open: true, msg: 'Site visit updated!', type: 'success' })
     setFlowTaskId(null)
   }
 
@@ -195,7 +195,7 @@ export default function SiteVisitScreen() {
         />
       )}
 
-      <Snackbar isOpen={snack.open} message={snack.msg} type="success"
+      <Snackbar isOpen={snack.open} message={snack.msg} type={snack.type}
         onClose={() => setSnack(s => ({ ...s, open: false }))} />
     </div>
   )

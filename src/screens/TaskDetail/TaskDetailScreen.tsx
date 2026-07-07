@@ -37,7 +37,7 @@ export default function TaskDetailScreen() {
   const [checklist, setChecklist]   = useState(task.checklistItems ?? [])
   const [status, setStatus]         = useState<TaskStatus>(task.status)
   const [showStatus, setShowStatus] = useState(false)
-  const [snack, setSnack]           = useState({ open: false, msg: '' })
+  const [snack, setSnack]           = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
 
   const isViewer = user?.role === 'viewer'
   const canEdit  = user?.role === 'owner' || user?.role === 'lead_manager' ||
@@ -75,7 +75,7 @@ export default function TaskDetailScreen() {
 
     updateTask(task.id, updates as Parameters<typeof updateTask>[1])
     setShowStatus(false)
-    setSnack({ open: true, msg: mapped === 'completed' ? 'Task completed!' : 'Status updated!' })
+    setSnack({ open: true, msg: mapped === 'completed' ? 'Task completed!' : 'Status updated!', type: 'success' })
   }
 
   function mapOutcomeToStatus(outcome: string): TaskStatus {
@@ -97,7 +97,7 @@ export default function TaskDetailScreen() {
     completeWorkflowStep(task, outcome, extraData)
     updateTaskStatus(task.id, mapped)
     setShowStatus(false)
-    setSnack({ open: true, msg: mapped === 'completed' ? 'Task completed!' : 'Status updated!' })
+    setSnack({ open: true, msg: mapped === 'completed' ? 'Task completed!' : 'Status updated!', type: 'success' })
   }
 
   const headerBg = isDone ? 'bg-emerald-600'
@@ -362,7 +362,7 @@ export default function TaskDetailScreen() {
         />
       )}
 
-      <Snackbar isOpen={snack.open} message={snack.msg} type="success"
+      <Snackbar isOpen={snack.open} message={snack.msg} type={snack.type}
         onClose={() => setSnack(s => ({ ...s, open: false }))} />
     </div>
   )

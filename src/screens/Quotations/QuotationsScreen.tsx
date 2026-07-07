@@ -36,7 +36,7 @@ export default function QuotationsScreen() {
   const [newAmount, setNewAmount] = useState('')
   const [newProject, setNewProject] = useState('')
   const [submitError, setSubmitError] = useState<string | undefined>()
-  const [snack, setSnack]       = useState({ open: false, msg: '' })
+  const [snack, setSnack]       = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
 
   function handleSubmitForApproval() {
     if (!selected) return
@@ -47,7 +47,7 @@ export default function QuotationsScreen() {
     }
     setSubmitError(undefined)
     setSelected(null)
-    setSnack({ open: true, msg: 'Submitted for Owner approval!' })
+    setSnack({ open: true, msg: 'Submitted for Owner approval!', type: 'success' })
   }
 
   function handleCreateQuotation() {
@@ -63,7 +63,7 @@ export default function QuotationsScreen() {
     setNewProject('')
     setNewAmount('')
     setShowNew(false)
-    setSnack({ open: true, msg: 'Quotation created!' })
+    setSnack({ open: true, msg: 'Quotation created!', type: 'success' })
   }
 
   const filtered = QUOTATIONS.filter(q => filter === 'all' || q.status === filter)
@@ -188,12 +188,12 @@ export default function QuotationsScreen() {
               <PermissionGate permission="approve_quotation">
                 <div className="grid grid-cols-2 gap-3">
                   <button
-                    onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Quotation approved!' }) }}
+                    onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Quotation approved!', type: 'success' }) }}
                     className="rounded-xl py-3.5 text-sm font-bold bg-emerald-600 text-white active:bg-emerald-700">
                     Approve
                   </button>
                   <button
-                    onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Quotation rejected.' }) }}
+                    onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Quotation rejected.', type: 'success' }) }}
                     className="rounded-xl py-3.5 text-sm font-bold border bg-red-50 text-red-600 border-red-200 active:bg-red-100">
                     Reject
                   </button>
@@ -201,18 +201,18 @@ export default function QuotationsScreen() {
               </PermissionGate>
             )}
             {selected.status === 'approved' && (
-              <button onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Quotation sent to client!' }) }}
+              <button onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Quotation sent to client!', type: 'success' }) }}
                 className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-indigo-700">
                 Send to Client
               </button>
             )}
             {selected.status === 'sent_to_client' && (
               <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Order confirmed!' }) }}
+                <button onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Order confirmed!', type: 'success' }) }}
                   className="bg-emerald-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-emerald-700">
                   Client Accepted
                 </button>
-                <button onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Marked as lost.' }) }}
+                <button onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Marked as lost.', type: 'success' }) }}
                   className="bg-red-50 text-red-600 rounded-xl py-3.5 text-sm font-bold border border-red-200 active:bg-red-100">
                   Client Rejected
                 </button>
@@ -286,7 +286,7 @@ export default function QuotationsScreen() {
         </div>
       </BottomSheet>
 
-      <Snackbar isOpen={snack.open} message={snack.msg} type="success" onClose={() => setSnack(s => ({ ...s, open: false }))} />
+      <Snackbar isOpen={snack.open} message={snack.msg} type={snack.type} onClose={() => setSnack(s => ({ ...s, open: false }))} />
     </div>
   )
 }

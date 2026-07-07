@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   X, CheckCircle2, AlertTriangle, Camera, Clock, Send, PhoneCall,
   Package, Wrench, CreditCard, Eye, Download, FileText, Copy, Check,
@@ -10,7 +11,7 @@ import { VoiceRecorder } from '../../components/forms/VoiceRecorder'
 import { LocationPinField } from '../../components/forms/LocationPinField'
 import { TimePickerField } from '../../components/forms/TimePickerField'
 import { NoteWithFilesField } from '../../components/forms/NoteWithFilesField'
-import type { Task, Project, LocationPin, StatusHistoryItem, FlowStage, CostBreakdown, ProjectStage } from '../../types'
+import type { Task, Project, LocationPin, StatusHistoryItem, FlowStage, CostBreakdown, ProjectStage, LeadStatus } from '../../types'
 import { PROJECT_STAGE_LABEL, PROJECT_STAGE_PROGRESS } from '../../types'
 import { filePreviewStore, voicePreviewStore, isImageFileName, resolveFileUrl } from '../../utils/sessionStore'
 import { MediaPreviewList } from '../../components/media/MediaPreviewList'
@@ -350,15 +351,12 @@ function getCustomerName(task: Task, project?: Project): string {
   )
 }
 
-// Returns the best Google Maps URL for a task + optional project fallback
+// Returns the Google Maps URL only if an actual link was provided (no fallback search URLs)
 function getGoogleMapsUrl(task: Task, project?: Project): string {
   if (task.locationPin?.mapLink?.trim()) return task.locationPin.mapLink.trim()
   if (task.location && isMapUrl(task.location)) return task.location.trim()
-  const taskAddr = task.location?.trim() ?? ''
-  if (taskAddr) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(taskAddr)}`
   const projLoc = project?.location?.trim() ?? ''
-  if (projLoc && isMapUrl(projLoc))  return projLoc
-  if (projLoc && !isMapUrl(projLoc)) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projLoc)}`
+  if (projLoc && isMapUrl(projLoc)) return projLoc
   return ''
 }
 
@@ -423,8 +421,8 @@ function CustomerDetailsCard({ task, project }: { task: Task; project?: Project 
             📍 View Maps
           </a>
         ) : (
-          <div className="flex items-center justify-center gap-1.5 bg-slate-100 text-slate-400 rounded-xl py-3 text-sm font-semibold min-h-[44px]">
-            📍 No Location
+          <div className="flex items-center justify-center gap-1.5 bg-green-50 border border-green-200 text-green-400 rounded-xl py-3 text-[11px] font-semibold min-h-[44px] text-center px-2">
+            📍 Map Link Not Added
           </div>
         )}
       </div>
@@ -444,10 +442,12 @@ const DEFAULT_AVAIL: AvailItem[] = [
 
 export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const { user, can }                        = useAuth()
-  const { updateTask: ctxUpdateTask, updateProject, tasks, projects } = useAppData()
+  const { updateTask: ctxUpdateTask, updateProject, updateLeadStatus, tasks, projects, leads } = useAppData()
+  const navigate = useNavigate()
   const role                                 = user?.role ?? 'lead_manager'
   const todayStr                             = new Date().toISOString().slice(0, 10)
   const project                              = projects.find(p => p.id === task.projectId)
+  const leadOwnerName                        = project?.leadId ? leads.find(l => l.id === project.leadId)?.assignee ?? project.ownerName : project?.ownerName
   const [{ productionRate, installationRate }] = useState(getAppSettings)
 
   // Merge managed users with defaults for assignment dropdowns
@@ -494,7 +494,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [seNote,      setSeNote]      = useState('')
 
   // ── RESCHEDULE REVIEW (LM) ────────────────────────────────────────────────
-  const [lmReschedNote, setLmReschedNote] = useState('')
+  const [lmReschedNote,    setLmReschedNote]    = useState('')
+  const [lmNewVisitDate,   setLmNewVisitDate]   = useState('')
+  const [lmNewVisitTime,   setLmNewVisitTime]   = useState('')
 
   // ── DEMO OVERRIDE ─────────────────────────────────────────────────────────
   const [demoOverride, setDemoOverride] = useState(false)
@@ -531,7 +533,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [advPaidAmt,       setAdvPaidAmt]       = useState('')
   const [advBalAmt,        setAdvBalAmt]        = useState('')
   const [advNote,          setAdvNote]          = useState('')
-  const [advPayScreenshot,   setAdvPayScreenshot]   = useState<string[]>([])
+  const [advPayScreenshot, setAdvPayScreenshot] = useState<string[]>([])
+  const [advProjectName,   setAdvProjectName]   = useState('')
+  const [advDueDate,       setAdvDueDate]       = useState('')
   const [finalPayScreenshot, setFinalPayScreenshot] = useState<string[]>([])
 
   // ── PRODUCTION WORK ───────────────────────────────────────────────────────
@@ -616,7 +620,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   // ── Reset on open / task change ───────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return
-    setSel(''); setError(''); setLmReschedNote(''); setDemoOverride(false); setShowEditCost(false)
+    setSel(''); setError(''); setLmReschedNote(''); setLmNewVisitDate(task.visitDate ?? todayStr); setLmNewVisitTime(task.visitTime ?? ''); setDemoOverride(false); setShowEditCost(false)
     setEngineerName(task.siteEngineerName ?? 'Kavya M')
     setVisitDate(task.visitDate ?? todayStr); setVisitTime(task.visitTime ?? '')
     setAssignNote(''); setAssignLocation(task.location ?? '')
@@ -646,6 +650,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setAdvPayScreenshot(task.advancePaymentScreenshot ?? [])
     setAdvBalAmt(task.balanceAmount ? String(task.balanceAmount) : '')
     setAdvNote('')
+    setAdvProjectName(projects.find(p => p.id === task.projectId)?.name ?? '')
+    setAdvDueDate('')
     setOverdueNote(task.productionOverdueReason ?? '')
     setOverdueFiles([]); setOverdueNewDate(task.productionNewDate ?? todayStr)
     setLmNewDate(todayStr); setLmNote('')
@@ -813,9 +819,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             <>
               {readable && <p className="text-xs text-slate-400">{readable}</p>}
               {mapUrl && !readable && <p className="text-xs text-slate-400 italic">Site location pinned</p>}
-              {mapUrl && role !== 'site_engineer' && isSiteStage && (
+              {isSiteStage && mapUrl && (
                 <a href={mapUrl} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 mt-1 bg-green-50 border border-green-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-green-700 active:bg-green-100">
+                  className="inline-flex items-center gap-1 mt-0.5 text-[11px] text-slate-400 underline underline-offset-2">
                   📍 View in Google Maps
                 </a>
               )}
@@ -892,8 +898,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
     onUpdate({
       flowStatus: isApproved ? 'reschedule_approved' : 'pending',
-      visitDate: isApproved ? (task.requestedVisitDate ?? task.visitDate) : task.visitDate,
-      visitTime: isApproved ? (task.requestedVisitTime ?? task.visitTime) : task.visitTime,
+      visitDate: isApproved ? (task.requestedVisitDate ?? task.visitDate) : (lmNewVisitDate || task.visitDate),
+      visitTime: isApproved ? (task.requestedVisitTime ?? task.visitTime) : (lmNewVisitTime || task.visitTime),
       rescheduleApprovalStatus: isApproved ? 'approved' : 'rejected',
       rescheduleApprovedBy: user?.name ?? 'Sales Team',
       rescheduleApprovalNote: lmReschedNote || undefined,
@@ -1206,10 +1212,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       }, 'Sales Team sent back to Production Incharge for recheck')
     } else if (notAvailLmAction === 'assign_pm') {
       save({
-        flowStage: 'production_work', flowStatus: 'ready', status: 'pending',
-        title: 'Start Production Work',
+        flowStage: 'production_check', flowStatus: 'waiting', status: 'pending',
+        title: 'Check Material Availability',
         notAvailableReason: undefined,
-      }, 'Materials resolved — starting production')
+      }, 'Materials resolved — sent back to Production Incharge')
     }
   }
 
@@ -1219,6 +1225,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       save({ flowStatus: 'pending', status: 'pending' }, 'Advance payment pending'); return
     }
     if (!advPaidAmt) { setError('Enter paid amount.'); return }
+    const isPendingConversion = project?.pendingConversion === true
+    if (isPendingConversion && !advProjectName.trim()) { setError('Enter a project name.'); return }
     const paid    = Number(advPaidAmt)
     const total   = task.quotationAmount ?? 0
     const balance = advBalAmt ? Number(advBalAmt) : Math.max(0, total - paid)
@@ -1229,7 +1237,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       paidAmount: paid, balanceAmount: balance,
       paymentNote: advNote || undefined,
       advancePaymentScreenshot: advPayScreenshot.length > 0 ? advPayScreenshot : undefined,
-    }, `Advance ₹${paid.toLocaleString('en-IN')} received — LM to send job sheet to Admin`, advPayScreenshot)
+    }, `Advance ₹${paid.toLocaleString('en-IN')} received`, advPayScreenshot)
+    if (isPendingConversion && project) {
+      updateProject(project.id, {
+        pendingConversion: false,
+        name: advProjectName.trim(),
+        ...(advDueDate ? { dueDate: advDueDate } : {}),
+      })
+      if (project.leadId) updateLeadStatus(project.leadId, 'won' as LeadStatus)
+      setTimeout(() => navigate(`/project/${project.id}`), 400)
+    }
   }
 
   function submitProductionWork() {
@@ -1490,10 +1507,15 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         {/* Header */}
         <div className={`sticky top-0 z-10 ${STAGE_BG[displayStage] ?? 'bg-blue-600'} px-5 py-4 rounded-t-3xl flex items-center justify-between`}>
           <div>
-            <p className="text-white/70 text-[10px] font-bold uppercase tracking-wider">{task.projectName}</p>
+            {!project?.pendingConversion && (
+              <p className="text-white/70 text-[10px] font-bold uppercase tracking-wider">{task.projectName}</p>
+            )}
             <h2 className="text-white text-base font-extrabold leading-tight">
               {ownerNavStage ? STAGE_LABEL[ownerNavStage] ?? task.title : task.title}
             </h2>
+            {leadOwnerName && (
+              <p className="text-white/60 text-[10px] mt-0.5">Lead Owner: {leadOwnerName}</p>
+            )}
           </div>
           <button type="button" onClick={onClose} className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
             <X size={16} className="text-white" />
@@ -1644,7 +1666,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               2a. SITE VISIT — Site Engineer
           ════════════════════════════════════════════════════════════════ */}
-          {displayStage === 'site_visit' && (role === 'site_engineer' || role === 'owner') && (
+          {displayStage === 'site_visit' && (role === 'site_engineer' || (role === 'owner' && demoOverride)) && (
             <>
               {/* Customer contact card — call + maps */}
               <CustomerDetailsCard task={task} project={project} />
@@ -1786,7 +1808,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       </div>
                       <button type="button" onClick={submitReschedule}
                         className="w-full py-4 rounded-2xl bg-amber-600 text-white text-sm font-extrabold active:opacity-90">
-                        Send Reschedule Request to Sales Team
+                        Send Reschedule Request to Lead Owner
                       </button>
                     </div>
                   )}
@@ -1815,14 +1837,21 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 </div>
 
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Approve or Reject Reschedule</p>
-                <Opt value="approved" label="Approve Reschedule" sub="Allow site visit to move to the new date" accent="border-emerald-200" sel={sel} onPick={pick} />
-                <Opt value="rejected" label="Reject Reschedule"  sub="Engineer must complete visit on original date" accent="border-red-200" sel={sel} onPick={pick} />
+                <Opt value="approved" label="Approve Reschedule" sub="Allow site visit to move to the requested date" accent="border-emerald-200" sel={sel} onPick={pick} />
+                <Opt value="rejected" label="Reject &amp; Set New Date" sub="Assign a different date for the site visit" accent="border-red-200" sel={sel} onPick={pick} />
 
                 {sel === 'rejected' && (
-                  <div>
-                    <label className={lbl}>Rejection Note <span className="text-slate-300 font-normal">(optional)</span></label>
-                    <textarea rows={2} value={lmReschedNote} onChange={e => setLmReschedNote(e.target.value)}
-                      placeholder="Reason for rejection…" className={`${inp} resize-none`} />
+                  <div className="space-y-3">
+                    <div>
+                      <label className={lbl}>New Visit Date {req}</label>
+                      <input type="date" value={lmNewVisitDate} onChange={e => setLmNewVisitDate(e.target.value)} className={inp} />
+                    </div>
+                    <TimePickerField label="New Visit Time" value={lmNewVisitTime} onChange={setLmNewVisitTime} />
+                    <div>
+                      <label className={lbl}>Rejection Note <span className="text-slate-300 font-normal">(optional)</span></label>
+                      <textarea rows={2} value={lmReschedNote} onChange={e => setLmReschedNote(e.target.value)}
+                        placeholder="Reason for rejecting the requested date…" className={`${inp} resize-none`} />
+                    </div>
                   </div>
                 )}
 
@@ -1862,7 +1891,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             ) : null
           )}
 
-          {/* DEMO CONTROL: Site Visit */}
+          {/* CONTROL: Site Visit — owner sees Take Control, LM sees Override */}
+          {displayStage === 'site_visit' && role === 'owner' && flowStatus !== 'reschedule_requested' && !demoOverride && (
+            <>
+              <WaitingView icon={MapPinIcon} color="bg-teal-50 border border-teal-200 text-teal-700"
+                title={`Site Visit Pending — ${task.siteEngineerName ?? 'Engineer'}`}
+                sub={`Visit ${task.visitDate ? `on ${task.visitDate}` : 'date TBD'}${task.visitTime ? ` at ${task.visitTime}` : ''}`} />
+              <DemoControlCard waitingFor="Site Engineer" description="Site Engineer needs to complete the site visit."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
           {displayStage === 'site_visit' && canDemoOverride && role !== 'owner' && flowStatus !== 'reschedule_requested' && !demoOverride && (
             <DemoControlCard
               waitingFor="Site Engineer"
@@ -2057,7 +2095,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           <span className="text-sm font-extrabold text-slate-700">₹{matC.toLocaleString('en-IN')}</span>
                         </div>
                       )}
-                      {sqft > 0 && role === 'owner' && (
+                      {sqft > 0 && canSeeCosts && (
                         <>
                           <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
                             <span className="text-xs font-semibold text-blue-700">Production Cost <span className="font-normal text-blue-400">(₹{productionRate} × sq.ft)</span></span>
@@ -2075,14 +2113,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           <span className="text-sm font-extrabold text-amber-700">₹{transC.toLocaleString('en-IN')}</span>
                         </div>
                       )}
-                      <div className={`rounded-xl px-4 py-2.5 space-y-1.5 ${isLoss ? 'bg-red-50 border border-red-200' : 'bg-slate-100'}`}>
+                      <div className={`rounded-xl px-4 py-2.5 space-y-1.5 ${canSeeProfit && isLoss ? 'bg-red-50 border border-red-200' : 'bg-slate-100'}`}>
                         <div className="flex justify-between text-xs">
                           <span className="font-bold text-slate-700">Total Costs</span>
-                          <span className={`font-extrabold ${isLoss ? 'text-red-600' : 'text-slate-800'}`}>
+                          <span className={`font-extrabold ${canSeeProfit && isLoss ? 'text-red-600' : 'text-slate-800'}`}>
                             ₹{totalC.toLocaleString('en-IN')}
                           </span>
                         </div>
-                        {quotAmount > 0 && (
+                        {canSeeProfit && quotAmount > 0 && (
                           <div className="flex justify-between text-xs">
                             <span className={isLoss ? 'text-red-500 font-semibold' : 'text-emerald-600 font-semibold'}>
                               {isLoss ? 'Loss' : 'Profit'}
@@ -2092,7 +2130,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                             </span>
                           </div>
                         )}
-                        {isLoss && (
+                        {canSeeProfit && isLoss && (
                           <p className="text-[11px] text-red-600 font-semibold pt-0.5">
                             ⚠ Quotation is lower than estimated cost — this project will run at a loss.
                           </p>
@@ -2481,8 +2519,26 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               5. SEND TO CLIENT — two-step: send → mark sent → client response
           ════════════════════════════════════════════════════════════════ */}
-          {displayStage === 'send_to_client' && (
+          {displayStage === 'send_to_client' && role === 'owner' && !demoOverride && (
             <>
+              <WaitingView icon={Send} color="bg-indigo-50 border border-indigo-200 text-indigo-700"
+                title="Waiting for Sales Team — Send Quotation"
+                sub="Sales Team will send the approved quotation to the client and collect response" />
+              <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team sends the quotation and records the client response."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+          {displayStage === 'send_to_client' && (role === 'lead_manager' || demoOverride) && (
+            <>
+              {demoOverride && (
+                <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
+                    <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Sales Team</p>
+                  </div>
+                  <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
+                </div>
+              )}
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Send Quotation to Client</p>
 
               {/* ── Case A: Client already rejected — LM decides next action ── */}
@@ -2681,7 +2737,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   {/* Step 1: Send buttons — hidden after client has already responded */}
                   {flowStatus !== 'waiting_response' && flowStatus !== 'client_approved' && (() => {
                     const clientName = task.clientName ?? 'Sir/Madam'
-                    const projName   = task.projectName ?? 'your project'
+                    const projName   = project?.pendingConversion ? (task.clientName ?? 'your enquiry') : (task.projectName ?? 'your project')
                     const phone      = (task.clientPhone ?? '6379859299').replace(/\D/g, '').replace(/^0/, '')
                     const waMsg = `Hello ${clientName},\nPlease find the quotation for ${projName}.\nKindly review the attached quotation file and confirm your approval.\nRegards,\nFenster Team`
 
@@ -2698,7 +2754,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
                         {task.quotationFile ? (
                           <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 space-y-2">
-                            <p className="text-[10px] font-bold text-violet-500 uppercase">Quotation File</p>
+                            <p className="text-[10px] font-bold text-violet-500 uppercase">Approved Quotation File</p>
                             <MediaPreviewList files={[task.quotationFile]} />
                           </div>
                         ) : (
@@ -2814,12 +2870,28 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                               placeholder="Payment method, reference number…" className={`${inp} resize-none`} />
                           </div>
                           <MultiFileUploadField label="Payment Screenshot" accept="image/*,.pdf" files={advPayScreenshot} onChange={setAdvPayScreenshot} helperText="Optional — upload payment proof" />
+                          {project?.pendingConversion && (
+                            <>
+                              <div className="h-px bg-slate-200 my-1" />
+                              <div>
+                                <label className={lbl}>Project Name {req}</label>
+                                <input type="text" value={advProjectName} onChange={e => setAdvProjectName(e.target.value)}
+                                  placeholder="e.g. Rajesh Kumar — Living Room Windows" className={inp} />
+                              </div>
+                              <div>
+                                <label className={lbl}>Due Date <span className="text-slate-300 font-normal">(optional)</span></label>
+                                <input type="date" value={advDueDate} onChange={e => setAdvDueDate(e.target.value)} className={inp} />
+                              </div>
+                            </>
+                          )}
                         </div>
                       )}
                       {sel && (
                         <button type="button" onClick={submitAdvancePayment}
                           className="w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 bg-emerald-600">
-                          ✓ {sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production
+                          {project?.pendingConversion
+                            ? '✓ Confirm & Create Project'
+                            : `✓ ${sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production`}
                         </button>
                       )}
                     </>
@@ -2838,7 +2910,18 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               sub="Sales Team is preparing and sending the job sheet to Production Incharge" />
           )}
 
-          {displayStage === 'production_assign' && (role === 'lead_manager' || role === 'owner' || demoOverride) && (
+          {/* CONTROL: Production Assign — owner sees Take Control */}
+          {displayStage === 'production_assign' && role === 'owner' && !demoOverride && (
+            <>
+              <WaitingView icon={Package} color="bg-orange-50 border border-orange-200 text-orange-700"
+                title="Waiting for Job Sheet"
+                sub="Sales Team is preparing and sending the job sheet to Production Incharge" />
+              <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team needs to upload and send the job sheet."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+
+          {displayStage === 'production_assign' && (role === 'lead_manager' || demoOverride) && (
             <>
               {demoOverride && (
                 <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
@@ -2910,7 +2993,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               7a. PRODUCTION CHECK — Production Incharge
           ════════════════════════════════════════════════════════════════ */}
-          {displayStage === 'production_check' && (role === 'production_admin' || role === 'owner') && flowStatus !== 'not_available' && (
+          {displayStage === 'production_check' && (role === 'production_admin' || (role === 'owner' && demoOverride)) && flowStatus !== 'not_available' && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Material Availability Check</p>
 
@@ -2992,7 +3075,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 : 'Production Incharge is verifying Profile / Glass / Hardware stock'} />
           )}
 
-          {/* DEMO CONTROL: Production Check */}
+          {/* CONTROL: Production Check — owner sees Take Control, LM sees Override */}
+          {displayStage === 'production_check' && role === 'owner' && flowStatus !== 'not_available' && !demoOverride && (
+            <>
+              <WaitingView icon={Package} color="bg-amber-50 border border-amber-200 text-amber-700"
+                title={flowStatus === 'materials_ordered' ? 'Admin Ordered — Waiting for Delivery' : 'Checking Material Availability'}
+                sub={flowStatus === 'materials_ordered' ? 'Materials ordered. Production starts when they arrive.' : 'Production Incharge is verifying Profile / Glass / Hardware stock'} />
+              <DemoControlCard waitingFor="Production Incharge" description="Production Incharge needs to check material availability."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
           {displayStage === 'production_check' && canDemoOverride && role !== 'owner' && flowStatus !== 'not_available' && !demoOverride && (
             <DemoControlCard
               waitingFor="Production Incharge"
@@ -3102,7 +3194,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               sub={flowStatus === 'pending' ? 'Sales Team collecting advance payment from client' : `Advance received — production starting soon`} />
           )}
 
-          {displayStage === 'advance_payment' && (role === 'lead_manager' || role === 'owner') && (
+          {displayStage === 'advance_payment' && role === 'owner' && !demoOverride && (
+            <>
+              <WaitingView icon={CreditCard} color="bg-emerald-50 border border-emerald-200 text-emerald-700"
+                title="Waiting for Advance Payment"
+                sub="Sales Team is collecting the advance payment from the client" />
+              <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team collects and records the advance payment."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+
+          {displayStage === 'advance_payment' && (role === 'lead_manager' || demoOverride) && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Advance Payment</p>
 
@@ -3161,13 +3263,29 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       placeholder="Payment method, reference number…" className={`${inp} resize-none`} />
                   </div>
                   <MultiFileUploadField label="Payment Screenshot" accept="image/*,.pdf" files={advPayScreenshot} onChange={setAdvPayScreenshot} helperText="Optional — upload payment proof" />
+                  {project?.pendingConversion && (
+                    <>
+                      <div className="h-px bg-slate-200 my-1" />
+                      <div>
+                        <label className={lbl}>Project Name {req}</label>
+                        <input type="text" value={advProjectName} onChange={e => setAdvProjectName(e.target.value)}
+                          placeholder="e.g. Rajesh Kumar — Living Room Windows" className={inp} />
+                      </div>
+                      <div>
+                        <label className={lbl}>Due Date <span className="text-slate-300 font-normal">(optional)</span></label>
+                        <input type="date" value={advDueDate} onChange={e => setAdvDueDate(e.target.value)} className={inp} />
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
               {sel && (
                 <button type="button" onClick={submitAdvancePayment}
                   className="w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 bg-emerald-600">
-                  ✓ {sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production
+                  {project?.pendingConversion
+                    ? '✓ Confirm & Create Project'
+                    : `✓ ${sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production`}
                 </button>
               )}
             </>
@@ -3176,7 +3294,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               9a. PRODUCTION WORK — Production Incharge (6-step checklist)
           ════════════════════════════════════════════════════════════════ */}
-          {displayStage === 'production_work' && (role === 'production_manager' || role === 'owner') && flowStatus !== 'overdue' && flowStatus !== 'ready_to_pack' && (
+          {displayStage === 'production_work' && (role === 'production_manager' || (role === 'owner' && demoOverride)) && flowStatus !== 'overdue' && flowStatus !== 'ready_to_pack' && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Production Checklist</p>
 
@@ -3299,7 +3417,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               sub={task.productionNewDate ? `Updated deadline: ${task.productionNewDate}` : 'Production Manager is working on it'} />
           )}
 
-          {/* DEMO CONTROL: Production Work */}
+          {/* CONTROL: Production Work — owner sees Take Control, LM sees Override */}
+          {displayStage === 'production_work' && role === 'owner' && flowStatus !== 'overdue' && flowStatus !== 'ready_to_pack' && !demoOverride && (
+            <>
+              <WaitingView icon={Package} color="bg-blue-50 border border-blue-200 text-blue-700"
+                title="Production Work In Progress"
+                sub={task.productionNewDate ? `Updated deadline: ${task.productionNewDate}` : 'Production Manager is working on it'} />
+              <DemoControlCard waitingFor="Production Manager" description="Production Manager needs to complete the 6-step production checklist."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
           {displayStage === 'production_work' && canDemoOverride && role !== 'owner' && flowStatus !== 'overdue' && flowStatus !== 'ready_to_pack' && !demoOverride && (
             <DemoControlCard
               waitingFor="Production Incharge"
@@ -3390,7 +3517,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             </div>
           )}
 
-          {displayStage === 'production_work' && (role === 'lead_manager' || role === 'owner') && flowStatus === 'overdue' && (
+          {displayStage === 'production_work' && role === 'owner' && flowStatus === 'overdue' && !demoOverride && (
+            <>
+              <WaitingView icon={Clock} color="bg-red-50 border border-red-200 text-red-700"
+                title="Overdue Report Submitted" sub="Waiting for Sales Team to approve or disapprove the new date" />
+              <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team reviews the overdue report and sets the new production date."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+
+          {displayStage === 'production_work' && (role === 'lead_manager' || demoOverride) && flowStatus === 'overdue' && (
             <>
               <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-4 space-y-1">
                 <p className="text-xs font-bold text-red-600 uppercase">Production Overdue Report</p>
@@ -3450,7 +3586,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               sub="Waiting for Sales Team to confirm all materials are ready to pack" />
           )}
 
-          {displayStage === 'production_work' && flowStatus === 'ready_to_pack' && (role === 'lead_manager' || role === 'owner') && (
+          {displayStage === 'production_work' && flowStatus === 'ready_to_pack' && role === 'owner' && !demoOverride && (
+            <>
+              <WaitingView icon={Package} color="bg-emerald-50 border border-emerald-200 text-emerald-700"
+                title="Production Done — Waiting for Sales Team to Pack"
+                sub="Sales Team needs to confirm all items are packed and ready to dispatch" />
+              <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team confirms the packing checklist and dispatches."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+
+          {displayStage === 'production_work' && flowStatus === 'ready_to_pack' && (role === 'lead_manager' || demoOverride) && (
             <>
               <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
                 <Package size={14} className="text-emerald-600 flex-shrink-0" />
@@ -3515,6 +3661,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               sub="Installation Incharge will assign the installer and schedule the date" />
           )}
 
+          {/* CONTROL: Installation Assign — owner sees Take Control, others see Override */}
+          {displayStage === 'installation_assign' && role === 'owner' && !demoOverride && (
+            <>
+              <WaitingView icon={Wrench} color="bg-rose-50 border border-rose-200 text-rose-700"
+                title="Ready to Dispatch"
+                sub="Installation Incharge will assign the installer and schedule the date" />
+              <DemoControlCard waitingFor="Installation Incharge" description="Installation Incharge assigns the installer and date."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+
           {displayStage === 'installation_assign' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && canDemoOverride && (
             <DemoControlCard
               waitingFor="Installation Incharge"
@@ -3523,7 +3680,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             />
           )}
 
-          {displayStage === 'installation_assign' && (role === 'technician' || role === 'installation_incharge' || role === 'owner' || demoOverride) && (
+          {displayStage === 'installation_assign' && (role === 'technician' || role === 'installation_incharge' || demoOverride) && (
             <>
               {demoOverride && (
                 <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
@@ -3623,7 +3780,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               sub={task.installationPerson ? `Installer: ${task.installationPerson}${task.installationDate ? ` · ${task.installationDate}` : ''}` : 'Waiting for installation incharge to update'} />
           )}
 
-          {/* DEMO CONTROL for installation update */}
+          {/* CONTROL: Installation Update — owner sees Take Control, others see Override */}
+          {displayStage === 'installation_update' && flowStatus !== 'mistake' && role === 'owner' && !demoOverride && (
+            <>
+              <WaitingView icon={Wrench} color="bg-rose-50 border border-rose-200 text-rose-700"
+                title={`Installation ${flowStatus === 'not_completed' ? 'Not Completed' : 'In Progress'}`}
+                sub={task.installationPerson ? `Installer: ${task.installationPerson}${task.installationDate ? ` · ${task.installationDate}` : ''}` : 'Waiting for installation incharge to update'} />
+              <DemoControlCard waitingFor="Installation Incharge" description="Installation Incharge needs to report the installation result."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+
           {displayStage === 'installation_update' && flowStatus !== 'mistake' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && canDemoOverride && (
             <DemoControlCard
               waitingFor="Installation Incharge"
@@ -3632,7 +3799,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             />
           )}
 
-          {displayStage === 'installation_update' && flowStatus !== 'mistake' && (role === 'technician' || role === 'installation_incharge' || role === 'owner' || demoOverride) && (
+          {displayStage === 'installation_update' && flowStatus !== 'mistake' && (role === 'technician' || role === 'installation_incharge' || demoOverride) && (
             <>{demoOverride && (
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
@@ -3644,7 +3811,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             )}</>
           )}
 
-          {displayStage === 'installation_update' && flowStatus !== 'mistake' && (role === 'technician' || role === 'installation_incharge' || role === 'owner' || demoOverride) && (
+          {displayStage === 'installation_update' && flowStatus !== 'mistake' && (role === 'technician' || role === 'installation_incharge' || demoOverride) && (
             <>
               {task.installationPerson && (
                 <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
@@ -3747,7 +3914,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               12. FINAL PAYMENT — collect balance; Complete Project only when balance = 0
           ════════════════════════════════════════════════════════════════ */}
-          {displayStage === 'final_payment' && (role === 'lead_manager' || role === 'owner') && (
+          {displayStage === 'final_payment' && role === 'owner' && !demoOverride && (
+            <>
+              <WaitingView icon={CreditCard} color="bg-emerald-50 border border-emerald-200 text-emerald-700"
+                title="Waiting for Final Payment Collection"
+                sub="Sales Team is collecting the balance payment from the client" />
+              <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team collects the final balance payment."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+
+          {displayStage === 'final_payment' && (role === 'lead_manager' || demoOverride) && (
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Final Collection</p>
 
@@ -3955,7 +4132,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               12b. FINAL COMPLETION — after full paid
           ════════════════════════════════════════════════════════════════ */}
-          {displayStage === 'final_completion' && (role === 'lead_manager' || role === 'owner') && (
+          {displayStage === 'final_completion' && role === 'owner' && !demoOverride && (
+            <>
+              <WaitingView icon={CheckCircle2} color="bg-green-50 border border-green-200 text-green-700"
+                title="Waiting for Sales Team to Complete Project"
+                sub="Sales Team confirms final handover and marks the project as complete" />
+              <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team marks the final handover and completes the project."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+
+          {displayStage === 'final_completion' && (role === 'lead_manager' || demoOverride) && (
             <>
               <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-4 space-y-1">
                 <div className="flex items-center gap-2">
@@ -4089,29 +4276,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
         </div>
 
-        {/* ── Owner Stage Navigator ─────────────────────────────────────────── */}
-        {role === 'owner' && (() => {
-          const activeIdx = FLOW_STAGES_ORDERED.indexOf(ownerNavStage ?? stage)
-          const prevStage = activeIdx > 0 ? FLOW_STAGES_ORDERED[activeIdx - 1] : null
-          const nextStage = activeIdx < FLOW_STAGES_ORDERED.length - 1 ? FLOW_STAGES_ORDERED[activeIdx + 1] : null
-          const displayStage = ownerNavStage ?? stage
-          return (
-            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-4 py-2.5 flex items-center gap-2 z-20">
-              <button type="button" disabled={!prevStage} onClick={() => setOwnerNavStage(prevStage)}
-                className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-30 active:bg-slate-200">
-                ← Prev
-              </button>
-              <div className="flex-1 text-center">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Viewing</p>
-                <p className="text-xs font-extrabold text-slate-700 truncate">{STAGE_LABEL[displayStage] ?? displayStage}</p>
-              </div>
-              <button type="button" disabled={!nextStage} onClick={() => setOwnerNavStage(nextStage)}
-                className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-30 active:bg-slate-200">
-                Next →
-              </button>
-            </div>
-          )
-        })()}
 
       </div>
 

@@ -15,13 +15,14 @@ import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { loadManagedUsers } from '../../utils/userStorage'
 import type { Lead, LeadStatus, LeadSource, LeadInterest, Task } from '../../types'
 
-type Filter = 'active' | 'contact' | 'measurement' | 'quotation' | 'lost'
+type Filter = 'active' | 'contact' | 'measurement' | 'quotation' | 'won' | 'lost'
 
 const CHIPS: { value: Filter; label: string }[] = [
   { value: 'active',      label: 'Active'      },
   { value: 'contact',     label: 'Contact'     },
   { value: 'measurement', label: 'Measurement' },
   { value: 'quotation',   label: 'Quotation'   },
+  { value: 'won',         label: 'Won'         },
   { value: 'lost',        label: 'Lost'        },
 ]
 
@@ -106,7 +107,8 @@ export default function LeadsScreen() {
   const [showStatusOptions, setShowStatusOptions] = useState(false)
   const [convertingProjectId, setConvertingProjectId] = useState<string | null>(null)
   const [convertDueDate, setConvertDueDate] = useState('')
-  const [snack, setSnack] = useState({ open: false, msg: '' })
+  const [convertProjectName, setConvertProjectName] = useState('')
+  const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
 
   // Once the project + "Assign Site Engineer" task exist, open the real flow popup for it
   useEffect(() => {
@@ -177,7 +179,9 @@ export default function LeadsScreen() {
     let matchFilter = false
     if (filter === 'lost') {
       matchFilter = l.status === 'lost'
-    } else if (l.status === 'lost') {
+    } else if (filter === 'won') {
+      matchFilter = l.status === 'won'
+    } else if (l.status === 'lost' || l.status === 'won') {
       matchFilter = false
     } else if (filter === 'active') {
       matchFilter = true
@@ -217,13 +221,13 @@ export default function LeadsScreen() {
       // Update status but keep sheet open so user can manually convert
       updateLeadStatus(selected.id, 'qualified')
       setSelected(prev => prev ? { ...prev, status: 'qualified' } : prev)
-      setSnack({ open: true, msg: 'Lead marked as Qualified!' })
+      setSnack({ open: true, msg: 'Lead marked as Qualified!', type: 'success' })
       return
     }
 
     updateLeadStatus(selected.id, status)
     setSelected(prev => prev ? { ...prev, status } : prev)
-    setSnack({ open: true, msg: 'Lead updated!' })
+    setSnack({ open: true, msg: 'Lead updated!', type: 'success' })
   }
 
   function confirmFollowup() {
@@ -236,7 +240,7 @@ export default function LeadsScreen() {
     }
     setShowFollowupDialog(false)
     setPendingContactedId(null)
-    setSnack({ open: true, msg: 'Lead contacted — follow-up scheduled!' })
+    setSnack({ open: true, msg: 'Lead contacted — follow-up scheduled!', type: 'success' })
   }
 
   function confirmLost() {
@@ -245,7 +249,7 @@ export default function LeadsScreen() {
     setSelected(null)
     setShowLostDialog(false)
     setPendingLostId(null)
-    setSnack({ open: true, msg: 'Lead moved to Lost.' })
+    setSnack({ open: true, msg: 'Lead moved to Lost.', type: 'success' })
   }
 
   function handleAddLead() {
@@ -272,7 +276,7 @@ export default function LeadsScreen() {
     setNewReq(''); setNewNotes(''); setNewAssignee('')
     setNewSource('cold_call'); setNewInterest('medium')
     setShowNew(false)
-    setSnack({ open: true, msg: 'Lead created successfully!' })
+    setSnack({ open: true, msg: 'Lead created successfully!', type: 'success' })
   }
 
   function openEdit() {
@@ -308,7 +312,7 @@ export default function LeadsScreen() {
     updateLead(selected.id, updates)
     setSelected(prev => prev ? { ...prev, ...updates } : prev)
     setShowEdit(false)
-    setSnack({ open: true, msg: 'Lead updated!' })
+    setSnack({ open: true, msg: 'Lead updated!', type: 'success' })
   }
 
   // Qualified lead → create the project behind the scenes, then jump straight into
@@ -359,7 +363,6 @@ export default function LeadsScreen() {
       clientRequirement: lead.requirement,
     })
 
-    updateLeadStatus(lead.id, 'won')
     setSelected(null)
     setPendingAssignProjectId(projectId)
   }
@@ -371,7 +374,7 @@ export default function LeadsScreen() {
     if (!assignFlowTask) return
     updateTask(assignFlowTask.id, updates)
     setAssignFlowTaskId(null)
-    setSnack({ open: true, msg: 'Status updated!' })
+    setSnack({ open: true, msg: 'Status updated!', type: 'success' })
   }
 
   // Open the real flow popup for whichever stage this lead's linked project is
@@ -382,17 +385,26 @@ export default function LeadsScreen() {
   }
 
   function openConvertToProject(projectId: string) {
+    const proj = projects.find(p => p.id === projectId)
     setConvertingProjectId(projectId)
     setConvertDueDate('')
+    setConvertProjectName(proj?.name ?? '')
   }
 
   function finishConvertToProject(dueDate?: string) {
     if (!convertingProjectId) return
     const projectId = convertingProjectId
-    updateProject(projectId, { pendingConversion: false, ...(dueDate ? { dueDate } : {}) })
+    const nameToSave = convertProjectName.trim() || undefined
+    updateProject(projectId, {
+      pendingConversion: false,
+      ...(nameToSave ? { name: nameToSave } : {}),
+      ...(dueDate ? { dueDate } : {}),
+    })
+    const proj = projects.find(p => p.id === projectId)
+    if (proj?.leadId) updateLeadStatus(proj.leadId, 'won')
     setConvertingProjectId(null)
     setSelected(null)
-    setSnack({ open: true, msg: 'Converted to project!' })
+    setSnack({ open: true, msg: 'Project created!', type: 'success' })
     setTimeout(() => navigate(`/project/${projectId}`), 500)
   }
 
@@ -460,9 +472,11 @@ export default function LeadsScreen() {
 
       <div className="px-4 pt-4 space-y-2.5">
         {filtered.map(lead => {
-          const linkedProject = lead.status === 'won' ? projects.find(p => p.leadId === lead.id) : undefined
+          const linkedProject = (lead.status === 'won' || lead.status === 'qualified')
+            ? projects.find(p => p.leadId === lead.id)
+            : undefined
           const showFlowUpdate = !!linkedProject?.pendingConversion
-          const showStatusUpdate = lead.status !== 'won' && lead.status !== 'lost'
+          const showStatusUpdate = lead.status !== 'won' && lead.status !== 'lost' && !showFlowUpdate
           return (
             <div key={lead.id} onClick={() => { setSelected(lead); setShowStatusOptions(false) }}
               className="w-full text-left bg-white rounded-2xl shadow-card border border-slate-100 p-4 active:scale-[0.98] transition-transform cursor-pointer">
@@ -484,7 +498,15 @@ export default function LeadsScreen() {
                     <p className="text-[11px] text-indigo-500 mt-0.5">📅 {lead.followUpDate}</p>
                   )}
                 </div>
-                <StatusBadge status={lead.status} size="xs" />
+                {linkedProject && lead.status === 'qualified' ? (() => {
+                  const activeTask = tasks.find(t => t.projectId === linkedProject.id && t.flowStage && t.flowStage !== 'completed')
+                  const stageLabel = activeTask?.title ?? linkedProject.stage
+                  return (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap shrink-0">
+                      {stageLabel}
+                    </span>
+                  )
+                })() : <StatusBadge status={lead.status} size="xs" />}
               </div>
               {lead.status === 'lost' && lead.lostReason && (
                 <p className="mt-2 text-[11px] text-red-500 border-t border-slate-100 pt-2">
@@ -518,7 +540,10 @@ export default function LeadsScreen() {
 
       {/* ── Lead Detail Sheet ── */}
       <BottomSheet isOpen={!!selected} onClose={() => setSelected(null)} title={selected?.name ?? ''} height="full">
-        {selected && (
+        {selected && (() => {
+          const selectedLinkedProject = projects.find(p => p.leadId === selected.id)
+          const hasActiveProject = !!selectedLinkedProject
+          return (
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 flex-wrap">
@@ -533,7 +558,7 @@ export default function LeadsScreen() {
               )}
             </div>
 
-            {selected.status !== 'won' && selected.status !== 'lost' && (
+            {selected.status !== 'won' && selected.status !== 'lost' && !hasActiveProject && (
               <PermissionGate permission="edit_lead">
                 <button onClick={() => setShowStatusOptions(v => !v)}
                   className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold active:bg-indigo-100">
@@ -589,8 +614,8 @@ export default function LeadsScreen() {
               <Phone size={16} /> Call {selected.name.split(' ')[0]}
             </a>
 
-            {/* Assign to Site Engineer (when qualified) */}
-            {selected.status === 'qualified' && (
+            {/* Assign to Site Engineer (when qualified and no project yet) */}
+            {selected.status === 'qualified' && !hasActiveProject && (
               <PermissionGate permission="create_project">
                 <button
                   onClick={handleAssignSiteEngineer}
@@ -601,7 +626,7 @@ export default function LeadsScreen() {
             )}
 
             {/* Assign Site Engineer — disabled until lead is qualified */}
-            {selected.status !== 'won' && selected.status !== 'qualified' && (
+            {selected.status !== 'won' && selected.status !== 'qualified' && selected.status !== 'lost' && (
               <PermissionGate permission="create_project">
                 <button
                   disabled
@@ -611,13 +636,12 @@ export default function LeadsScreen() {
               </PermissionGate>
             )}
 
-            {selected.status === 'won' && (() => {
-              const linkedProject = projects.find(p => p.leadId === selected.id)
+            {(selected.status === 'won' || hasActiveProject) && (() => {
+              const linkedProject = selectedLinkedProject
               if (!linkedProject) return null
 
               if (linkedProject.pendingConversion) {
                 const activeTask = tasks.find(t => t.projectId === linkedProject.id && t.flowStage && t.flowStage !== 'completed')
-                const pastAdvancePayment = !!activeTask && STAGES_AFTER_ADVANCE_PAYMENT.has(activeTask.flowStage!)
                 return (
                   <div className="space-y-2.5">
                     <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
@@ -629,13 +653,6 @@ export default function LeadsScreen() {
                       className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-blue-700">
                       Update Status →
                     </button>
-                    {pastAdvancePayment && (
-                      <button
-                        onClick={() => openConvertToProject(linkedProject.id)}
-                        className="w-full flex items-center justify-center gap-2 border-2 border-emerald-600 text-emerald-600 rounded-xl py-3 text-sm font-bold active:bg-emerald-50">
-                        <HardHat size={16} /> Convert to Project →
-                      </button>
-                    )}
                   </div>
                 )
               }
@@ -651,7 +668,8 @@ export default function LeadsScreen() {
               )
             })()}
           </div>
-        )}
+          )
+        })()}
       </BottomSheet>
 
       {/* ── Followup Date Dialog (contacted) ── */}
@@ -785,25 +803,32 @@ export default function LeadsScreen() {
         />
       )}
 
-      {/* ── Convert to Project — optional due date, Done or Skip both convert ── */}
+      {/* ── Convert to Project — name + optional due date ── */}
       {convertingProjectId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setConvertingProjectId(null)} />
-          <div className="relative bg-white rounded-2xl shadow-sheet w-full max-w-[320px] p-5 space-y-4">
-            <h3 className="text-base font-bold text-slate-800">Set a Due Date</h3>
-            <p className="text-sm text-slate-500">Optional — you can skip this and set it later on the project page.</p>
-            <input type="date" value={convertDueDate} onChange={e => setConvertDueDate(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
-            <div className="flex gap-2">
-              <button onClick={() => finishConvertToProject(undefined)}
-                className="flex-1 bg-slate-100 text-slate-700 rounded-xl py-3 text-sm font-semibold active:bg-slate-200">
-                Skip
-              </button>
-              <button onClick={() => finishConvertToProject(convertDueDate || undefined)}
-                className="flex-1 bg-indigo-600 text-white rounded-xl py-3 text-sm font-semibold active:bg-indigo-700">
-                Done
-              </button>
+          <div className="relative bg-white rounded-2xl shadow-sheet w-full max-w-[340px] p-5 space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-800">Create Project</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Advance received — confirm the project details.</p>
             </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Project Name *</label>
+              <input type="text" value={convertProjectName} onChange={e => setConvertProjectName(e.target.value)}
+                placeholder="e.g. Rajesh Kumar — Living Room Windows"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Due Date <span className="font-normal text-slate-300">(optional)</span></label>
+              <input type="date" value={convertDueDate} onChange={e => setConvertDueDate(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
+            </div>
+            <button
+              onClick={() => { if (convertProjectName.trim()) finishConvertToProject(convertDueDate || undefined) }}
+              disabled={!convertProjectName.trim()}
+              className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-indigo-700 disabled:opacity-40">
+              Create Project →
+            </button>
           </div>
         </div>
       )}
@@ -895,7 +920,7 @@ export default function LeadsScreen() {
         </div>
       </BottomSheet>
 
-      <Snackbar isOpen={snack.open} message={snack.msg} type="success" onClose={() => setSnack(s => ({ ...s, open: false }))} />
+      <Snackbar isOpen={snack.open} message={snack.msg} type={snack.type} onClose={() => setSnack(s => ({ ...s, open: false }))} />
     </div>
   )
 }

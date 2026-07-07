@@ -22,7 +22,7 @@ const CHIPS: { value: Filter; label: string }[] = [
 export default function OrdersScreen() {
   const [filter, setFilter] = useState<Filter>('all')
   const [selected, setSelected] = useState<Order | null>(null)
-  const [snack, setSnack] = useState({ open: false, msg: '' })
+  const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
 
   const filtered = ORDERS.filter(o => filter === 'all' || o.status === filter)
 
@@ -168,11 +168,11 @@ export default function OrdersScreen() {
             )}
 
             <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Production released!' }) }}
+              <button onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Production released!', type: 'success' }) }}
                 className="bg-indigo-600 text-white rounded-xl py-3 text-sm font-bold active:bg-indigo-700">
                 Release to Prod
               </button>
-              <button onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Payment recorded!' }) }}
+              <button onClick={() => { setSelected(null); setSnack({ open: true, msg: 'Payment recorded!', type: 'success' }) }}
                 className="border border-emerald-500 text-emerald-600 rounded-xl py-3 text-sm font-bold active:bg-emerald-50">
                 Record Payment
               </button>
@@ -181,7 +181,7 @@ export default function OrdersScreen() {
         )}
       </BottomSheet>
 
-      <Snackbar isOpen={snack.open} message={snack.msg} type="success" onClose={() => setSnack(s => ({ ...s, open: false }))} />
+      <Snackbar isOpen={snack.open} message={snack.msg} type={snack.type} onClose={() => setSnack(s => ({ ...s, open: false }))} />
     </div>
   )
 }

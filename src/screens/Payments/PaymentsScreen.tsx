@@ -29,7 +29,7 @@ export default function PaymentsScreen() {
   const [showRecord, setShowRecord] = useState(false)
   const [payAmount, setPayAmount]   = useState('')
   const [payMethod, setPayMethod]   = useState('Cash')
-  const [snack, setSnack] = useState({ open: false, msg: '' })
+  const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
 
   const myProjectIds = user?.role === 'lead_manager'
     ? new Set(projects.filter(p => p.ownerId === user.id).map(p => p.id))
@@ -133,13 +133,16 @@ export default function PaymentsScreen() {
             <PermissionGate permission="update_payments">
               <button
                 onClick={() => {
-                  if (selected && payAmount) {
-                    updatePaymentAmount(selected.id, Number(payAmount), payMethod)
-                    setPayAmount('')
+                  const amount = Number(payAmount)
+                  if (!payAmount || isNaN(amount) || amount <= 0) {
+                    setSnack({ open: true, msg: 'Please enter an amount greater than ₹0.', type: 'error' })
+                    return
                   }
+                  updatePaymentAmount(selected.id, amount, payMethod)
+                  setPayAmount('')
                   setShowRecord(false)
                   setSelected(null)
-                  setSnack({ open: true, msg: 'Payment recorded successfully!' })
+                  setSnack({ open: true, msg: 'Payment recorded successfully!', type: 'success' })
                 }}
                 className="w-full rounded-xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 bg-emerald-600 text-white active:bg-emerald-700"
               >
@@ -154,7 +157,7 @@ export default function PaymentsScreen() {
         )}
       </BottomSheet>
 
-      <Snackbar isOpen={snack.open} message={snack.msg} type="success" onClose={() => setSnack(s => ({ ...s, open: false }))} />
+      <Snackbar isOpen={snack.open} message={snack.msg} type={snack.type} onClose={() => setSnack(s => ({ ...s, open: false }))} />
     </div>
   )
 }
