@@ -352,6 +352,7 @@ export interface Task {
 
   // Production check
   notAvailableReason?: string
+  restockExpectedDate?: string
 
   // Payment (advance + final)
   advancePaymentType?: string
@@ -375,6 +376,7 @@ export interface Task {
   materialCost?: number
   transportCost?: number
   installationMistakeDetails?: string
+  installationNextVisitDate?: string
 
   // Reschedule approval flow
   requestedVisitDate?: string
@@ -492,6 +494,22 @@ export interface Lead {
   location?: string
   budgetRange?: string
   createdAt?: string
+}
+
+// ─── Leave Application ──────────────────────────────────────────────────────
+export type LeaveStatus = 'pending' | 'approved' | 'rejected'
+
+export interface LeaveApplication {
+  id: string
+  technicianName: string
+  fromDate: string
+  toDate: string
+  reason: string
+  status: LeaveStatus
+  notes?: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
 }
 
 // ─── Quotation ────────────────────────────────────────────────────────────────

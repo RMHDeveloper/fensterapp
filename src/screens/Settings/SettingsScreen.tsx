@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { Bell, LogOut, RefreshCw, ChevronRight, UserCog, Users, UserPlus, Pencil, Camera, SlidersHorizontal } from 'lucide-react'
+import { Bell, LogOut, RefreshCw, ChevronRight, UserCog, Users, UserPlus, Pencil, Camera, SlidersHorizontal, CalendarOff } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useAppData } from '../../context/AppDataContext'
 import { loadManagedUsers, saveManagedUsers } from '../../utils/userStorage'
 import { storeFile } from '../../utils/fileStorage'
 import { migrateFromLocalStorage, hasLocalStorageData } from '../../utils/migrateFromLocalStorage'
-import { ROLE_LABELS, ROLE_DESCRIPTIONS } from '../../data/permissions'
+import { ROLE_LABELS, ROLE_DESCRIPTIONS, getRoleDisplayLabel } from '../../data/permissions'
 import { getAppSettings, saveAppSettings } from '../../utils/appSettings'
 import { Dialog } from '../../components/feedback/Dialog'
 import { Snackbar } from '../../components/feedback/Snackbar'
@@ -191,7 +191,7 @@ export default function SettingsScreen() {
             <h2 className="text-base font-extrabold text-slate-800">{user?.name ?? 'Guest'}</h2>
             <p className="text-xs text-slate-500">{user?.email ?? ''}</p>
             <span className="inline-block mt-1 bg-green-50 text-green-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
-              {user ? (user.displayRole ?? ROLE_LABELS[user.role]) : ''}
+              {user ? getRoleDisplayLabel(user.role, user.displayRole) : ''}
             </span>
           </div>
           <button
@@ -233,6 +233,28 @@ export default function SettingsScreen() {
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-slate-700">View Users</p>
                   <p className="text-[10px] text-slate-400 mt-0.5">Manage and deactivate users</p>
+                </div>
+                <ChevronRight size={15} className="text-slate-300 flex-shrink-0" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Leave Application — visible only to Admin and MD, not ED */}
+        {user && (user.displayRole?.includes('MD') || user.displayRole?.includes('Admin')) && (
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-2">HR</p>
+            <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+              <button
+                onClick={() => navigate('/leave-applications')}
+                className="w-full flex items-center gap-3 px-4 py-3.5 active:bg-slate-50 text-left"
+              >
+                <div className="w-8 h-8 bg-orange-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <CalendarOff size={16} className="text-orange-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-700">Leave Application</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Track and approve technician leave</p>
                 </div>
                 <ChevronRight size={15} className="text-slate-300 flex-shrink-0" />
               </button>
@@ -332,7 +354,7 @@ export default function SettingsScreen() {
               <div className="flex-1">
                 <p className="text-sm font-semibold text-slate-700">Switch Role</p>
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  Currently: {user ? (user.displayRole ?? ROLE_LABELS[user.role]) : '—'}
+                  Currently: {user ? getRoleDisplayLabel(user.role, user.displayRole) : '—'}
                 </p>
               </div>
               <ChevronRight size={15} className={`text-slate-300 flex-shrink-0 transition-transform ${showSwitcher ? 'rotate-90' : ''}`} />

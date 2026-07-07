@@ -30,11 +30,19 @@ import SettingsScreen               from './screens/Settings/SettingsScreen'
 import UserManagementScreen         from './screens/Settings/UserManagementScreen'
 import ApprovalsScreen              from './screens/Approvals/ApprovalsScreen'
 import OwnerDashboardScreen         from './screens/Dashboard/OwnerDashboardScreen'
+import LeaveApplicationScreen       from './screens/LeaveApplication/LeaveApplicationScreen'
 
 // Home route — owners (MD/ED) land on the Dashboard, everyone else on Home
 function HomeRoute() {
   const { user } = useAuth()
   return user?.role === 'owner' ? <Navigate to="/dashboard" replace /> : <HomeScreen />
+}
+
+// Leave Application — visible only to Admin and MD (owner role), not ED or any other role
+function LeaveApplicationRoute() {
+  const { user } = useAuth()
+  const canAccess = user?.role === 'owner' && (user.displayRole?.includes('MD') || user.displayRole?.includes('Admin'))
+  return canAccess ? <LeaveApplicationScreen /> : <Navigate to="/home" replace />
 }
 
 // Dashboard shell — only rendered after login
@@ -70,6 +78,7 @@ function AppShell() {
             <Route path="/settings"       element={<ProtectedRoute screenPath="settings">     <SettingsScreen />        </ProtectedRoute>} />
             <Route path="/settings/users" element={<ProtectedRoute screenPath="settings">   <UserManagementScreen /> </ProtectedRoute>} />
             <Route path="/approvals"    element={<ProtectedRoute screenPath="approvals">    <ApprovalsScreen />    </ProtectedRoute>} />
+            <Route path="/leave-applications" element={<ProtectedRoute screenPath="home">   <LeaveApplicationRoute /></ProtectedRoute>} />
 
             <Route path="*"             element={<Navigate to="/home" replace />} />
           </Routes>

@@ -91,16 +91,27 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   ],
 }
 
+// production_admin's visible label is "Admin" (display-only — internal role
+// value stays production_admin, and displayRole data still stores "Production Incharge")
 export const ROLE_LABELS: Record<UserRole, string> = {
   owner:                'Managing Director (MD)',
   lead_manager:         'Sales Team / Lead Owner',
   site_engineer:        'Site Engineer',
-  production_admin:     'Production Incharge',
+  production_admin:     'Admin',
   production_manager:   'Production Manager',
   technician:           'Technician',
   installation_incharge:'Technician',
   viewer:               'Viewer',
-  production_team:      'Production Incharge',
+  production_team:      'Admin',
+}
+
+// Resolves the label to show for a user's role — prefers their stored displayRole
+// (e.g. "Managing Director (MD)"), but renders the production_admin role's legacy
+// "Production Incharge" displayRole value as "Admin" everywhere in the UI. The
+// stored displayRole data and DISPLAY_ROLE_TO_INTERNAL mapping are untouched.
+export function getRoleDisplayLabel(role: UserRole, displayRole?: string): string {
+  if (displayRole === 'Production Incharge') return 'Admin'
+  return displayRole ?? ROLE_LABELS[role]
 }
 
 export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {

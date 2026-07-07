@@ -4,6 +4,25 @@ import { PROJECTS, MISTAKES } from '../../data/mockData'
 import { useAppData } from '../../context/AppDataContext'
 import { AppHeader } from '../../components/layout/AppHeader'
 import { BackButton } from '../../components/layout/BackButton'
+import { getLeadFlowBucket, isLeadConverted } from '../../utils/stageHelpers'
+import type { LeadSource } from '../../types'
+
+const LEAD_SOURCE_ORDER: { value: LeadSource; label: string }[] = [
+  { value: 'existing_customer', label: 'Existing Customer' },
+  { value: 'instagram',         label: 'Instagram'         },
+  { value: 'facebook',          label: 'Facebook'          },
+  { value: 'whatsapp',          label: 'WhatsApp'          },
+  { value: 'google',            label: 'Google'            },
+  { value: 'walk_in',           label: 'Walk-in'           },
+  { value: 'client_ref',        label: 'Client Reference'  },
+  { value: 'cold_call',         label: 'Cold Call'         },
+  { value: 'cni',               label: 'CNI'               },
+  { value: 'bni',               label: 'BNI'               },
+  { value: 'referral',          label: 'Referral'          },
+  { value: 'online',            label: 'Online'            },
+  { value: 'md_ed_ref',         label: 'MD / ED Reference' },
+  { value: 'other',             label: 'Other'             },
+]
 
 type Period = 'this_month' | 'last_month' | 'quarter' | 'year'
 
@@ -24,7 +43,7 @@ const BAR_DATA = [
 ]
 
 export default function ReportsScreen() {
-  const { payments, leads } = useAppData()
+  const { payments, leads, projects, tasks } = useAppData()
   const [period, setPeriod] = useState<Period>('this_month')
 
   const totalRevenue      = payments.reduce((s, p) => s + p.received, 0)
@@ -45,12 +64,26 @@ export default function ReportsScreen() {
     { label: 'Conversion Rate',   value: `${Math.round((wonLeads / leads.length) * 100)}%`, sub: 'Leads to orders', icon: TrendingUp, color: 'bg-violet-50 text-violet-700', trend: 'up' },
   ]
 
-  const productBreakdown = [
-    { label: 'UPVC Windows', percent: 45, color: 'bg-indigo-500' },
-    { label: 'UPVC Doors',   percent: 28, color: 'bg-teal-500'   },
-    { label: 'Aluminium',    percent: 18, color: 'bg-amber-500'  },
-    { label: 'Glass Work',   percent: 9,  color: 'bg-violet-500' },
-  ]
+  // Lead Source Conversion — real data from leads/projects, no hardcoded sample values
+  const leadSourceRows = LEAD_SOURCE_ORDER.map(({ value, label }) => {
+    const sourceLeads = leads.filter(l => l.source === value)
+    const total = sourceLeads.length
+    const contacted = sourceLeads.filter(l => l.status !== 'new').length
+    const measurement = sourceLeads.filter(l => {
+      if (isLeadConverted(l)) return true
+      const bucket = getLeadFlowBucket(l, projects, tasks)
+      return bucket === 'measurement' || bucket === 'quotation'
+    }).length
+    const quotation = sourceLeads.filter(l => isLeadConverted(l) || getLeadFlowBucket(l, projects, tasks) === 'quotation').length
+    const converted = sourceLeads.filter(isLeadConverted)
+    const convertedCount = converted.length
+    const conversionPct = total > 0 ? (convertedCount / total) * 100 : 0
+    const totalValue = converted.reduce((s, l) => {
+      const proj = projects.find(p => p.leadId === l.id)
+      return s + (proj ? (proj.costBreakdown?.quotationAmount ?? proj.quotationAmount ?? proj.value ?? 0) : 0)
+    }, 0)
+    return { label, total, contacted, measurement, quotation, convertedCount, conversionPct, totalValue }
+  }).filter(r => r.total > 0)
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
@@ -121,22 +154,40 @@ export default function ReportsScreen() {
           </div>
         </div>
 
-        {/* Product Breakdown */}
+        {/* Lead Source Conversion */}
         <div className="bg-white rounded-2xl shadow-card border border-slate-100 p-4">
-          <p className="text-sm font-bold text-slate-700 mb-4">Product Mix</p>
-          <div className="space-y-3">
-            {productBreakdown.map(({ label, percent, color }) => (
-              <div key={label}>
-                <div className="flex justify-between mb-1">
-                  <span className="text-xs font-medium text-slate-600">{label}</span>
-                  <span className="text-xs font-bold text-slate-700">{percent}%</span>
+          <p className="text-sm font-bold text-slate-700 mb-4">Lead Source Conversion</p>
+          {leadSourceRows.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No leads yet</p>
+          ) : (
+            <div className="space-y-3">
+              {leadSourceRows.map(({ label, total, contacted, measurement, quotation, convertedCount, conversionPct, totalValue }) => (
+                <div key={label} className="border border-slate-100 rounded-xl p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-700">{label}</span>
+                    <span className="text-xs font-extrabold text-emerald-600">{conversionPct.toFixed(0)}%</span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5 text-center">
+                    {[
+                      { l: 'Leads',       v: total },
+                      { l: 'Contacted',   v: contacted },
+                      { l: 'Measure.',    v: measurement },
+                      { l: 'Quotation',   v: quotation },
+                      { l: 'Converted',   v: convertedCount },
+                    ].map(({ l, v }) => (
+                      <div key={l} className="bg-slate-50 rounded-lg py-1.5">
+                        <p className="text-xs font-extrabold text-slate-700">{v}</p>
+                        <p className="text-[9px] text-slate-400">{l}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {totalValue > 0 && (
+                    <p className="text-[11px] text-slate-400 mt-2">Converted project value: <span className="font-semibold text-slate-600">₹{totalValue.toLocaleString('en-IN')}</span></p>
+                  )}
                 </div>
-                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full ${color}`} style={{ width: `${percent}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Lead Pipeline */}

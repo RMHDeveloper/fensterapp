@@ -1,4 +1,4 @@
-import type { Project, Task, UserRole } from '../types'
+import type { Project, Task, UserRole, Lead, FlowStage } from '../types'
 
 // Normalizes free-text role variants (PM, Production Manager, Production Incharge,
 // Project Incharge, Installation Technician, etc.) into the canonical UserRole used
@@ -17,6 +17,12 @@ export function normalizeRole(role?: string | null): UserRole | undefined {
     viewer: 'viewer',
   }
   return map[key] ?? (role as UserRole)
+}
+
+// 'won' is kept as a legacy alias for leads converted before this status was renamed —
+// treated identically to 'converted' everywhere in the app.
+export function isLeadConverted(lead: Lead): boolean {
+  return lead.status === 'won' || lead.status === 'converted'
 }
 
 export function isCompletedProject(project: Project): boolean {
@@ -56,4 +62,45 @@ export function getProjectFilterStage(project: Project, tasks: Task[]): ProjectF
   if (stage === 'installation_update') return 'installation'
   if (stage === 'final_payment' || stage === 'final_completion') return 'collection'
   return null
+}
+
+// Real runtime order of flow stages (NOT the declaration order in FlowStage) —
+// derived from how each stage's submit handler actually transitions to the next one.
+export const FLOW_ORDER: FlowStage[] = [
+  'site_assign', 'site_visit', 'reschedule_review', 'site_review',
+  'owner_approval', 'send_to_client', 'advance_payment',
+  'production_assign', 'production_check', 'production_work',
+  'installation_assign', 'installation_update', 'final_payment', 'final_completion', 'completed',
+]
+export function flowReached(stage: FlowStage | undefined, target: FlowStage): boolean {
+  if (!stage) return false
+  return FLOW_ORDER.indexOf(stage) >= FLOW_ORDER.indexOf(target)
+}
+
+// Measurement: from assigning the Site Engineer through the LM preparing the quotation
+// (still hasn't been sent to MD/ED yet). Everything else on the linked project's active
+// flow task — MD/ED approval through advance payment — counts as Quotation/Negotiation,
+// right up until the LM clicks Convert to Project.
+const LEAD_MEASUREMENT_FLOW_STAGES = new Set<FlowStage>(['site_assign', 'site_visit', 'reschedule_review', 'site_review'])
+
+export type LeadFlowBucket = 'measurement' | 'quotation' | null
+
+// A lead's "in-progress" bucket, derived from its linked (still pendingConversion)
+// project's active flow task — mirrors getProjectFilterStage's approach of trusting
+// the task's real flowStage instead of ambiguous stored stage strings.
+export function getLeadFlowBucket(lead: Lead, projects: Project[], tasks: Task[]): LeadFlowBucket {
+  if (lead.status !== 'qualified') return null
+  const proj = projects.find(p => p.leadId === lead.id)
+  if (!proj) return 'measurement'
+  const activeTask = tasks.find(t => t.projectId === proj.id && t.flowStage && t.flowStage !== 'completed')
+  if (!activeTask?.flowStage) return 'measurement'
+  return LEAD_MEASUREMENT_FLOW_STAGES.has(activeTask.flowStage) ? 'measurement' : 'quotation'
+}
+
+// Advance payment has been recorded once the linked project's active flow task has moved
+// at or past the advance_payment stage — gates the "Convert to Project" button while the
+// project is still pendingConversion.
+export function isAdvanceReceived(projectId: string, tasks: Task[]): boolean {
+  const activeTask = tasks.find(t => t.projectId === projectId && t.flowStage && t.flowStage !== 'completed')
+  return flowReached(activeTask?.flowStage, 'advance_payment')
 }

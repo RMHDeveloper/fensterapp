@@ -110,8 +110,8 @@ const FLOW_STAGE_LABEL: Record<string, string> = {
 const STAGE_HANDLER_ROLE: Record<string, string> = {
   site_assign: 'Sales Team', site_visit: 'Site Engineer', reschedule_review: 'Sales Team',
   site_review: 'Sales Team', owner_approval: 'MD/ED', send_to_client: 'Sales Team',
-  production_assign: 'Sales Team', production_check: 'Production Admin',
-  advance_payment: 'Sales Team', production_work: 'Production Incharge',
+  production_assign: 'Sales Team', production_check: 'Admin',
+  advance_payment: 'Sales Team', production_work: 'Production Manager',
   installation_assign: 'Sales Team', installation_update: 'Technician',
   final_payment: 'Sales Team', final_completion: 'Sales Team', completed: '—',
 }

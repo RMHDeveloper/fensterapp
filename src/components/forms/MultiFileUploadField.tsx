@@ -15,12 +15,13 @@ interface Props {
   error?: string
   helperText?: string
   maxFiles?: number
+  uploadButtonLabel?: string
 }
 
 function isImageName(name: string) { return /\.(jpg|jpeg|png|gif|webp)$/i.test(name) }
 function isPdfName(name: string)   { return /\.pdf$/i.test(name) }
 
-export function MultiFileUploadField({ label, files, onChange, accept = DEFAULT_ACCEPT, required, error, helperText, maxFiles }: Props) {
+export function MultiFileUploadField({ label, files, onChange, accept = DEFAULT_ACCEPT, required, error, helperText, maxFiles, uploadButtonLabel = 'Upload File' }: Props) {
   const inputRef  = useRef<HTMLInputElement>(null)
   const atMax = maxFiles != null && files.length >= maxFiles
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
@@ -89,7 +90,7 @@ export function MultiFileUploadField({ label, files, onChange, accept = DEFAULT_
           }`}
       >
         <Upload size={15} />
-        {uploading ? 'Uploading…' : 'Upload File'}
+        {uploading ? 'Uploading…' : uploadButtonLabel}
       </button>
       {atMax && (
         <p className="text-[11px] text-amber-600 font-semibold mt-1">Remove the current file to upload a different one.</p>

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { LogOut, X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { ROLE_LABELS } from '../../data/permissions'
+import { getRoleDisplayLabel } from '../../data/permissions'
 import { getMainItems, NAV_SECTIONS } from './navItems'
 
 interface Props {
@@ -101,7 +101,7 @@ export function MobileMenuDrawer({ isOpen, onClose }: Props) {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-slate-800 truncate">{user?.name ?? 'Guest'}</p>
               <p className="text-[10px] text-slate-400 truncate">
-                {user ? (user.displayRole ?? ROLE_LABELS[user.role]) : ''}
+                {user ? getRoleDisplayLabel(user.role, user.displayRole) : ''}
               </p>
             </div>
             <button

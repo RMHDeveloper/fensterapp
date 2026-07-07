@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   X, CheckCircle2, AlertTriangle, Camera, Clock, Send, PhoneCall,
-  Package, Wrench, CreditCard, Eye, Download, FileText, Copy, Check,
+  Package, Wrench, CreditCard, Eye, Download, FileText, Copy, Check, FolderOpen,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useAppData } from '../../context/AppDataContext'
@@ -55,6 +56,10 @@ function isSameQuotationFile(a?: string, b?: string) {
     return a.trim() === b.trim()
   }
 }
+
+// Display-only rename: the production_admin role's visible label is now "Admin" —
+// internal role/displayRole matching is untouched, this only affects rendered text.
+const PRODUCTION_ADMIN_LABEL = 'Admin'
 
 // Map from task flowStage → project currentStage (for timeline / filter updates)
 const FLOW_TO_PROJECT_STAGE: Partial<Record<string, ProjectStage>> = {
@@ -442,6 +447,7 @@ const DEFAULT_AVAIL: AvailItem[] = [
 export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const { user, can }                        = useAuth()
   const { updateTask: ctxUpdateTask, updateProject, tasks, projects, leads } = useAppData()
+  const navigate                             = useNavigate()
   const role                                 = user?.role ?? 'lead_manager'
   const todayStr                             = new Date().toISOString().slice(0, 10)
   const project                              = projects.find(p => p.id === task.projectId)
@@ -458,9 +464,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     ...getActiveManagedUsersByDisplayRole('Installation Incharge').filter(n => !DEFAULT_INSTALLERS.includes(n)),
     ...getActiveManagedUsersByDisplayRole('Installation Technician').filter(n => !DEFAULT_INSTALLERS.includes(n)),
   ]
-  // Matched by internal role, not displayRole string — "Production Incharge" as a
-  // displayRole label is ambiguously reused for both production_admin and
-  // production_manager elsewhere in the app, so role is the only reliable filter.
+  // Matched by internal role, not the stored displayRole string, which has been
+  // ambiguously reused for both production_admin and production_manager
+  // elsewhere in the app, so role is the only reliable filter.
   const productionAdminOptions = loadManagedUsers()
     .filter(u => u.role === 'production_admin' && u.status === 'active').map(u => u.fullName)
   const productionManagerOptions = loadManagedUsers()
@@ -536,6 +542,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [notAvailNote,  setNotAvailNote]  = useState('')
   const [notAvailFiles, setNotAvailFiles] = useState<string[]>([])
   const [notAvailLmAction, setNotAvailLmAction] = useState('')
+  const [restockDate, setRestockDate] = useState('')
 
   // ── ADVANCE PAYMENT ───────────────────────────────────────────────────────
   const [advPaidAmt,       setAdvPaidAmt]       = useState('')
@@ -564,6 +571,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   // ── INSTALLATION UPDATE ───────────────────────────────────────────────────
   const [instNotCompNote,       setInstNotCompNote]       = useState('')
   const [instNotCompFiles,      setInstNotCompFiles]      = useState<string[]>([])
+  const [instNextVisitDate,     setInstNextVisitDate]     = useState('')
+  const [instNotCompExtraNotes, setInstNotCompExtraNotes] = useState('')
   const [instMistakeNote,       setInstMistakeNote]       = useState('')
   const [instMistakePhotos,     setInstMistakePhotos]     = useState<string[]>([])
   const [instMistakeReviewAction, setInstMistakeReviewAction] = useState('')
@@ -598,7 +607,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [costMaterial, setCostMaterial] = useState('')
   const [costTransAmt, setCostTransAmt] = useState('')
 
-  // ── PHASE 8: Production Incharge availability checklist ──────────────────────
+  // ── PHASE 8: Admin availability checklist ──────────────────────
   const [availChecklist, setAvailChecklist] = useState<AvailItem[]>(DEFAULT_AVAIL)
 
   // ── PHASE 9: Production Manager 6-step checklist ──────────────────────────
@@ -650,7 +659,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setCuttingSheetFiles(task.cuttingSheet ? [task.cuttingSheet] : [])
     setAdditionalDocs(task.additionalDocs ?? [])
     setProdAssignNote(task.productionSheetNote ?? '')
-    setNotAvailNote(''); setNotAvailFiles([]); setNotAvailLmAction('')
+    // Default Project Incharge to Santhanam when available; keep the task's existing
+    // assignee if it was already set (e.g. re-opening an in-progress job sheet)
+    setJobSheetAssignee(
+      task.assignee && productionAdminOptions.includes(task.assignee) ? task.assignee
+        : productionAdminOptions.includes('Santhanam') ? 'Santhanam'
+        : ''
+    )
+    setNotAvailNote(''); setNotAvailFiles([]); setNotAvailLmAction(''); setRestockDate('')
     setAdvPaidAmt(task.paidAmount ? String(task.paidAmount) : '')
     setAdvPayScreenshot(task.advancePaymentScreenshot ?? [])
     setAdvBalAmt(task.balanceAmount ? String(task.balanceAmount) : '')
@@ -665,7 +681,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setInstCost(task.installationCost ? String(task.installationCost) : '')
     setMatCost(task.materialCost ? String(task.materialCost) : '')
     setTransCost(task.transportCost ? String(task.transportCost) : '')
-    setInstNotCompNote(''); setInstNotCompFiles([])
+    setInstNotCompNote(''); setInstNotCompFiles([]); setInstNextVisitDate(todayStr); setInstNotCompExtraNotes('')
     setInstMistakeNote(''); setInstMistakePhotos([])
     setInstCompletedPhotos([])
     setExtraSheets([])
@@ -1154,7 +1170,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   function submitProductionAssign() {
     const hasJobSheet = jobSheetFiles.length > 0 || jobSheetText.trim().length > 0
     if (!hasJobSheet) { setError('Upload job sheet or type job sheet details.'); return }
-    if (productionAdminOptions.length > 0 && !jobSheetAssignee) { setError('Select a Production Incharge.'); return }
+    if (productionAdminOptions.length > 0 && !jobSheetAssignee) { setError('Select an Admin.'); return }
     save({
       flowStage: 'production_check', flowStatus: 'waiting', status: 'pending',
       title: 'Check Material Availability',
@@ -1165,7 +1181,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       additionalDocs: [...additionalDocs, ...extraSheets.flat()].length > 0 ? [...additionalDocs, ...extraSheets.flat()] : undefined,
       productionSheetNote: prodAssignNote || undefined,
       assignee: jobSheetAssignee || undefined,
-    }, `Job sheet sent to ${jobSheetAssignee || 'Production Incharge'} — checking material availability`, [...jobSheetFiles, ...glassSheetFiles, ...cuttingSheetFiles, ...additionalDocs, ...extraSheets.flat()])
+    }, `Job sheet sent to ${jobSheetAssignee || 'Admin'} — checking material availability`, [...jobSheetFiles, ...glassSheetFiles, ...cuttingSheetFiles, ...additionalDocs, ...extraSheets.flat()])
   }
 
   function submitProductionCheck() {
@@ -1194,11 +1210,20 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       return
     }
 
-    // If mandatory items are ordered (not blocked), proceed to production_work
-    const orderedLabel = orderedMandatory.map(i => i.label).join(', ')
+    // Ordered mandatory items aren't confirmed available yet — don't unlock
+    // Assign to Production Manager until they're actually in stock.
+    if (orderedMandatory.length > 0) {
+      const orderedLabel = orderedMandatory.map(i => i.label).join(', ')
+      save({
+        flowStatus: 'not_available', status: 'overdue',
+        notAvailableReason: `On order: ${orderedLabel}`,
+        availabilityChecklist: savedChecklist,
+      }, `Materials on order: ${orderedLabel}`, [])
+      return
+    }
+
     const glassItem = availChecklist.find(i => i.id === 'glass')
     const glassNote = glassItem?.status === 'not_available' ? ' (Glass noted as not available)' : glassItem?.status === 'order' ? ' (Glass being ordered)' : ''
-    const orderedNote = orderedMandatory.length > 0 ? ` — ordering: ${orderedLabel}` : ''
     save({
       flowStage: 'production_work', flowStatus: 'ready', status: 'pending',
       title: 'Start Production Work',
@@ -1206,7 +1231,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       availabilityChecklist: savedChecklist,
       assignee: pmAssignee || undefined,
       dueDate: pmDueDate || 'Today',
-    }, `Materials checked${glassNote}${orderedNote} — assigned to ${pmAssignee || 'Production Manager'}`)
+    }, `Materials checked${glassNote} — assigned to ${pmAssignee || 'Production Manager'}`)
   }
 
   function submitNotAvailLmAction() {
@@ -1218,14 +1243,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         flowStage: 'production_check', flowStatus: 'waiting', status: 'pending',
         title: 'Check Material Availability',
         notAvailableReason: undefined,
-      }, 'Sales Team sent back to Production Incharge for recheck')
-    } else if (notAvailLmAction === 'assign_pm') {
-      save({
-        flowStage: 'production_work', flowStatus: 'ready', status: 'pending',
-        title: 'Start Production Work',
-        notAvailableReason: undefined,
-      }, 'Materials resolved — assigned to Production Manager')
+      }, 'Sales Team sent back to Admin for recheck')
     }
+  }
+
+  function submitRestockAvailability() {
+    if (!notAvailNote.trim()) { setError('Enter restock notes.'); return }
+    const by = role === 'owner' ? 'MD/ED' : 'Sales Team'
+    save({
+      flowStage: 'production_check', flowStatus: 'waiting', status: 'pending',
+      title: 'Check Material Availability',
+      notAvailableReason: notAvailNote.trim(),
+      restockExpectedDate: restockDate || undefined,
+    }, `Restock availability requested by ${by}${restockDate ? ` — expected ${restockDate}` : ''}`)
   }
 
   function submitAdvancePayment() {
@@ -1329,8 +1359,13 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       }, 'Installation completed', instCompletedPhotos)
     } else if (sel === 'not_completed') {
       if (!instNotCompNote.trim()) { setError('Add reason before saving.'); return }
-      save({ flowStatus: 'not_completed', status: 'overdue', installationMistakeDetails: instNotCompNote },
-        `Not completed: ${instNotCompNote}`, instNotCompFiles)
+      if (!instNextVisitDate)      { setError('Select the next visit date.'); return }
+      save({
+        flowStatus: 'not_completed', status: 'overdue',
+        installationMistakeDetails: instNotCompNote,
+        installationNextVisitDate: instNextVisitDate,
+        note: instNotCompExtraNotes || undefined,
+      }, `Installation not completed. Next visit scheduled on ${instNextVisitDate}.`, instNotCompFiles)
     } else {
       if (!instMistakeNote.trim()) { setError('Add mistake details.'); return }
       save({
@@ -1347,12 +1382,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       save({
         flowStage: 'production_check', flowStatus: 'waiting', status: 'pending',
         title: 'Check Material Availability',
-      }, 'Installation mistake — sent back to Production Incharge for material check')
+      }, 'Installation mistake — sent back to Admin for material check')
     } else if (instMistakeReviewAction === 'send_back_prod_manager') {
       save({
         flowStage: 'production_work', flowStatus: 'pending', status: 'in_progress',
         title: 'Production Work',
-      }, 'Installation mistake — sent back to Production Incharge for rework')
+      }, 'Installation mistake — sent back to Admin for rework')
     } else if (instMistakeReviewAction === 'reassign_installation') {
       save({
         flowStage: 'installation_assign', flowStatus: 'ready', status: 'pending',
@@ -1517,9 +1552,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <p className="text-white/60 text-[10px] mt-0.5">Lead Owner: {leadOwnerName}</p>
             )}
           </div>
-          <button type="button" onClick={onClose} className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-            <X size={16} className="text-white" />
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {task.projectId && !project?.pendingConversion && (
+              <button type="button" onClick={() => navigate(`/project/${task.projectId}`)}
+                className="flex items-center gap-1.5 px-3 h-8 bg-white/20 rounded-xl text-white text-xs font-bold active:bg-white/30">
+                <FolderOpen size={13} /> View Project
+              </button>
+            )}
+            <button type="button" onClick={onClose} className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+              <X size={16} className="text-white" />
+            </button>
+          </div>
         </div>
 
         <div className="px-5 py-4 space-y-3 pb-10">
@@ -2891,7 +2934,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {displayStage === 'production_assign' && role !== 'lead_manager' && role !== 'owner' && !demoOverride && (
             <WaitingView icon={Package} color="bg-orange-50 border border-orange-200 text-orange-700"
               title="Waiting for Job Sheet"
-              sub="Sales Team is preparing and sending the job sheet to Production Incharge" />
+              sub="Sales Team is preparing and sending the job sheet to Admin" />
           )}
 
           {/* CONTROL: Production Assign — owner sees Take Control */}
@@ -2899,7 +2942,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             <>
               <WaitingView icon={Package} color="bg-orange-50 border border-orange-200 text-orange-700"
                 title="Waiting for Job Sheet"
-                sub="Sales Team is preparing and sending the job sheet to Production Incharge" />
+                sub="Sales Team is preparing and sending the job sheet to Admin" />
               <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team needs to upload and send the job sheet."
                 onOverride={() => setDemoOverride(true)} variant="owner" />
             </>
@@ -2916,12 +2959,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
                 </div>
               )}
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Send Job Sheet to Production Incharge</p>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Send Job Sheet to Admin</p>
 
               <div className="space-y-2">
                 <label className={lbl}>Job Sheet {req}</label>
-                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx,.xls"
-                  files={jobSheetFiles} onChange={setJobSheetFiles} maxFiles={1} helperText="Upload job sheet file" />
+                <MultiFileUploadField label="" accept=".pdf,application/pdf" uploadButtonLabel="Upload Job Sheet PDF"
+                  files={jobSheetFiles} onChange={setJobSheetFiles} maxFiles={1} helperText="PDF only" />
                 <p className="text-[11px] text-slate-400 text-center">— OR type job sheet details below —</p>
                 <textarea rows={3} value={jobSheetText} onChange={e => setJobSheetText(e.target.value)}
                   placeholder="Type job sheet details: product specs, dimensions, quantities…"
@@ -2930,13 +2973,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               {productionAdminOptions.length > 0 && (
                 <div>
-                  <label className={lbl}>Assign to Production Incharge {req}</label>
+                  <label className={lbl}>Assign to {PRODUCTION_ADMIN_LABEL} {req}</label>
                   <select value={jobSheetAssignee} onChange={e => setJobSheetAssignee(e.target.value)} className={inp}>
-                    <option value="" disabled>Select Production Incharge</option>
+                    <option value="" disabled>Select {PRODUCTION_ADMIN_LABEL}</option>
                     {productionAdminOptions.map(name => (
                       <option key={name} value={name}>{name}</option>
                     ))}
                   </select>
+                  {jobSheetAssignee && (
+                    <p className="text-[11px] text-slate-400 mt-1">Project Incharge: {jobSheetAssignee}</p>
+                  )}
                 </div>
               )}
 
@@ -2987,7 +3033,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           )}
 
           {/* ═══════════════════════════════════════════════════════════════
-              7a. PRODUCTION CHECK — Production Incharge
+              7a. PRODUCTION CHECK — Admin
           ════════════════════════════════════════════════════════════════ */}
           {displayStage === 'production_check' && (role === 'production_admin' || (role === 'owner' && demoOverride)) && flowStatus !== 'not_available' && (
             <>
@@ -3044,7 +3090,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               {(() => {
                 const mandatory = availChecklist.filter(i => i.id !== 'glass')
-                const allMandOk = mandatory.every(i => i.status !== 'not_available')
+                const allMandOk = mandatory.every(i => i.status === 'available')
                 return allMandOk ? (
                   <>
                     {productionManagerOptions.length > 0 && (
@@ -3085,7 +3131,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 : 'Checking Material Availability'}
               sub={flowStatus === 'materials_ordered'
                 ? `Materials have been ordered. Production starts when they arrive.`
-                : 'Production Incharge is verifying Profile / Glass / Hardware stock'} />
+                : 'Admin is verifying Profile / Glass / Hardware stock'} />
           )}
 
           {/* CONTROL: Production Check — owner sees Take Control, LM sees Override */}
@@ -3093,15 +3139,15 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             <>
               <WaitingView icon={Package} color="bg-amber-50 border border-amber-200 text-amber-700"
                 title={flowStatus === 'materials_ordered' ? 'Admin Ordered — Waiting for Delivery' : 'Checking Material Availability'}
-                sub={flowStatus === 'materials_ordered' ? 'Materials ordered. Production starts when they arrive.' : 'Production Incharge is verifying Profile / Glass / Hardware stock'} />
-              <DemoControlCard waitingFor="Production Incharge" description="Production Incharge needs to check material availability."
+                sub={flowStatus === 'materials_ordered' ? 'Materials ordered. Production starts when they arrive.' : 'Admin is verifying Profile / Glass / Hardware stock'} />
+              <DemoControlCard waitingFor="Admin" description="Admin needs to check material availability."
                 onOverride={() => setDemoOverride(true)} variant="owner" />
             </>
           )}
           {displayStage === 'production_check' && canDemoOverride && role !== 'owner' && flowStatus !== 'not_available' && !demoOverride && (
             <DemoControlCard
-              waitingFor="Production Incharge"
-              description="Production Incharge needs to check material availability (Profile/Glass/Hardware). For demo, confirm it yourself."
+              waitingFor="Admin"
+              description="Admin needs to check material availability (Profile/Glass/Hardware). For demo, confirm it yourself."
               onOverride={() => setDemoOverride(true)}
             />
           )}
@@ -3110,7 +3156,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Production Incharge</p>
+                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Admin</p>
                 </div>
                 <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
               </div>
@@ -3181,18 +3227,36 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-4 space-y-2">
                 <p className="text-xs font-bold text-red-600 uppercase">Materials Not Available</p>
                 <p className="text-sm text-red-700">{task.notAvailableReason}</p>
-                <p className="text-xs text-red-400">Production Incharge reported unavailability.</p>
+                <p className="text-xs text-red-400">Admin reported unavailability.</p>
               </div>
 
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Sales Team Action</p>
-              <Opt value="wait"      label="Wait for Stock"               sub="Keep status and wait for material arrival"       accent="border-slate-200"  sel={notAvailLmAction} onPick={setNotAvailLmAction} />
-              <Opt value="recheck"   label="Recheck Availability"         sub="Send back to Production Incharge to recheck"         accent="border-amber-200"  sel={notAvailLmAction} onPick={setNotAvailLmAction} />
-              <Opt value="assign_pm" label="Assign to Production Manager" sub="Materials resolved — proceed with production"     accent="border-emerald-200" sel={notAvailLmAction} onPick={setNotAvailLmAction} />
+              <Opt value="wait"      label="Wait for Stock"        sub="Keep status and wait for material arrival" accent="border-slate-200"   sel={notAvailLmAction} onPick={setNotAvailLmAction} />
+              <Opt value="recheck"   label="Recheck Availability"  sub="Send back to Admin to recheck"              accent="border-amber-200"   sel={notAvailLmAction} onPick={setNotAvailLmAction} />
+              <Opt value="restock"   label="Restock Availability"  sub="Log a restock request with expected date"   accent="border-orange-200"  sel={notAvailLmAction} onPick={setNotAvailLmAction} />
 
-              {notAvailLmAction && (
+              {notAvailLmAction === 'restock' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className={lbl}>Restock Notes {req}</label>
+                    <textarea rows={3} value={notAvailNote} onChange={e => setNotAvailNote(e.target.value)}
+                      placeholder="What's being restocked, supplier, quantity…" className={`${inp} resize-none`} />
+                  </div>
+                  <div>
+                    <label className={lbl}>Expected Availability Date <span className="text-slate-300 font-normal">(optional)</span></label>
+                    <input type="date" value={restockDate} onChange={e => setRestockDate(e.target.value)} className={inp} />
+                  </div>
+                  <button type="button" onClick={submitRestockAvailability}
+                    className="w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 bg-orange-600">
+                    Submit Restock Update
+                  </button>
+                </div>
+              )}
+
+              {(notAvailLmAction === 'wait' || notAvailLmAction === 'recheck') && (
                 <button type="button" onClick={submitNotAvailLmAction}
-                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${notAvailLmAction === 'assign_pm' ? 'bg-emerald-600' : notAvailLmAction === 'recheck' ? 'bg-amber-600' : 'bg-slate-500'}`}>
-                  {notAvailLmAction === 'wait' ? 'Keep Waiting' : notAvailLmAction === 'recheck' ? 'Send Back to Production Incharge' : '✓ Assign to Production Manager'}
+                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${notAvailLmAction === 'recheck' ? 'bg-amber-600' : 'bg-slate-500'}`}>
+                  {notAvailLmAction === 'wait' ? 'Keep Waiting' : 'Send Back to Admin'}
                 </button>
               )}
             </>
@@ -3289,7 +3353,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           )}
 
           {/* ═══════════════════════════════════════════════════════════════
-              9a. PRODUCTION WORK — Production Incharge (6-step checklist)
+              9a. PRODUCTION WORK — Production Manager (6-step checklist)
           ════════════════════════════════════════════════════════════════ */}
           {displayStage === 'production_work' && (role === 'production_manager' || (role === 'owner' && demoOverride)) && flowStatus !== 'overdue' && flowStatus !== 'ready_to_pack' && (
             <>
@@ -3356,10 +3420,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 </button>
               )}
 
-              {/* Material status from Production Incharge check — shown at bottom */}
+              {/* Material status from Admin check — shown at bottom */}
               {task.availabilityChecklist && task.availabilityChecklist.length > 0 && (
                 <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Material Status (from Production Incharge)</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Material Status (from Admin)</p>
                   <div className="flex flex-wrap gap-2">
                     {task.availabilityChecklist.map(item => {
                       const statusColor = item.available
@@ -3426,8 +3490,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           )}
           {displayStage === 'production_work' && canDemoOverride && role !== 'owner' && flowStatus !== 'overdue' && flowStatus !== 'ready_to_pack' && !demoOverride && (
             <DemoControlCard
-              waitingFor="Production Incharge"
-              description="Production Incharge needs to complete all 6 production steps and mark Ready to Dispatch. For demo, complete it yourself."
+              waitingFor="Production Manager"
+              description="Production Manager needs to complete all 6 production steps and mark Ready to Dispatch. For demo, complete it yourself."
               onOverride={() => setDemoOverride(true)}
             />
           )}
@@ -3830,10 +3894,21 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <Opt value="mistake"       label="Mistake"       sub="An issue occurred during installation"  accent="border-red-200"     sel={sel} onPick={pick} />
 
               {sel === 'not_completed' && (
-                <NoteWithFilesField label="Reason" required
-                  noteValue={instNotCompNote} onNoteChange={setInstNotCompNote}
-                  files={instNotCompFiles} onFilesChange={setInstNotCompFiles}
-                  placeholder="Why couldn't the installation be completed?" />
+                <div className="space-y-3">
+                  <NoteWithFilesField label="Reason" required
+                    noteValue={instNotCompNote} onNoteChange={setInstNotCompNote}
+                    files={instNotCompFiles} onFilesChange={setInstNotCompFiles}
+                    placeholder="Why couldn't the installation be completed?" />
+                  <div>
+                    <label className={lbl}>Next Visit Date {req}</label>
+                    <input type="date" value={instNextVisitDate} onChange={e => setInstNextVisitDate(e.target.value)} className={inp} />
+                  </div>
+                  <div>
+                    <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
+                    <textarea rows={2} value={instNotCompExtraNotes} onChange={e => setInstNotCompExtraNotes(e.target.value)}
+                      placeholder="Any additional notes…" className={`${inp} resize-none`} />
+                  </div>
+                </div>
               )}
 
               {sel === 'mistake' && (
@@ -3886,6 +3961,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 {task.installationMistakeDetails && (
                   <p className="text-sm text-red-700">{task.installationMistakeDetails}</p>
                 )}
+                {flowStatus === 'not_completed' && task.installationNextVisitDate && (
+                  <p className="text-xs font-semibold text-red-600">Next Visit Date: {task.installationNextVisitDate}</p>
+                )}
+                {task.note && (
+                  <p className="text-xs text-red-500">Notes: {task.note}</p>
+                )}
                 {task.installationPerson && (
                   <p className="text-xs text-red-400">Reported by installer: {task.installationPerson}</p>
                 )}
@@ -3894,7 +3975,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Review Action</p>
 
               <Opt value="send_back_prod_admin"    label="Send Back to Production Admin"    sub="Material or profile issue — recheck availability"   accent="border-amber-200"  sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
-              <Opt value="send_back_prod_manager"  label="Send Back to Production Incharge"  sub="Rework required — send back to production"           accent="border-orange-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
+              <Opt value="send_back_prod_manager"  label="Send Back to Production Manager"  sub="Rework required — send back to production"           accent="border-orange-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
               <Opt value="reassign_installation"   label="Reassign Installation"            sub="Send new installation team"                          accent="border-blue-200"   sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
               <Opt value="mark_resolved"           label="Mark Resolved"                    sub="Issue is resolved — proceed to final payment"        accent="border-emerald-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
 
@@ -3902,7 +3983,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <button type="button" onClick={submitInstallationMistakeReview}
                   className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${instMistakeReviewAction === 'mark_resolved' ? 'bg-emerald-600' : instMistakeReviewAction === 'reassign_installation' ? 'bg-blue-600' : 'bg-orange-600'}`}>
                   {instMistakeReviewAction === 'send_back_prod_admin' ? 'Send to Production Admin' :
-                   instMistakeReviewAction === 'send_back_prod_manager' ? 'Send to Production Incharge' :
+                   instMistakeReviewAction === 'send_back_prod_manager' ? 'Send to Production Manager' :
                    instMistakeReviewAction === 'reassign_installation' ? 'Reassign Installation' :
                    '✓ Mark Resolved — Proceed to Payment'}
                 </button>
@@ -4026,13 +4107,18 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                               placeholder="0" className={inp} />
                           </div>
                         ))}
-                        {/* Extra Charge — MD/ED only */}
-                        {role === 'owner' && (
+                        {/* Extra Cost — visible to MD/ED/Admin/LO */}
+                        {(role === 'owner' || role === 'lead_manager') && (
                           <div>
-                            <label className={lbl}>Extra Charge (₹) {req}</label>
+                            <label className={lbl}>Extra Cost (₹) {req}</label>
                             <input type="text" inputMode="numeric" value={extraChargeAmt}
                               onChange={e => setExtraChargeAmt(e.target.value.replace(/[^0-9]/g, ''))}
                               placeholder="0 (enter 0 if no additional work was done)" className={inp} />
+                            {extraChargeAmt.trim() !== '' && (
+                              <p className="text-xs font-semibold text-blue-700 mt-1.5">
+                                Extra Cost: ₹{(Number(extraChargeAmt) || 0).toLocaleString('en-IN')}
+                              </p>
+                            )}
                           </div>
                         )}
 
@@ -4090,7 +4176,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                         })()}
                         <button type="button"
                           onClick={() => {
-                            if (role === 'owner' && !extraChargeAmt.trim()) { setError('Enter Extra Charge (enter 0 if none).'); return }
+                            if ((role === 'owner' || role === 'lead_manager') && !extraChargeAmt.trim()) { setError('Enter Extra Cost (enter 0 if none).'); return }
                             const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport]
                               .reduce((s, v) => s + (Number(v) || 0), 0)
                             const extraCharge = Number(extraChargeAmt) || 0

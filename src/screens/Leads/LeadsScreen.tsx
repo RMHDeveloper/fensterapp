@@ -13,7 +13,8 @@ import { Snackbar } from '../../components/feedback/Snackbar'
 import { AppHeader } from '../../components/layout/AppHeader'
 import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { loadManagedUsers } from '../../utils/userStorage'
-import type { Lead, LeadStatus, LeadSource, LeadInterest, Task, Project, FlowStage } from '../../types'
+import { getLeadFlowBucket, isAdvanceReceived, flowReached, isLeadConverted } from '../../utils/stageHelpers'
+import type { Lead, LeadStatus, LeadSource, LeadInterest, Task } from '../../types'
 
 type Filter = 'active' | 'contact' | 'measurement' | 'quotation'
 
@@ -23,48 +24,6 @@ const CHIPS: { value: Filter; label: string }[] = [
   { value: 'measurement', label: 'Measurement' },
   { value: 'quotation',   label: 'Quotation'   },
 ]
-
-// 'won' is kept as a legacy alias for leads converted before this status was renamed —
-// treated identically to 'converted' everywhere in this screen.
-function isLeadConverted(lead: Lead): boolean {
-  return lead.status === 'won' || lead.status === 'converted'
-}
-
-// Real runtime order of flow stages (NOT the declaration order in FlowStage) —
-// derived from how each stage's submit handler actually transitions to the next one.
-const FLOW_ORDER: FlowStage[] = [
-  'site_assign', 'site_visit', 'reschedule_review', 'site_review',
-  'owner_approval', 'send_to_client', 'advance_payment',
-  'production_assign', 'production_check', 'production_work',
-  'installation_assign', 'installation_update', 'final_payment', 'final_completion', 'completed',
-]
-function flowReached(stage: FlowStage | undefined, target: FlowStage): boolean {
-  if (!stage) return false
-  return FLOW_ORDER.indexOf(stage) >= FLOW_ORDER.indexOf(target)
-}
-
-// Measurement: from assigning the Site Engineer through the LM preparing the quotation
-// (still hasn't been sent to MD/ED yet). Everything else on the linked project's active
-// flow task — MD/ED approval through advance payment — counts as Quotation, right up
-// until the LM clicks Convert to Project.
-const LEAD_MEASUREMENT_FLOW_STAGES = new Set<FlowStage>(['site_assign', 'site_visit', 'reschedule_review', 'site_review'])
-
-function getLeadFlowBucket(lead: Lead, projects: Project[], tasks: Task[]): 'measurement' | 'quotation' | null {
-  if (lead.status !== 'qualified') return null
-  const proj = projects.find(p => p.leadId === lead.id)
-  if (!proj) return 'measurement'
-  const activeTask = tasks.find(t => t.projectId === proj.id && t.flowStage && t.flowStage !== 'completed')
-  if (!activeTask?.flowStage) return 'measurement'
-  return LEAD_MEASUREMENT_FLOW_STAGES.has(activeTask.flowStage) ? 'measurement' : 'quotation'
-}
-
-// Advance payment has been recorded once the linked project's active flow task has moved
-// at or past the advance_payment stage — gates the "Convert to Project" button while the
-// project is still pendingConversion.
-function isAdvanceReceived(projectId: string, tasks: Task[]): boolean {
-  const activeTask = tasks.find(t => t.projectId === projectId && t.flowStage && t.flowStage !== 'completed')
-  return flowReached(activeTask?.flowStage, 'advance_payment')
-}
 
 // Negotiation view status lines — Quotation / MD Approval / Client Approval / Advance Payment
 function getNegotiationStatus(task: Task | undefined) {
@@ -143,7 +102,10 @@ export default function LeadsScreen() {
   const [assignFlowTaskId, setAssignFlowTaskId] = useState<string | null>(null)
   const [showStatusOptions, setShowStatusOptions] = useState(false)
   const [convertingProjectId, setConvertingProjectId] = useState<string | null>(null)
+  const [convertProjectName, setConvertProjectName] = useState('')
   const [convertDueDate, setConvertDueDate] = useState('')
+  const [convertNotes, setConvertNotes] = useState('')
+  const [convertError, setConvertError] = useState('')
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
 
   // Once the project + "Assign Site Engineer" task exist, open the real flow popup for it
@@ -418,19 +380,28 @@ export default function LeadsScreen() {
   }
 
   function openConvertToProject(projectId: string) {
+    const proj = projects.find(p => p.id === projectId)
     setConvertingProjectId(projectId)
-    setConvertDueDate('')
+    setConvertProjectName(proj?.name ?? '')
+    setConvertDueDate(new Date().toISOString().slice(0, 10))
+    setConvertNotes('')
+    setConvertError('')
   }
 
-  // dueDate is set when the LM clicks "Done"; omitted when they click "Skip"
-  function finishConvertToProject(dueDate?: string) {
+  function finishConvertToProject() {
     if (!convertingProjectId) return
+    if (!convertProjectName.trim()) { setConvertError('Project name is required.'); return }
+    if (!convertDueDate)            { setConvertError('Due date is required.'); return }
     const projectId = convertingProjectId
+    const proj = projects.find(p => p.id === projectId)
+    const notes = convertNotes.trim()
     updateProject(projectId, {
       pendingConversion: false,
-      ...(dueDate ? { dueDate } : {}),
+      name: convertProjectName.trim(),
+      dueDate: convertDueDate,
+      currentStage: 'production_admin_check',
+      ...(notes ? { description: proj?.description ? `${proj.description}\n\nConversion notes: ${notes}` : notes } : {}),
     })
-    const proj = projects.find(p => p.id === projectId)
     if (proj?.leadId) updateLeadStatus(proj.leadId, 'converted')
     setConvertingProjectId(null)
     setSelected(null)
@@ -873,32 +844,38 @@ export default function LeadsScreen() {
         />
       )}
 
-      {/* ── Convert to Project — optional due date, Done or Skip ── */}
+      {/* ── Convert to Project — name + due date (required), notes (optional) ── */}
       {convertingProjectId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setConvertingProjectId(null)} />
           <div className="relative bg-white rounded-2xl shadow-sheet w-full max-w-[340px] p-5 space-y-4">
             <div>
               <h3 className="text-base font-bold text-slate-800">Convert to Project</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Advance received — set a due date, or skip.</p>
+              <p className="text-xs text-slate-400 mt-0.5">Advance received — confirm the project details.</p>
             </div>
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Due Date <span className="font-normal text-slate-300">(optional)</span></label>
-              <input type="date" value={convertDueDate} onChange={e => setConvertDueDate(e.target.value)}
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Project Name <span className="text-red-500">*</span></label>
+              <input type="text" value={convertProjectName} onChange={e => { setConvertProjectName(e.target.value); setConvertError('') }}
+                placeholder="e.g. Rajesh Kumar — Living Room Windows"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => finishConvertToProject(undefined)}
-                className="w-full bg-white border-2 border-slate-200 text-slate-600 rounded-xl py-3 text-sm font-bold active:bg-slate-50">
-                Skip
-              </button>
-              <button
-                onClick={() => finishConvertToProject(convertDueDate || undefined)}
-                className="w-full bg-indigo-600 text-white rounded-xl py-3 text-sm font-bold active:bg-indigo-700">
-                Done
-              </button>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Due Date <span className="text-red-500">*</span></label>
+              <input type="date" value={convertDueDate} onChange={e => { setConvertDueDate(e.target.value); setConvertError('') }}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
             </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Notes <span className="font-normal text-slate-300">(optional)</span></label>
+              <textarea rows={2} value={convertNotes} onChange={e => setConvertNotes(e.target.value)}
+                placeholder="Any additional notes…"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
+            </div>
+            {convertError && <p className="text-xs text-red-500 font-semibold">{convertError}</p>}
+            <button
+              onClick={finishConvertToProject}
+              className="w-full bg-indigo-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-indigo-700">
+              Convert to Project
+            </button>
           </div>
         </div>
       )}

@@ -32,6 +32,10 @@ export async function initUsersFromSupabase(): Promise<void> {
       if (u.id === 'prod_owner_md' && (u.email === 'haroon@fenster.in' || u.fullName === 'Haroon Khan')) {
         return { ...u, email: 'deepak@fenster.in', fullName: 'Deepak', updatedAt: new Date().toISOString() }
       }
+      // One-time migration: default Project Incharge renamed to Santhanam
+      if (u.id === 'prod_prod_admin' && u.fullName === 'Kavitha R') {
+        return { ...u, fullName: 'Santhanam', email: 'santhanam@fenster.in', updatedAt: new Date().toISOString() }
+      }
       // One-time migration: "Production Incharge" users created before the
       // DISPLAY_ROLE_TO_INTERNAL fix were saved with role: production_manager
       if (u.displayRole === 'Production Incharge' && u.role === 'production_manager') {
@@ -113,9 +117,9 @@ export const DEFAULT_PRODUCTION_USERS: ManagedUser[] = [
   },
   {
     id:            'prod_prod_admin',
-    fullName:      'Kavitha R',
+    fullName:      'Santhanam',
     mobile:        '7789234561',
-    email:         'kavitha@fenster.in',
+    email:         'santhanam@fenster.in',
     password:      'Fenster@PI25',
     role:          'production_admin',
     displayRole:   'Production Incharge',

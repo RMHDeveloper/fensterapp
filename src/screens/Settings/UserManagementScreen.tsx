@@ -15,6 +15,7 @@ import {
 } from '../../utils/userStorage'
 import { getAllManagedUsers } from '../../services/userService'
 import { isSupabaseConfigured } from '../../lib/supabase'
+import { getRoleDisplayLabel } from '../../data/permissions'
 
 type Tab = 'all' | 'active' | 'inactive'
 
@@ -292,7 +293,7 @@ export default function UserManagementScreen() {
                 <div className="mt-2.5 pt-2.5 border-t border-slate-50 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full truncate">
-                      {u.displayRole}
+                      {getRoleDisplayLabel(u.role, u.displayRole)}
                     </span>
                     {u.department && (
                       <span className="text-[10px] text-slate-400 truncate">{u.department}</span>

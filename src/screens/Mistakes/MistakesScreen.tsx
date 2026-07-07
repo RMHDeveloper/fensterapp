@@ -28,7 +28,7 @@ const CATEGORY_ICON: Record<string, string> = {
 const SEND_TO_ROLES = [
   { value: 'site_engineer',      label: 'Site Engineer'      },
   { value: 'production_manager', label: 'Production Manager' },
-  { value: 'production_admin',   label: 'Production Admin'   },
+  { value: 'production_admin',   label: 'Admin'   },
   { value: 'technician',         label: 'Technician'         },
 ]
 

@@ -2,9 +2,10 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../../context/AppDataContext'
 import { AppHeader } from '../../components/layout/AppHeader'
-import { Calendar, ChevronDown, ChevronRight, X } from 'lucide-react'
+import { Calendar, ChevronRight, X } from 'lucide-react'
 import { loadManagedUsers } from '../../utils/userStorage'
-import type { Project } from '../../types'
+import { getLeadFlowBucket, isCompletedProject } from '../../utils/stageHelpers'
+import type { Project, Task, Lead } from '../../types'
 
 type DateFilter = 'today' | 'week' | 'month' | 'custom'
 
@@ -99,22 +100,78 @@ function getStageGroup(p: Project): keyof typeof STAGE_COLOR {
   return 'measurement'
 }
 
-// ── LO Performance detail panel ──────────────────────────────────────────────
+// ── LO Performance — Negotiation / Production / Done ─────────────────────────
+type LOStage = 'negotiation' | 'production' | 'done'
+
+const LO_STAGE_LABEL: Record<LOStage, string> = {
+  negotiation: 'Negotiation', production: 'Production', done: 'Done',
+}
+const LO_STAGE_COLOR: Record<LOStage, string> = {
+  negotiation: 'text-violet-600', production: 'text-amber-600', done: 'text-emerald-600',
+}
+
+interface LORow {
+  id: string
+  customerName: string
+  stageLabel: string
+  amount: number
+  lastUpdated: string
+  path: string
+}
+
 interface LOPanelProps {
   loName: string
-  projects: Project[]
+  negotiationLeads: Lead[]
+  productionProjects: Project[]
+  doneProjects: Project[]
+  allProjects: Project[]
+  initialStage: LOStage
   onClose: () => void
 }
-function LOPanel({ loName, projects, onClose }: LOPanelProps) {
+
+function LOPanel({ loName, negotiationLeads, productionProjects, doneProjects, allProjects, initialStage, onClose }: LOPanelProps) {
   const navigate = useNavigate()
-  const groups = {
-    measurement:  projects.filter(p => getStageGroup(p) === 'measurement'),
-    quotation:    projects.filter(p => getStageGroup(p) === 'quotation'),
-    production:   projects.filter(p => getStageGroup(p) === 'production'),
-    installation: projects.filter(p => getStageGroup(p) === 'installation'),
-    payment:      projects.filter(p => getStageGroup(p) === 'payment'),
-    completed:    projects.filter(p => getStageGroup(p) === 'completed'),
-  }
+  const [stage, setStage]           = useState<LOStage>(initialStage)
+  const [dateFilter, setDateFilter] = useState<DateFilter>('month')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo]     = useState('')
+
+  const { from, to } = useMemo(
+    () => getDateRange(dateFilter, customFrom, customTo),
+    [dateFilter, customFrom, customTo]
+  )
+
+  const rows: LORow[] = useMemo(() => {
+    if (stage === 'negotiation') {
+      return negotiationLeads
+        .filter(l => inRange(leadDate(l), from, to))
+        .map(l => {
+          const proj = allProjects.find(p => p.leadId === l.id)
+          return {
+            id: l.id,
+            customerName: l.name,
+            stageLabel: 'Negotiation',
+            amount: proj ? projectQuota(proj) : 0,
+            lastUpdated: leadDate(l) ?? '—',
+            path: `/leads`,
+          }
+        })
+    }
+    const list = stage === 'production' ? productionProjects : doneProjects
+    return list
+      .filter(p => inRange(p.updatedAt ?? p.createdAt, from, to))
+      .map(p => ({
+        id: p.id,
+        customerName: p.client,
+        stageLabel: stage === 'done' ? 'Completed' : (p.stage || 'In Progress'),
+        amount: projectQuota(p),
+        lastUpdated: p.updatedAt ?? p.createdAt ?? '—',
+        path: `/project/${p.id}`,
+      }))
+  }, [stage, negotiationLeads, productionProjects, doneProjects, allProjects, from, to])
+
+  const totalAmt = rows.reduce((s, r) => s + r.amount, 0)
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 sticky top-0 bg-white">
@@ -127,37 +184,63 @@ function LOPanel({ loName, projects, onClose }: LOPanelProps) {
         </button>
       </div>
 
-      {/* Stage summary chips */}
-      <div className="px-4 pt-3 pb-2 flex gap-2 overflow-x-auto scrollbar-hide flex-shrink-0">
-        {(Object.entries(groups) as [string, Project[]][]).map(([key, list]) => list.length > 0 && (
-          <div key={key} className="flex-shrink-0 flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full px-3 py-1">
-            <span className={`w-2 h-2 rounded-full ${STAGE_COLOR[key]}`} />
-            <span className="text-xs font-semibold text-slate-600 capitalize">{key}</span>
-            <span className="text-xs font-extrabold text-slate-800">{list.length}</span>
-          </div>
+      {/* Stage selector */}
+      <div className="px-4 pt-3 flex gap-2 flex-shrink-0">
+        {(['negotiation', 'production', 'done'] as LOStage[]).map(s => (
+          <button key={s} onClick={() => setStage(s)}
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${stage === s ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+            {LO_STAGE_LABEL[s]}
+          </button>
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-2 pt-2">
-        {projects.length === 0 ? (
-          <p className="text-center text-sm text-slate-400 mt-8">No projects assigned</p>
+      {/* Date filter */}
+      <div className="px-4 pt-3 flex-shrink-0 space-y-2">
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+          {DATE_FILTERS.map(f => (
+            <button key={f.value} onClick={() => setDateFilter(f.value)}
+              className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${dateFilter === f.value ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        {dateFilter === 'custom' && (
+          <div className="flex items-center gap-2">
+            <Calendar size={13} className="text-slate-400 flex-shrink-0" />
+            <input type="date" value={customFrom} max={customTo || undefined}
+              onChange={e => setCustomFrom(e.target.value)}
+              className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 focus:outline-none focus:border-blue-400" />
+            <span className="text-xs text-slate-400 font-semibold flex-shrink-0">to</span>
+            <input type="date" value={customTo} min={customFrom || undefined}
+              onChange={e => setCustomTo(e.target.value)}
+              className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 focus:outline-none focus:border-blue-400" />
+          </div>
+        )}
+      </div>
+
+      {/* Highlighted total */}
+      <div className="px-4 pt-3 flex-shrink-0">
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+          <p className={`text-2xl font-extrabold ${LO_STAGE_COLOR[stage]} leading-none`}>{fmt(totalAmt)}</p>
+          <p className="text-xs text-slate-500 mt-1">{rows.length} {stage === 'negotiation' ? 'lead' : 'project'}{rows.length !== 1 ? 's' : ''} · {LO_STAGE_LABEL[stage]}</p>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 pb-8 pt-3 space-y-2">
+        {rows.length === 0 ? (
+          <p className="text-center text-sm text-slate-400 mt-8">Nothing in this period</p>
         ) : (
-          projects.map(p => {
-            const stage = getStageGroup(p)
-            const q     = projectQuota(p)
-            return (
-              <button key={p.id} onClick={() => navigate(`/project/${p.id}`)}
-                className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-left active:bg-slate-50 flex items-center gap-3">
-                <span className={`w-2 h-full min-h-[36px] rounded-full ${STAGE_COLOR[stage]} flex-shrink-0`} style={{ minWidth: 4, width: 4 }} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-800 truncate">{p.name || p.client}</p>
-                  <p className="text-xs text-slate-400 truncate">{p.client} · {p.stage || p.currentStage}</p>
-                </div>
-                {q > 0 && <p className="text-xs font-semibold text-slate-600 flex-shrink-0">{fmt(q)}</p>}
-                <ChevronRight size={14} className="text-slate-300 flex-shrink-0" />
-              </button>
-            )
-          })
+          rows.map(r => (
+            <button key={r.id} onClick={() => navigate(r.path)}
+              className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-left active:bg-slate-50 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-slate-800 truncate">{r.customerName}</p>
+                <p className="text-xs text-slate-400 truncate">{r.stageLabel} · Updated {r.lastUpdated}</p>
+              </div>
+              {r.amount > 0 && <p className="text-xs font-semibold text-slate-600 flex-shrink-0">{fmt(r.amount)}</p>}
+              <ChevronRight size={14} className="text-slate-300 flex-shrink-0" />
+            </button>
+          ))
         )}
       </div>
     </div>
@@ -173,6 +256,7 @@ export default function OwnerDashboardScreen() {
   const [customFrom, setCustomFrom] = useState('')
   const [customTo,   setCustomTo]   = useState('')
   const [selectedLO, setSelectedLO] = useState<string | null>(null)
+  const [selectedLOStage, setSelectedLOStage] = useState<LOStage>('production')
 
   const { from, to } = useMemo(
     () => getDateRange(dateFilter, customFrom, customTo),
@@ -270,24 +354,36 @@ export default function OwnerDashboardScreen() {
   // asynchronously from Supabase and may still be empty on first mount.
   const allLOs = loadManagedUsers().filter(u => u.status === 'active' && u.role === 'lead_manager')
 
-  // For each LO, get their projects from ALL projects (not just date-filtered) for performance view
+  // For each LO: Negotiation (their leads still pre-conversion, quotation-stage),
+  // Production (their converted, not-yet-completed projects), Done (completed projects).
   const loStats = useMemo(() => {
     return allLOs.map(lo => {
+      const negotiationLeads = leads.filter(l =>
+        l.assignee === lo.fullName && getLeadFlowBucket(l, allProjects, tasks) === 'quotation'
+      )
+      const negotiationAmt = negotiationLeads.reduce((s, l) => {
+        const proj = allProjects.find(p => p.leadId === l.id)
+        return s + (proj ? projectQuota(proj) : 0)
+      }, 0)
+
       const loProjects = projects.filter(p =>
         p.ownerId === lo.id ||
         p.ownerName === lo.fullName ||
-        // Also match leads assigned to this LO
         (p.leadId && leads.find(l => l.id === p.leadId && l.assignee === lo.fullName))
       )
-      const total     = loProjects.length
-      const completed = loProjects.filter(isCompleted).length
-      const inProd    = loProjects.filter(p => !isCompleted(p) && PRODUCTION_STAGES.has(p.currentStage ?? '')).length
-      const inInstall = loProjects.filter(p => !isCompleted(p) && INSTALL_STAGES.has(p.currentStage ?? '')).length
-      const inMeas    = loProjects.filter(p => !isCompleted(p) && !PRODUCTION_STAGES.has(p.currentStage ?? '') && !INSTALL_STAGES.has(p.currentStage ?? '')).length
-      const totalValue = loProjects.reduce((s, p) => s + projectQuota(p), 0)
-      return { lo, loProjects, total, completed, inProd, inInstall, inMeas, totalValue }
-    }).filter(s => s.total > 0 || s.lo.status === 'active')
-  }, [allLOs, projects, leads])
+      const doneProjects       = loProjects.filter(isCompletedProject)
+      const productionProjects = loProjects.filter(p => !isCompletedProject(p))
+      const productionAmt = productionProjects.reduce((s, p) => s + projectQuota(p), 0)
+      const doneAmt        = doneProjects.reduce((s, p) => s + projectQuota(p), 0)
+
+      return {
+        lo,
+        negotiation: { count: negotiationLeads.length, amt: negotiationAmt, items: negotiationLeads },
+        production:  { count: productionProjects.length, amt: productionAmt, items: productionProjects },
+        done:        { count: doneProjects.length, amt: doneAmt, items: doneProjects },
+      }
+    }).filter(s => s.negotiation.count > 0 || s.production.count > 0 || s.done.count > 0 || s.lo.status === 'active')
+  }, [allLOs, projects, allProjects, leads, tasks])
 
   const selectedLOData = selectedLO
     ? loStats.find(s => s.lo.id === selectedLO)
@@ -412,8 +508,8 @@ export default function OwnerDashboardScreen() {
               },
             ].map(({ label, count, amt, bg, border, color }) => (
               <div key={label} className={`${bg} border ${border} rounded-2xl p-4`}>
-                <p className={`text-2xl font-extrabold ${color} leading-none`}>{count}</p>
-                <p className="text-xs text-slate-500 mt-0.5 font-semibold">({fmt(amt)})</p>
+                <p className={`text-2xl font-extrabold ${color} leading-none`}>{fmt(amt)}</p>
+                <p className="text-xs text-slate-500 mt-0.5 font-semibold">({count} Project{count !== 1 ? 's' : ''})</p>
                 <p className="text-[11px] text-slate-400 mt-1">{label}</p>
               </div>
             ))}
@@ -429,69 +525,34 @@ export default function OwnerDashboardScreen() {
                 <p className="text-sm text-slate-400">No Lead Owners found</p>
               </div>
             )}
-            {loStats.map(({ lo, loProjects, total, completed, inProd, inInstall, inMeas, totalValue }) => {
-              const pctCompleted = total > 0 ? (completed / total) * 100 : 0
-              const pctProd      = total > 0 ? (inProd    / total) * 100 : 0
-              const pctInstall   = total > 0 ? (inInstall / total) * 100 : 0
-              const pctMeas      = total > 0 ? (inMeas    / total) * 100 : 0
-
-              return (
-                <button key={lo.id}
-                  onClick={() => setSelectedLO(lo.id)}
-                  className="w-full bg-white rounded-2xl border border-slate-200 p-4 text-left active:bg-slate-50 shadow-sm">
-
-                  {/* Header row */}
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 bg-teal-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-sm font-extrabold">
-                          {lo.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="text-sm font-extrabold text-slate-800">{lo.fullName}</p>
-                        <p className="text-[11px] text-slate-400">{total} project{total !== 1 ? 's' : ''} · {fmt(totalValue)}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
-                        <p className="text-lg font-extrabold text-emerald-600">{completed}</p>
-                        <p className="text-[10px] text-slate-400">done</p>
-                      </div>
-                      <ChevronDown size={14} className="text-slate-300" />
-                    </div>
+            {loStats.map(({ lo, negotiation, production, done }) => (
+              <div key={lo.id} className="w-full bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className="w-9 h-9 bg-teal-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <span className="text-white text-sm font-extrabold">
+                      {lo.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </span>
                   </div>
+                  <p className="text-sm font-extrabold text-slate-800">{lo.fullName}</p>
+                </div>
 
-                  {/* Bar chart */}
-                  {total > 0 && (
-                    <>
-                      <div className="h-3 rounded-full overflow-hidden bg-slate-100 flex">
-                        {pctMeas    > 0 && <div className="bg-cyan-400 h-full transition-all"    style={{ width: `${pctMeas}%` }} />}
-                        {pctProd    > 0 && <div className="bg-amber-400 h-full transition-all"   style={{ width: `${pctProd}%` }} />}
-                        {pctInstall > 0 && <div className="bg-rose-400 h-full transition-all"    style={{ width: `${pctInstall}%` }} />}
-                        {pctCompleted > 0 && <div className="bg-emerald-500 h-full transition-all" style={{ width: `${pctCompleted}%` }} />}
-                      </div>
-                      <div className="flex gap-3 mt-2 flex-wrap">
-                        {[
-                          { label: 'Pre-prod', count: inMeas,    color: 'bg-cyan-400'    },
-                          { label: 'Production',count: inProd,   color: 'bg-amber-400'   },
-                          { label: 'Install',   count: inInstall,color: 'bg-rose-400'    },
-                          { label: 'Done',      count: completed, color: 'bg-emerald-500' },
-                        ].filter(i => i.count > 0).map(({ label, count, color }) => (
-                          <div key={label} className="flex items-center gap-1">
-                            <span className={`w-2 h-2 rounded-full ${color}`} />
-                            <span className="text-[10px] text-slate-500">{label} <span className="font-bold text-slate-700">{count}</span></span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  {total === 0 && (
-                    <p className="text-xs text-slate-400 italic">No projects yet</p>
-                  )}
-                </button>
-              )
-            })}
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { key: 'negotiation' as LOStage, label: 'Negotiation', ...negotiation, color: 'text-violet-600' },
+                    { key: 'production'  as LOStage, label: 'Production',  ...production,  color: 'text-amber-600'  },
+                    { key: 'done'        as LOStage, label: 'Done',        ...done,         color: 'text-emerald-600'},
+                  ]).map(({ key, label, count, amt, color }) => (
+                    <button key={key}
+                      onClick={() => { setSelectedLO(lo.id); setSelectedLOStage(key) }}
+                      className="bg-slate-50 rounded-xl p-2.5 text-center active:bg-slate-100">
+                      <p className={`text-sm font-extrabold ${color} break-all`}>{fmt(amt)}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">({count})</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{label}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -514,7 +575,11 @@ export default function OwnerDashboardScreen() {
       {selectedLOData && (
         <LOPanel
           loName={selectedLOData.lo.fullName}
-          projects={selectedLOData.loProjects}
+          negotiationLeads={selectedLOData.negotiation.items}
+          productionProjects={selectedLOData.production.items}
+          doneProjects={selectedLOData.done.items}
+          allProjects={allProjects}
+          initialStage={selectedLOStage}
           onClose={() => setSelectedLO(null)}
         />
       )}
