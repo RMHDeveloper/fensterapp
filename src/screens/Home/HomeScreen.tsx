@@ -157,6 +157,8 @@ export default function HomeScreen() {
     t.flowStage === 'installation_update' &&
     (t.assignedTo === user?.name || t.assignee === user?.name)
   ).length
+  // Site Engineer Lead: installation availability approvals awaiting their decision
+  const siteLeadApprovalCount = tasks.filter(t => t.flowStage === 'site_lead_approval').length
 
   // Total tasks (any status) assigned to this user, across regular + flow-stage tasks
   const myTaskCount = tasks.filter(t => isMineTask(t, role, user?.name)).length
@@ -180,6 +182,12 @@ export default function HomeScreen() {
       { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: myVisits,              label: 'Visits',  link: '/site-visits' },
       { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending', link: '/tasks'       },
       { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',    link: '/tasks'       },
+    ],
+    site_engineer_lead: [
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: myTaskCount,           label: 'Tasks',     link: '/tasks' },
+      { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: siteLeadApprovalCount, label: 'Approvals', link: '/tasks' },
+      { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending',   link: '/tasks' },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',      link: '/tasks' },
     ],
     production_admin: [
       { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: myTaskCount,           label: 'Tasks',     link: '/tasks'      },
@@ -238,6 +246,12 @@ export default function HomeScreen() {
       { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  label: 'Site Visits', link: '/site-visits' },
       { icon: FolderOpen,    iconColor: 'text-slate-600',   iconBg: 'bg-slate-100',   label: 'Files',       link: '/files'       },
       { icon: Settings,      iconColor: 'text-slate-600',   iconBg: 'bg-slate-100',   label: 'Settings',    link: '/settings'    },
+    ],
+    site_engineer_lead: [
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    label: 'Approvals',   link: '/tasks'      },
+      { icon: FolderOpen,    iconColor: 'text-cyan-600',    iconBg: 'bg-cyan-100',    label: 'Projects',    link: '/projects'   },
+      { icon: FolderOpen,    iconColor: 'text-slate-600',   iconBg: 'bg-slate-100',   label: 'Files',       link: '/files'      },
+      { icon: Settings,      iconColor: 'text-slate-600',   iconBg: 'bg-slate-100',   label: 'Settings',    link: '/settings'   },
     ],
     production_admin: [
       { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    label: 'Pending',     link: '/tasks'      },

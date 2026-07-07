@@ -102,6 +102,8 @@ const FLOW_STAGE_LABEL: Record<string, string> = {
   site_review: 'Quotation Uploaded', owner_approval: 'MD/ED Approval', send_to_client: 'Sent to Client',
   production_assign: 'Production Setup', production_check: 'Availability Check',
   advance_payment: 'Advance Payment Collected', production_work: 'Production Work',
+  dispatch_assign: 'Assign to Dispatch', admin_availability_check: 'Checking Installation Availability',
+  site_lead_approval: 'Awaiting Site Engineer Lead Approval',
   installation_assign: 'Installation Assignment', installation_update: 'Installation',
   final_payment: 'Payment Collected', final_completion: 'Project Complete', completed: 'Project Completed',
 }
@@ -112,6 +114,7 @@ const STAGE_HANDLER_ROLE: Record<string, string> = {
   site_review: 'Sales Team', owner_approval: 'MD/ED', send_to_client: 'Sales Team',
   production_assign: 'Sales Team', production_check: 'Admin',
   advance_payment: 'Sales Team', production_work: 'Production Manager',
+  dispatch_assign: 'Sales Team', admin_availability_check: 'Admin', site_lead_approval: 'Site Engineer Lead',
   installation_assign: 'Sales Team', installation_update: 'Technician',
   final_payment: 'Sales Team', final_completion: 'Sales Team', completed: '—',
 }
@@ -135,6 +138,9 @@ const ACTIVITY_STATUS_LABEL: Record<string, Record<string, string>> = {
   production_assign:   { completed: 'Job Sheet Uploaded' },
   production_check:    { completed: 'Material Check Completed', not_available: 'Material Not Available' },
   production_work:     { in_progress: 'Production In Progress', completed: 'Production Completed', overdue: 'Production Overdue Reported', date_updated: 'Production Date Updated', ready_to_pack: 'Ready to Dispatch' },
+  dispatch_assign:          { completed: 'Assigned to Dispatch' },
+  admin_availability_check: { completed: 'Installation Availability Checked' },
+  site_lead_approval:       { completed: 'Installation Person Approved' },
   installation_assign: { completed: 'Installation Assigned' },
   installation_update: { completed: 'Installation Completed', not_completed: 'Installation Not Completed', mistake: 'Installation Mistake Reported', assigned: 'Installation Assigned' },
   final_payment:       { partial_paid: 'Partial Payment Collected', full_paid: 'Balance Payment Collected', completed: 'Project Completed' },
@@ -241,6 +247,14 @@ export default function ProjectDetailScreen() {
   const tasks    = allTasks.filter(t => t.projectId === id)
   const payment  = payments.find(p => p.projectId === id)
   const timeline = buildProjectTimeline(project?.currentStage, project?.createdAt)
+
+  // Installation Details accordion — Admin, MD/ED, LO, Site Engineer Lead always;
+  // Installation Incharge/Technician only when they're the assigned installer
+  const canSeeInstallationDetails =
+    user?.role === 'owner' || user?.role === 'lead_manager' ||
+    user?.role === 'production_admin' || user?.role === 'site_engineer_lead' ||
+    ((user?.role === 'technician' || user?.role === 'installation_incharge') &&
+      tasks.some(t => t.installationPerson === user?.name || t.assignedTo === user?.name || t.assignee === user?.name))
 
   // Derive project value from flow tasks when project record hasn't been updated yet
   const flowTaskQuotation = tasks
@@ -497,6 +511,41 @@ function handleSaveTask() {
           </div>
         )
         return <p className="text-sm text-slate-400 italic">No payment record.</p>
+      })(),
+    }] : []),
+    ...(canSeeInstallationDetails ? [{
+      id: 'installation-details',
+      title: 'Installation Details',
+      subtitle: (() => {
+        const t = tasks.find(t => t.installationPerson || t.proposedInstallationPerson)
+        if (!t) return 'Not started'
+        return t.installationApprovedBy ? `Assigned to ${t.installationPerson}` : 'Awaiting approval'
+      })(),
+      children: (() => {
+        const t = tasks.find(t => t.installationPerson || t.proposedInstallationPerson)
+        if (!t) return <p className="text-sm text-slate-400 italic">No installation activity yet.</p>
+        const statusLabel = getActivityLabel(t.flowStage ?? '', t.flowStatus)
+        const rows: { label: string; value: string }[] = [
+          { label: 'Proposed By',     value: t.proposedInstallationPerson ? 'Admin' : '—' },
+          { label: 'Proposed Person', value: t.proposedInstallationPerson ?? '—' },
+          { label: 'Proposed Date',   value: fmtDate(t.proposedInstallationDate) },
+          { label: 'Approved By',     value: t.installationApprovedBy ?? '—' },
+          { label: 'Final Assigned Person', value: t.installationPerson ?? '—' },
+          { label: 'Final Date',      value: fmtDate(t.installationDate) },
+          ...(t.installationPersonChangedFrom ? [{ label: 'Changed From', value: t.installationPersonChangedFrom }] : []),
+          ...(t.adminAvailabilityNotes ? [{ label: 'Approval Notes', value: t.adminAvailabilityNotes }] : []),
+          { label: 'Status', value: statusLabel },
+        ]
+        return (
+          <div className="bg-slate-50 rounded-2xl p-4 space-y-2">
+            {rows.map(({ label, value }) => (
+              <div key={label} className="flex justify-between gap-3">
+                <span className="text-xs text-slate-400 font-medium flex-shrink-0">{label}</span>
+                <span className="text-xs font-semibold text-slate-700 text-right">{value}</span>
+              </div>
+            ))}
+          </div>
+        )
       })(),
     }] : []),
     {

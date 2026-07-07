@@ -3,6 +3,7 @@ export type UserRole =
   | 'owner'
   | 'lead_manager'
   | 'site_engineer'
+  | 'site_engineer_lead'
   | 'production_admin'
   | 'production_manager'
   | 'technician'
@@ -155,7 +156,10 @@ export type FlowStage =
   | 'production_check'     // Production Admin checks material availability
   | 'advance_payment'      // LM collects advance payment
   | 'production_work'      // Production Manager does production work
-  | 'installation_assign'  // LM assigns installation incharge
+  | 'dispatch_assign'          // LO clicks "Assign to Dispatch" after Ready to Dispatch
+  | 'admin_availability_check' // Admin proposes an installation person + date
+  | 'site_lead_approval'       // Site Engineer Lead approves or changes the proposed person
+  | 'installation_assign'  // legacy — LM assigns installation incharge directly (pre dispatch-approval chain)
   | 'installation_update'  // Installation Incharge marks result
   | 'final_payment'        // LM collects final payment
   | 'final_completion'     // After full paid — complete project
@@ -377,6 +381,14 @@ export interface Task {
   transportCost?: number
   installationMistakeDetails?: string
   installationNextVisitDate?: string
+
+  // Dispatch → installation availability approval chain (Admin proposes, Site Engineer Lead approves/changes)
+  proposedInstallationPerson?: string
+  proposedInstallationDate?: string
+  adminAvailabilityNotes?: string
+  availabilityStatus?: 'available' | 'not_available' | 'need_approval'
+  installationApprovedBy?: string        // Site Engineer Lead's name
+  installationPersonChangedFrom?: string // set only when Site Engineer Lead changed the proposed person
 
   // Reschedule approval flow
   requestedVisitDate?: string

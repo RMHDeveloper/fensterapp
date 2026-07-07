@@ -29,7 +29,7 @@ function getChipsForRole(rawRole?: string): { value: Filter; label: string }[] {
     { value: 'production',     label: 'Production'     },
     { value: 'completed',      label: 'Complete'       },
   ]
-  if (role === 'technician') return [
+  if (role === 'technician' || role === 'site_engineer_lead') return [
     { value: 'active',            label: 'Active'            },
     { value: 'ready_to_dispatch', label: 'Ready to Dispatch' },
     { value: 'installation',      label: 'Installation'      },
@@ -108,7 +108,7 @@ export default function ProjectsScreen() {
     if (role === 'production_admin' || role === 'production_manager') {
       return isCompletedProject(p) || bucket === 'pre_production' || bucket === 'production'
     }
-    if (role === 'technician') {
+    if (role === 'technician' || role === 'site_engineer_lead') {
       return isCompletedProject(p) || bucket === 'ready_to_dispatch' || bucket === 'installation'
     }
     return true

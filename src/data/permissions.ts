@@ -43,6 +43,15 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'view_settings',
   ],
 
+  // Approves/reassigns the installation person proposed by Admin — separate from
+  // the regular Site Engineer's site-visit/measurement work
+  site_engineer_lead: [
+    'view_home','view_today','view_projects',
+    'view_installation','update_installation',
+    'view_files','upload_files',
+    'view_settings',
+  ],
+
   production_admin: [
     'view_home','view_today','view_projects',
     'view_production','update_production',
@@ -97,6 +106,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   owner:                'Managing Director (MD)',
   lead_manager:         'Sales Team / Lead Owner',
   site_engineer:        'Site Engineer',
+  site_engineer_lead:   'Site Engineer Lead',
   production_admin:     'Admin',
   production_manager:   'Production Manager',
   technician:           'Technician',
@@ -118,6 +128,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
   owner:                'Full access, MD/ED approvals, cost breakdown and profit visibility',
   lead_manager:         'Leads, projects, quotations, payments, assignments',
   site_engineer:        'Site visits, measurements, and photos',
+  site_engineer_lead:   'Approves installation availability and assigns/changes the installer',
   production_admin:     'Material availability checks',
   production_manager:   'Production work and checklist updates',
   technician:           'Installation execution and status updates',
@@ -130,6 +141,7 @@ export const MOCK_USERS: Record<UserRole, { name: string; initials: string; emai
   owner:                { name: 'Haroon Khan',   initials: 'HK', email: 'haroon@fenster.app'   },
   lead_manager:         { name: 'Priya Sharma',  initials: 'PS', email: 'priya@fenster.app'    },
   site_engineer:        { name: 'Arjun Singh',   initials: 'AS', email: 'arjun@fenster.app'    },
+  site_engineer_lead:   { name: 'Site Lead',     initials: 'SL', email: 'sitelead@fenster.app' },
   production_admin:     { name: 'Kavitha R',     initials: 'KR', email: 'kavitha@fenster.app'  },
   production_manager:   { name: 'Mohan Das',     initials: 'MD', email: 'mohan@fenster.app'    },
   technician:           { name: 'Rajan Pillai',  initials: 'RP', email: 'rajan@fenster.app'    },

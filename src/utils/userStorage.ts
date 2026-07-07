@@ -47,9 +47,17 @@ export async function initUsersFromSupabase(): Promise<void> {
       }
       return u
     })
-    const changed = migrated.some((u, i) => u !== users[i])
-    _cache = migrated
-    if (changed) upsertManagedUsers(migrated).catch(() => {})
+    // One-time migration: seed the Site Engineer Lead demo account for installs
+    // that already had data before this role existed
+    const hasSiteLead = migrated.some(u => u.id === 'prod_site_lead')
+    const withSiteLead = hasSiteLead
+      ? migrated
+      : [...migrated, DEFAULT_PRODUCTION_USERS.find(u => u.id === 'prod_site_lead')!]
+    const changed = hasSiteLead
+      ? migrated.some((u, i) => u !== users[i])
+      : true
+    _cache = withSiteLead
+    if (changed) upsertManagedUsers(withSiteLead).catch(() => {})
   } else {
     seedDefaultUsers()
   }
@@ -131,6 +139,21 @@ export const DEFAULT_PRODUCTION_USERS: ManagedUser[] = [
     updatedAt:     SEED_DATE,
   },
   {
+    id:            'prod_site_lead',
+    fullName:      'Site Lead',
+    mobile:        '9812345670',
+    email:         'sitelead@fenster.app',
+    password:      'sitelead123',
+    role:          'site_engineer_lead',
+    displayRole:   'Site Engineer Lead',
+    department:    'Site',
+    status:        'active',
+    createdBy:     'system',
+    createdByRole: 'owner',
+    createdAt:     SEED_DATE,
+    updatedAt:     SEED_DATE,
+  },
+  {
     id:            'prod_prod_mgr',
     fullName:      'Mohan Das',
     mobile:        '8123456790',
@@ -189,6 +212,7 @@ export const DISPLAY_ROLES: string[] = [
   'Admin / Purchase / Accounts',
   'Sales Team / Lead Owner',
   'Site Engineer',
+  'Site Engineer Lead',
   'Production Incharge',
   'Production Manager',
   'Installation Incharge',
@@ -202,6 +226,7 @@ export const DISPLAY_ROLE_TO_INTERNAL: Record<string, UserRole> = {
   'Admin / Purchase / Accounts':  'owner',
   'Sales Team / Lead Owner':      'lead_manager',
   'Site Engineer':                'site_engineer',
+  'Site Engineer Lead':           'site_engineer_lead',
   'Production Incharge':          'production_admin',
   'Production Manager':           'production_manager',
   'Installation Incharge':        'technician',

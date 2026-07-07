@@ -24,6 +24,7 @@ const ROLE_PATHS: Record<UserRole, string[]> = {
   owner:                ['/dashboard', '/leads', '/approvals', '/projects', '/settings'],
   lead_manager:         ['/home', '/leads/negotiation', '/leads', '/projects', '/settings'],
   site_engineer:        ['/home', '/tasks', '/site-visits', '/projects',   '/settings'],
+  site_engineer_lead:   ['/home', '/tasks', '/projects',    '/settings'],
   production_admin:     ['/home', '/tasks', '/production',  '/projects',   '/settings'],
   production_manager:   ['/home', '/tasks', '/production',  '/projects',   '/settings'],
   technician:           ['/home', '/tasks', '/projects', '/leave-applications', '/settings'],
@@ -53,7 +54,10 @@ export function NavigationBar() {
     .map(path => {
       const item = ALL_ITEMS.find(i => i.path === path)
       if (!item) return null
-      if (path === '/tasks') return { ...item, label: isDateRole ? 'Today' : 'Pending' }
+      if (path === '/tasks') {
+        const label = role === 'site_engineer_lead' ? 'Approvals' : isDateRole ? 'Today' : 'Pending'
+        return { ...item, label }
+      }
       return item
     })
     .filter((i): i is NavItem => Boolean(i))

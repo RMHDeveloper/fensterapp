@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   X, CheckCircle2, AlertTriangle, Camera, Clock, Send, PhoneCall,
-  Package, Wrench, CreditCard, Eye, Download, FileText, Copy, Check, FolderOpen,
+  Package, Wrench, CreditCard, Eye, Download, FileText, Copy, Check, FolderOpen, MapPin,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useAppData } from '../../context/AppDataContext'
@@ -71,7 +71,10 @@ const FLOW_TO_PROJECT_STAGE: Partial<Record<string, ProjectStage>> = {
   advance_payment:     'advance_payment',
   production_assign:   'advance_payment',
   production_check:    'production_admin_check',
-  production_work:     'production_manager_work',
+  production_work:          'production_manager_work',
+  dispatch_assign:          'ready_to_dispatch',
+  admin_availability_check: 'ready_to_dispatch',
+  site_lead_approval:       'ready_to_dispatch',
   installation_assign: 'ready_to_dispatch',
   installation_update: 'installation',
   final_payment:       'final_payment',
@@ -294,7 +297,10 @@ const STAGE_BG: Record<string, string> = {
   production_assign:   'bg-orange-600',
   production_check:    'bg-amber-600',
   advance_payment:     'bg-emerald-600',
-  production_work:     'bg-blue-600',
+  production_work:          'bg-blue-600',
+  dispatch_assign:          'bg-orange-500',
+  admin_availability_check: 'bg-amber-500',
+  site_lead_approval:       'bg-fuchsia-600',
   installation_assign: 'bg-rose-600',
   installation_update: 'bg-pink-600',
   final_payment:       'bg-green-600',
@@ -312,7 +318,10 @@ const STAGE_LABEL: Record<string, string> = {
   production_assign:   'Production Setup',
   production_check:    'Availability Check',
   advance_payment:     'Advance Payment',
-  production_work:     'Production Work',
+  production_work:          'Production Work',
+  dispatch_assign:          'Assign to Dispatch',
+  admin_availability_check: 'Check Installation Availability',
+  site_lead_approval:       'Approve Installation Availability',
   installation_assign: 'Installation Setup',
   installation_update: 'Installation',
   final_payment:       'Final Payment',
@@ -323,7 +332,8 @@ const STAGE_LABEL: Record<string, string> = {
 const FLOW_STAGES_ORDERED: string[] = [
   'site_assign','site_visit','reschedule_review','site_review','owner_approval',
   'send_to_client','production_assign','production_check','advance_payment',
-  'production_work','installation_assign','installation_update','final_payment',
+  'production_work','dispatch_assign','admin_availability_check','site_lead_approval',
+  'installation_update','final_payment',
   'final_completion','completed',
 ]
 
@@ -558,6 +568,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [lmNewDate,      setLmNewDate]      = useState('')
   const [lmNote,         setLmNote]         = useState('')
 
+  // ── DISPATCH → INSTALLATION AVAILABILITY APPROVAL CHAIN ───────────────────
+  const [proposedInstPerson, setProposedInstPerson] = useState('')
+  const [proposedInstDate,   setProposedInstDate]   = useState('')
+  const [adminAvailNotes,    setAdminAvailNotes]    = useState('')
+  const [availStatus,        setAvailStatus]        = useState<'available' | 'not_available' | 'need_approval'>('available')
+  const [siteLeadAction,     setSiteLeadAction]     = useState<'assign' | 'change' | ''>('')
+  const [changedInstPerson,  setChangedInstPerson]  = useState('')
+  const [changedInstDate,    setChangedInstDate]    = useState('')
+  const [changedInstNotes,   setChangedInstNotes]   = useState('')
+
   // ── INSTALLATION ASSIGN ───────────────────────────────────────────────────
   const [instPerson,  setInstPerson]  = useState('')
   const [instDate,    setInstDate]    = useState('')
@@ -674,6 +694,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setOverdueNote(task.productionOverdueReason ?? '')
     setOverdueFiles([]); setOverdueNewDate(task.productionNewDate ?? todayStr)
     setLmNewDate(todayStr); setLmNote('')
+    setProposedInstPerson(task.proposedInstallationPerson ?? '')
+    setProposedInstDate(task.proposedInstallationDate ?? todayStr)
+    setAdminAvailNotes(''); setAvailStatus('available')
+    setSiteLeadAction(''); setChangedInstPerson(''); setChangedInstDate(todayStr); setChangedInstNotes('')
     setInstPerson(task.installationPerson ?? '')
     setInstDate(task.installationDate ?? todayStr)
     setInstFiles([]); setInstNote(task.installationNote ?? '')
@@ -1283,11 +1307,59 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   function submitProductionWork() {
     save({
-      flowStage: 'installation_assign', flowStatus: 'ready', status: 'pending',
-      title: 'Assign Installation',
+      flowStage: 'dispatch_assign', flowStatus: 'ready', status: 'pending',
+      title: 'Assign to Dispatch',
       productionChecklist: prodChecklist,
       productionOverdueReason: undefined, productionNewDate: undefined,
-    }, 'All production steps completed — Ready to Dispatch')
+    }, `Ready to Dispatch by ${user?.name ?? 'Production Manager'}`)
+  }
+
+  function submitAssignToDispatch() {
+    save({
+      flowStage: 'admin_availability_check', flowStatus: 'pending', status: 'pending',
+      title: 'Check Installation Availability',
+    }, 'Lead Owner sent project for dispatch assignment.')
+  }
+
+  function submitAdminAvailabilityCheck() {
+    if (!proposedInstPerson) { setError('Select a proposed installation person.'); return }
+    if (!proposedInstDate)   { setError('Select proposed installation date.'); return }
+    save({
+      flowStage: 'site_lead_approval', flowStatus: 'pending', status: 'pending',
+      title: 'Approve Installation Availability',
+      proposedInstallationPerson: proposedInstPerson,
+      proposedInstallationDate: proposedInstDate,
+      adminAvailabilityNotes: adminAvailNotes || undefined,
+      availabilityStatus: availStatus,
+    }, `Admin proposed ${proposedInstPerson} for installation on ${proposedInstDate}`)
+  }
+
+  function submitSiteLeadAssignContinue() {
+    const person = task.proposedInstallationPerson
+    const date   = task.proposedInstallationDate
+    if (!person || !date) { setError('No proposed installation person on file.'); return }
+    save({
+      flowStage: 'installation_update', flowStatus: 'assigned', status: 'in_progress',
+      title: 'Update Installation Status',
+      installationPerson: person,
+      installationDate: date,
+      installationApprovedBy: user?.name,
+    }, `Site Engineer Lead approved installation person ${person} for ${date}.`)
+  }
+
+  function submitSiteLeadChangePerson() {
+    if (!changedInstPerson) { setError('Select an installation person.'); return }
+    if (!changedInstDate)   { setError('Select installation date.'); return }
+    const oldPerson = task.proposedInstallationPerson ?? 'Unassigned'
+    save({
+      flowStage: 'installation_update', flowStatus: 'assigned', status: 'in_progress',
+      title: 'Update Installation Status',
+      installationPerson: changedInstPerson,
+      installationDate: changedInstDate,
+      installationApprovedBy: user?.name,
+      installationPersonChangedFrom: oldPerson,
+      note: changedInstNotes || undefined,
+    }, `Site Engineer Lead changed installation person from ${oldPerson} to ${changedInstPerson}.`)
   }
 
   function submitSavePackProgress() {
@@ -3724,7 +3796,199 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           )}
 
           {/* ═══════════════════════════════════════════════════════════════
-              10. INSTALLATION ASSIGN — LM only
+              9b. DISPATCH ASSIGN — Lead Owner
+          ════════════════════════════════════════════════════════════════ */}
+          {displayStage === 'dispatch_assign' && role !== 'lead_manager' && role !== 'owner' && !demoOverride && (
+            <WaitingView icon={Package} color="bg-orange-50 border border-orange-200 text-orange-700"
+              title="Ready to Dispatch"
+              sub="Sales Team will assign this project for dispatch" />
+          )}
+          {displayStage === 'dispatch_assign' && role === 'owner' && !demoOverride && (
+            <>
+              <WaitingView icon={Package} color="bg-orange-50 border border-orange-200 text-orange-700"
+                title="Ready to Dispatch"
+                sub="Sales Team needs to assign this project for dispatch" />
+              <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team assigns the project for dispatch."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+          {displayStage === 'dispatch_assign' && (role === 'lead_manager' || (role === 'owner' && demoOverride)) && (
+            <>
+              <div className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-4 space-y-1">
+                <div className="flex items-center gap-2">
+                  <Package size={16} className="text-orange-600 flex-shrink-0" />
+                  <p className="text-sm font-bold text-orange-700">Production Complete — Ready to Dispatch</p>
+                </div>
+                <p className="text-xs text-orange-600 pl-6">Send this project to Admin to check installation availability.</p>
+              </div>
+              <button type="button" onClick={submitAssignToDispatch}
+                className="w-full py-4 rounded-2xl bg-orange-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
+                <Package size={15} /> Assign to Dispatch
+              </button>
+            </>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════════
+              9c. ADMIN AVAILABILITY CHECK — Admin (production_admin)
+          ════════════════════════════════════════════════════════════════ */}
+          {displayStage === 'admin_availability_check' && role !== 'production_admin' && role !== 'owner' && !demoOverride && (
+            <WaitingView icon={Wrench} color="bg-amber-50 border border-amber-200 text-amber-700"
+              title="Checking Installation Availability"
+              sub="Admin is checking installation person availability" />
+          )}
+          {displayStage === 'admin_availability_check' && role === 'owner' && !demoOverride && (
+            <>
+              <WaitingView icon={Wrench} color="bg-amber-50 border border-amber-200 text-amber-700"
+                title="Checking Installation Availability"
+                sub="Admin needs to check installation person availability and propose a person" />
+              <DemoControlCard waitingFor="Admin" description="Admin checks installation availability and proposes a person."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+          {displayStage === 'admin_availability_check' && (role === 'production_admin' || (role === 'owner' && demoOverride)) && (
+            <>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Check Installation Availability</p>
+              <div>
+                <label className={lbl}>Proposed Installation Incharge / Person {req}</label>
+                <select value={proposedInstPerson} onChange={e => setProposedInstPerson(e.target.value)} className={inp}>
+                  <option value="">Select installation person…</option>
+                  {installerOptions.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Proposed Installation Date {req}</label>
+                <input type="date" value={proposedInstDate} onChange={e => setProposedInstDate(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
+                <textarea rows={2} value={adminAvailNotes} onChange={e => setAdminAvailNotes(e.target.value)}
+                  placeholder="Any notes for Site Engineer Lead…" className={`${inp} resize-none`} />
+              </div>
+              <div className="space-y-2">
+                <label className={lbl}>Availability Status</label>
+                <Opt value="available"     label="Available"     sub="Proposed person is available"              accent="border-emerald-200" sel={availStatus} onPick={v => setAvailStatus(v as typeof availStatus)} />
+                <Opt value="not_available" label="Not Available" sub="Proposed person is not available"           accent="border-red-200"     sel={availStatus} onPick={v => setAvailStatus(v as typeof availStatus)} />
+                <Opt value="need_approval" label="Need Site Engineer Lead Approval" sub="Send for Site Engineer Lead review" accent="border-amber-200" sel={availStatus} onPick={v => setAvailStatus(v as typeof availStatus)} />
+              </div>
+              <button type="button" onClick={submitAdminAvailabilityCheck}
+                className="w-full py-4 rounded-2xl bg-amber-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
+                <CheckCircle2 size={15} /> Check Availability
+              </button>
+            </>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════════
+              9d. SITE ENGINEER LEAD APPROVAL
+          ════════════════════════════════════════════════════════════════ */}
+          {displayStage === 'site_lead_approval' && role !== 'site_engineer_lead' && role !== 'owner' && !demoOverride && (
+            <WaitingView icon={Wrench} color="bg-fuchsia-50 border border-fuchsia-200 text-fuchsia-700"
+              title="Waiting for Site Engineer Lead Approval"
+              sub="Site Engineer Lead is reviewing the proposed installation person" />
+          )}
+          {displayStage === 'site_lead_approval' && role === 'owner' && !demoOverride && (
+            <>
+              <WaitingView icon={Wrench} color="bg-fuchsia-50 border border-fuchsia-200 text-fuchsia-700"
+                title="Waiting for Site Engineer Lead Approval"
+                sub="Site Engineer Lead needs to approve or change the proposed installation person" />
+              <DemoControlCard waitingFor="Site Engineer Lead" description="Site Engineer Lead approves or changes the proposed installation person."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+          {displayStage === 'site_lead_approval' && (role === 'site_engineer_lead' || (role === 'owner' && demoOverride)) && (
+            <>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Project Summary</p>
+              <div className="bg-slate-50 rounded-xl px-4 py-3 space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-500">Project</span>
+                  <span className="font-semibold text-slate-700">{task.projectName}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-500">Customer</span>
+                  <span className="font-semibold text-slate-700">{task.clientName ?? '—'}</span>
+                </div>
+                {task.location && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500">Location</span>
+                    <a href={task.locationPin?.mapLink || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(task.location)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1 font-semibold text-blue-600 underline">
+                      <MapPin size={11} /> {task.location}
+                    </a>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5">
+                  <span className="text-slate-500">Status</span>
+                  <span className="font-semibold text-emerald-600">Ready to Dispatch</span>
+                </div>
+              </div>
+
+              <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl px-4 py-3 space-y-1.5">
+                <p className="text-[10px] font-bold text-fuchsia-500 uppercase">Admin Proposal</p>
+                <div className="flex justify-between text-xs">
+                  <span className="text-fuchsia-600">Proposed Person</span>
+                  <span className="font-bold text-fuchsia-800">{task.proposedInstallationPerson ?? '—'}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-fuchsia-600">Proposed Date</span>
+                  <span className="font-bold text-fuchsia-800">{task.proposedInstallationDate ?? '—'}</span>
+                </div>
+                {task.adminAvailabilityNotes && (
+                  <p className="text-xs text-fuchsia-600 pt-1 border-t border-fuchsia-200">Notes: {task.adminAvailabilityNotes}</p>
+                )}
+              </div>
+
+              {siteLeadAction === '' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <button type="button" onClick={submitSiteLeadAssignContinue}
+                    className="w-full py-4 rounded-2xl bg-emerald-600 text-white text-sm font-extrabold active:opacity-90">
+                    ✓ Assign and Continue
+                  </button>
+                  <button type="button" onClick={() => setSiteLeadAction('change')}
+                    className="w-full py-4 rounded-2xl border-2 border-fuchsia-300 text-fuchsia-700 text-sm font-extrabold active:bg-fuchsia-50">
+                    Change Person
+                  </button>
+                </div>
+              )}
+
+              {siteLeadAction === 'change' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className={lbl}>Installation Person {req}</label>
+                    <select value={changedInstPerson} onChange={e => setChangedInstPerson(e.target.value)} className={inp}>
+                      <option value="">Select installation person…</option>
+                      {installerOptions.map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lbl}>Installation Date {req}</label>
+                    <input type="date" value={changedInstDate} onChange={e => setChangedInstDate(e.target.value)} className={inp} />
+                  </div>
+                  <div>
+                    <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
+                    <textarea rows={2} value={changedInstNotes} onChange={e => setChangedInstNotes(e.target.value)}
+                      placeholder="Reason for change…" className={`${inp} resize-none`} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button type="button" onClick={() => setSiteLeadAction('')}
+                      className="w-full py-3.5 rounded-2xl border-2 border-slate-200 text-slate-500 text-sm font-bold active:bg-slate-50">
+                      Cancel
+                    </button>
+                    <button type="button" onClick={submitSiteLeadChangePerson}
+                      className="w-full py-3.5 rounded-2xl bg-fuchsia-600 text-white text-sm font-extrabold active:opacity-90">
+                      Assign
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════════
+              10. INSTALLATION ASSIGN — LM only (legacy — pre dispatch-approval chain)
           ════════════════════════════════════════════════════════════════ */}
           {displayStage === 'installation_assign' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && (
             <WaitingView icon={Wrench} color="bg-rose-50 border border-rose-200 text-rose-700"

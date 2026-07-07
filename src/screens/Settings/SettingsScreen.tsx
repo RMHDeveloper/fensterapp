@@ -16,7 +16,7 @@ import { BackButton } from '../../components/layout/BackButton'
 import type { UserRole } from '../../types'
 
 const ROLES: UserRole[] = [
-  'owner', 'lead_manager', 'site_engineer',
+  'owner', 'lead_manager', 'site_engineer', 'site_engineer_lead',
   'production_admin', 'production_manager', 'technician',
   'viewer',
 ]
@@ -25,6 +25,7 @@ const ROLE_ICONS: Record<UserRole, string> = {
   owner:                '👑',
   lead_manager:         '📋',
   site_engineer:        '🏗️',
+  site_engineer_lead:   '🧭',
   production_admin:     '📦',
   production_manager:   '🔧',
   technician:           '🔩',

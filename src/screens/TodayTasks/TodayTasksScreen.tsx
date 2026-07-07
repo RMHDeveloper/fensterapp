@@ -44,6 +44,9 @@ const STAGE_MSG: Record<string, string> = {
   production_check:   'Product availability updated!',
   advance_payment:    'Payment updated!',
   production_work:    'Production status updated!',
+  dispatch_assign:          'Assigned to dispatch!',
+  admin_availability_check: 'Availability checked!',
+  site_lead_approval:       'Installation approved!',
   installation_assign:'Installation assigned!',
   installation_update:'Installation updated!',
   final_payment:      'Payment updated!',
@@ -87,16 +90,22 @@ export default function TodayTasksScreen() {
       return t.flowStage === 'owner_approval' ||
         t.flowStage === 'installation_assign' ||
         t.flowStage === 'reschedule_review' ||
+        t.flowStage === 'dispatch_assign' ||
+        t.flowStage === 'admin_availability_check' ||
+        t.flowStage === 'site_lead_approval' ||
         (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
     }
     if (role === 'production_admin') {
-      return t.flowStage === 'production_check' || t.flowStage === 'installation_assign'
+      return t.flowStage === 'production_check' || t.flowStage === 'installation_assign' || t.flowStage === 'admin_availability_check'
     }
     if (role === 'production_manager') {
       return t.flowStage === 'production_work'
     }
     if (role === 'production_team') {
       return t.flowStage === 'production_check' || t.flowStage === 'production_work'
+    }
+    if (role === 'site_engineer_lead') {
+      return t.flowStage === 'site_lead_approval'
     }
     if (role === 'technician' || role === 'installation_incharge') {
       if (t.flowStage !== 'installation_assign' && t.flowStage !== 'installation_update') return false
@@ -155,6 +164,7 @@ export default function TodayTasksScreen() {
             <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">
               {role === 'owner' ? 'Pending Approvals' :
                role === 'site_engineer' ? 'My Site Visits' :
+               role === 'site_engineer_lead' ? 'Installation Availability Approvals' :
                role === 'production_admin' ? 'Production Checks' :
                role === 'production_manager' || role === 'production_team' ? 'Production Tasks' :
                role === 'technician' || role === 'installation_incharge' ? 'Installations' :
@@ -227,6 +237,7 @@ export default function TodayTasksScreen() {
             <p className="text-sm text-slate-400 mb-5">
               {role === 'owner' ? 'No quotations pending your approval.' :
                role === 'site_engineer' ? 'No site visits assigned to you.' :
+               role === 'site_engineer_lead' ? 'No installation availability approvals pending.' :
                role === 'production_admin' ? 'No production checks at the moment.' :
                role === 'production_manager' || role === 'production_team' ? 'No production tasks at the moment.' :
                role === 'technician' || role === 'installation_incharge' ? 'No installations assigned to you.' :

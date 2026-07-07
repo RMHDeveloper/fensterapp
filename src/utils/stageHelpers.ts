@@ -10,6 +10,7 @@ export function normalizeRole(role?: string | null): UserRole | undefined {
     md: 'owner', ed: 'owner', admin: 'owner', owner: 'owner',
     lo: 'lead_manager', lead_owner: 'lead_manager', lead_manager: 'lead_manager', sales_team: 'lead_manager',
     site_engineer: 'site_engineer',
+    site_engineer_lead: 'site_engineer_lead', site_lead: 'site_engineer_lead',
     pm: 'production_manager', production_manager: 'production_manager',
     production_incharge: 'production_admin', project_incharge: 'production_admin', production_admin: 'production_admin',
     installation_technician: 'technician', installation_incharge: 'technician', technician: 'technician',
@@ -58,7 +59,10 @@ export function getProjectFilterStage(project: Project, tasks: Task[]): ProjectF
   const status = activeTask?.flowStatus
   if (stage === 'production_assign' || stage === 'production_check') return 'pre_production'
   if (stage === 'production_work') return status === 'ready_to_pack' ? 'ready_to_dispatch' : 'production'
-  if (stage === 'installation_assign') return 'ready_to_dispatch'
+  if (
+    stage === 'dispatch_assign' || stage === 'admin_availability_check' ||
+    stage === 'site_lead_approval' || stage === 'installation_assign'
+  ) return 'ready_to_dispatch'
   if (stage === 'installation_update') return 'installation'
   if (stage === 'final_payment' || stage === 'final_completion') return 'collection'
   return null
@@ -70,7 +74,8 @@ export const FLOW_ORDER: FlowStage[] = [
   'site_assign', 'site_visit', 'reschedule_review', 'site_review',
   'owner_approval', 'send_to_client', 'advance_payment',
   'production_assign', 'production_check', 'production_work',
-  'installation_assign', 'installation_update', 'final_payment', 'final_completion', 'completed',
+  'dispatch_assign', 'admin_availability_check', 'site_lead_approval', 'installation_assign',
+  'installation_update', 'final_payment', 'final_completion', 'completed',
 ]
 export function flowReached(stage: FlowStage | undefined, target: FlowStage): boolean {
   if (!stage) return false
