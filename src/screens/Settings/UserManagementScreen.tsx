@@ -9,6 +9,7 @@ import {
   loadManagedUsers,
   saveManagedUsers,
   isEmailTaken,
+  isMobileTaken,
   DISPLAY_ROLES,
   DISPLAY_ROLE_TO_INTERNAL,
 } from '../../utils/userStorage'
@@ -122,6 +123,9 @@ export default function UserManagementScreen() {
     if (!form.displayRole)       errs.displayRole = 'Role is required'
     if (form.email.trim() && isEmailTaken(form.email.trim(), editUser?.id)) {
       errs.email = 'This email is already taken'
+    }
+    if (form.mobile.trim() && isMobileTaken(form.mobile.trim(), editUser?.id)) {
+      errs.mobile = 'This mobile number is already used for login by another account'
     }
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -359,24 +363,27 @@ export default function UserManagementScreen() {
 
               {/* Mobile */}
               <div>
-                <label className={lbl}>Mobile Number <span className="text-red-500">*</span></label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className={lbl + ' mb-0'}>Mobile Number (Login) <span className="text-red-500">*</span></label>
+                  {editUser && (
+                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Editable</span>
+                  )}
+                </div>
                 <input
                   {...field('mobile')}
                   type="tel" inputMode="numeric"
                   className={`${inp} ${errors.mobile ? 'border-red-300' : ''}`}
                   placeholder="e.g. 9876543210"
                 />
-                {errors.mobile && <p className="text-xs text-red-500 mt-1">{errors.mobile}</p>}
+                {errors.mobile
+                  ? <p className="text-xs text-red-500 mt-1">{errors.mobile}</p>
+                  : editUser && <p className="text-[11px] text-slate-400 mt-1">Changing this will update the login phone number (+91).</p>
+                }
               </div>
 
               {/* Email */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className={lbl + ' mb-0'}>Email / Username <span className="text-red-500">*</span></label>
-                  {editUser && (
-                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Editable</span>
-                  )}
-                </div>
+                <label className={lbl}>Email <span className="text-red-500">*</span></label>
                 <input
                   {...field('email')}
                   type="text"
@@ -386,10 +393,7 @@ export default function UserManagementScreen() {
                   className={`${inp} ${errors.email ? 'border-red-300' : 'border-slate-200'}`}
                   placeholder="e.g. rajan@company.com"
                 />
-                {errors.email
-                  ? <p className="text-xs text-red-500 mt-1">{errors.email}</p>
-                  : editUser && <p className="text-[11px] text-slate-400 mt-1">Changing email will update the login username.</p>
-                }
+                {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
               </div>
 
               {/* Password */}
