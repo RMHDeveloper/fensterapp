@@ -763,7 +763,7 @@ function handleSaveTask() {
               })()}
             </div>
             <div className="flex items-center gap-2.5 mt-2 flex-wrap">
-              <StatusBadge status={project.status} size="sm" />
+              {project.status !== 'new' && <StatusBadge status={project.status} size="sm" />}
               {project.city && (
                 <span className="flex items-center gap-1 text-blue-200 text-xs">
                   <MapPin size={10} /> {project.city}

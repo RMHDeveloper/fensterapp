@@ -19,14 +19,9 @@ import type { Project, Task } from '../../types'
 type Filter = 'active' | 'pre_production' | 'production' | 'ready_to_dispatch' | 'installation' | 'collection' | 'completed'
 
 function getChipsForRole(role?: string): { value: Filter; label: string }[] {
-  if (role === 'production_admin') return [
-    { value: 'active',         label: 'Active'        },
+  if (role === 'production_admin' || role === 'production_manager') return [
     { value: 'pre_production', label: 'Pre-Production' },
-    { value: 'production',     label: 'Production'    },
-  ]
-  if (role === 'production_manager') return [
-    { value: 'production',        label: 'Production'       },
-    { value: 'ready_to_dispatch', label: 'Ready to Dispatch' },
+    { value: 'production',     label: 'Production'     },
   ]
   if (role === 'technician' || role === 'installation_incharge') return [
     { value: 'ready_to_dispatch', label: 'Ready to Dispatch' },
@@ -90,7 +85,7 @@ export default function ProjectsScreen() {
   const { user } = useAuth()
   const defaultFilter: Filter =
     (user?.role === 'technician' || user?.role === 'installation_incharge') ? 'ready_to_dispatch'
-    : user?.role === 'production_manager' ? 'production'
+    : (user?.role === 'production_admin' || user?.role === 'production_manager') ? 'pre_production'
     : 'active'
   const [filter, setFilter] = useState<Filter>(defaultFilter)
   const [search, setSearch] = useState('')
@@ -127,8 +122,9 @@ export default function ProjectsScreen() {
         (t.assignedTo === user!.name || t.assignee === user!.name || t.siteEngineerName === user!.name)
       )
     }
-    if (role === 'production_admin') return bucket === 'pre_production'
-    if (role === 'production_manager') return bucket === 'production' || bucket === 'ready_to_dispatch'
+    if (role === 'production_admin' || role === 'production_manager') {
+      return bucket === 'pre_production' || bucket === 'production'
+    }
     if (role === 'technician' || role === 'installation_incharge') {
       return bucket === 'ready_to_dispatch' || bucket === 'installation'
     }

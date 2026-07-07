@@ -117,9 +117,6 @@ export function ProjectRow({ project, onClick, role, balanceAmount }: Props) {
                 {daysLabel.text}
               </span>
             )}
-            {project.dueDate && project.dueDate !== '—' && (
-              <span className="text-[10px] text-slate-400">{project.dueDate}</span>
-            )}
           </div>
         </div>
 
