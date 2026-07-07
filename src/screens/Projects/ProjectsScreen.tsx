@@ -23,11 +23,17 @@ type Bucket = ProjectFilterStage
 
 function getChipsForRole(rawRole?: string): { value: Filter; label: string }[] {
   const role = normalizeRole(rawRole)
-  if (role === 'production_admin' || role === 'production_manager') return [
+  if (role === 'production_admin') return [
     { value: 'active',         label: 'Active'         },
     { value: 'pre_production', label: 'Pre-Production' },
     { value: 'production',     label: 'Production'     },
     { value: 'completed',      label: 'Complete'       },
+  ]
+  if (role === 'production_manager') return [
+    { value: 'active',            label: 'Active'            },
+    { value: 'pre_production',    label: 'Pre-Production'    },
+    { value: 'production',        label: 'Production'        },
+    { value: 'ready_to_dispatch', label: 'Ready to Dispatch' },
   ]
   if (role === 'technician' || role === 'site_engineer_lead') return [
     { value: 'active',            label: 'Active'            },
@@ -105,8 +111,11 @@ export default function ProjectsScreen() {
         (t.assignedTo === user!.name || t.assignee === user!.name || t.siteEngineerName === user!.name)
       )
     }
-    if (role === 'production_admin' || role === 'production_manager') {
+    if (role === 'production_admin') {
       return isCompletedProject(p) || bucket === 'pre_production' || bucket === 'production'
+    }
+    if (role === 'production_manager') {
+      return isCompletedProject(p) || bucket === 'pre_production' || bucket === 'production' || bucket === 'ready_to_dispatch'
     }
     if (role === 'technician' || role === 'site_engineer_lead') {
       return isCompletedProject(p) || bucket === 'ready_to_dispatch' || bucket === 'installation'

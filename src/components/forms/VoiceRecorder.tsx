@@ -6,11 +6,17 @@ import { storeFile } from '../../utils/fileStorage'
 // Re-export for backward compat with any existing imports
 export { voiceBlobStore }
 
-async function persistVoiceBlob(id: string, blob: Blob) {
+// Uploads the recording and swaps the throwaway session id for the durable
+// URL in the parent's saved list — otherwise only the temp id (which means
+// nothing outside this browser session) ever gets persisted onto the task,
+// and the recording becomes unplayable the moment the tab is closed.
+async function persistVoiceBlob(id: string, blob: Blob, onReplace: (oldId: string, url: string) => void) {
   try {
-    const file = new File([blob], id, { type: blob.type || 'audio/webm' })
+    const file = new File([blob], `${id}.webm`, { type: blob.type || 'audio/webm' })
     const url  = await storeFile(file)
     voiceBlobStore.set(id, url)
+    voiceBlobStore.set(url, url)
+    onReplace(id, url)
   } catch { /* keep the blob:// url for this session */ }
 }
 
@@ -49,10 +55,11 @@ interface Props {
   savedIds: string[]
   onAdd: (id: string) => void
   onRemove: (id: string) => void
+  onReplace?: (oldId: string, url: string) => void
   helperText?: string
 }
 
-export function VoiceRecorder({ label, savedIds, onAdd, onRemove, helperText }: Props) {
+export function VoiceRecorder({ label, savedIds, onAdd, onRemove, onReplace, helperText }: Props) {
   const [recording, setRecording] = useState(false)
   const [timer,     setTimer]     = useState(0)
   const [micErr,    setMicErr]    = useState('')
@@ -75,8 +82,8 @@ export function VoiceRecorder({ label, savedIds, onAdd, onRemove, helperText }: 
         const url  = URL.createObjectURL(blob)
         const id   = `voice_${Date.now()}`
         voiceBlobStore.set(id, url)
-        persistVoiceBlob(id, blob)
         onAdd(id)
+        persistVoiceBlob(id, blob, (oldId, realUrl) => onReplace?.(oldId, realUrl))
         stream.getTracks().forEach(t => t.stop())
         setRecording(false)
         if (timerRef.current) clearInterval(timerRef.current)

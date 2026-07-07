@@ -557,6 +557,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   // ── ADVANCE PAYMENT ───────────────────────────────────────────────────────
   const [advPaidAmt,       setAdvPaidAmt]       = useState('')
   const [advBalAmt,        setAdvBalAmt]        = useState('')
+  const [advDueDate,       setAdvDueDate]       = useState('')
   const [advNote,          setAdvNote]          = useState('')
   const [advPayScreenshot, setAdvPayScreenshot] = useState<string[]>([])
   const [finalPayScreenshot, setFinalPayScreenshot] = useState<string[]>([])
@@ -1209,7 +1210,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   }
 
   function submitProductionCheck() {
-    const mandatory = availChecklist.filter(i => i.id !== 'glass')
+    const mandatory = availChecklist.filter(i => i.id !== 'glass' && i.id !== 'hardware')
     const notAvailMandatory = mandatory.filter(i => i.status === 'not_available')
     const orderedMandatory  = mandatory.filter(i => i.status === 'order')
 
@@ -1246,8 +1247,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       return
     }
 
-    const glassItem = availChecklist.find(i => i.id === 'glass')
-    const glassNote = glassItem?.status === 'not_available' ? ' (Glass noted as not available)' : glassItem?.status === 'order' ? ' (Glass being ordered)' : ''
+    const optionalNote = (id: string, label: string) => {
+      const item = availChecklist.find(i => i.id === id)
+      return item?.status === 'not_available' ? ` (${label} noted as not available)` : item?.status === 'order' ? ` (${label} being ordered)` : ''
+    }
+    const glassNote = optionalNote('glass', 'Glass')
+    const hardwareNote = optionalNote('hardware', 'Hardware')
     save({
       flowStage: 'production_work', flowStatus: 'ready', status: 'pending',
       title: 'Start Production Work',
@@ -1255,7 +1260,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       availabilityChecklist: savedChecklist,
       assignee: pmAssignee || undefined,
       dueDate: pmDueDate || 'Today',
-    }, `Materials checked${glassNote} — assigned to ${pmAssignee || 'Production Manager'}`)
+    }, `Materials checked${glassNote}${hardwareNote} — assigned to ${pmAssignee || 'Production Manager'}`)
   }
 
   function submitNotAvailLmAction() {
@@ -1290,6 +1295,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       save({ flowStatus: 'pending', status: 'pending' }, 'Advance payment pending'); return
     }
     if (!advPaidAmt) { setError('Enter paid amount.'); return }
+    if (!advDueDate) { setError('Enter due date.'); return }
     const paid    = Number(advPaidAmt)
     const total   = task.quotationAmount ?? 0
     const balance = advBalAmt ? Number(advBalAmt) : Math.max(0, total - paid)
@@ -1300,9 +1306,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       title: 'Upload Job Sheet to Admin',
       advancePaymentType: sel,
       paidAmount: paid, balanceAmount: balance,
+      dueDate: advDueDate,
       paymentNote: advNote || undefined,
       advancePaymentScreenshot: advPayScreenshot.length > 0 ? advPayScreenshot : undefined,
-    }, `Advance ₹${paid.toLocaleString('en-IN')} received`, advPayScreenshot)
+    }, `Advance ₹${paid.toLocaleString('en-IN')} received — due ${advDueDate}`, advPayScreenshot)
   }
 
   function submitProductionWork() {
@@ -1549,7 +1556,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   }
 
   function submitDemoProductionCheck() {
-    const mandatory = availChecklist.filter(i => i.id !== 'glass')
+    const mandatory = availChecklist.filter(i => i.id !== 'glass' && i.id !== 'hardware')
     const notAvailMandatory = mandatory.filter(i => i.status === 'not_available')
     const orderedMandatory  = mandatory.filter(i => i.status === 'order')
 
@@ -1574,15 +1581,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       return
     }
 
-    const glassItem = availChecklist.find(i => i.id === 'glass')
-    const glassNote2 = glassItem?.status === 'order' ? ' (Glass being ordered)' : glassItem?.status === 'not_available' ? ' (Glass noted)' : ''
+    const optionalNote2 = (id: string, label: string) => {
+      const item = availChecklist.find(i => i.id === id)
+      return item?.status === 'order' ? ` (${label} being ordered)` : item?.status === 'not_available' ? ` (${label} noted)` : ''
+    }
+    const glassNote2 = optionalNote2('glass', 'Glass')
+    const hardwareNote2 = optionalNote2('hardware', 'Hardware')
     const orderedNote2 = orderedMandatory.length > 0 ? ` — ordering: ${orderedMandatory.map(i => i.label).join(', ')}` : ''
     demoSave({
       flowStage: 'production_work', flowStatus: 'ready', status: 'pending',
       title: 'Start Production Work',
       notAvailableReason: undefined,
       availabilityChecklist: savedChecklist,
-    }, `Materials checked${glassNote2}${orderedNote2} — starting production`)
+    }, `Materials checked${glassNote2}${hardwareNote2}${orderedNote2} — starting production`)
   }
 
   function submitDemoProductionWork() {
@@ -1655,8 +1666,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             // 1. Production Admin → Production Manager: show what admin verified
             if (displayStage === 'production_work') {
               const items: string[] = []
-              if (task.jobSheet) items.push('Job Sheet: Uploaded ✓')
-              else if (task.jobSheetDetails) items.push(`Job Sheet: ${task.jobSheetDetails.slice(0, 60)}`)
+              if (!task.jobSheet && task.jobSheetDetails) items.push(`Job Sheet: ${task.jobSheetDetails.slice(0, 60)}`)
               if (task.glassSheet)   items.push('Glass Sheet: Uploaded ✓')
               if (task.cuttingSheet) items.push('Cutting Sheet: Uploaded ✓')
               if (task.additionalDocs?.length) items.push(`${task.additionalDocs.length} additional doc(s)`)
@@ -1665,10 +1675,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 task.availabilityChecklist.forEach(i => {
                   items.push(`${i.label}: ${i.available ? '✓ Available' : i.ordered ? '⏳ Ordered' : '✗ N/A'}`)
                 })
-              if (items.length === 0) return null
+              if (items.length === 0 && !task.jobSheet) return null
               return (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-1.5">
                   <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Production Admin Update</p>
+                  {task.jobSheet && (
+                    <a href={task.jobSheet} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-xs font-bold text-amber-700 underline">
+                      <FileText size={13} /> View Job Sheet
+                    </a>
+                  )}
                   {items.map((item, i) => (
                     <div key={i} className="flex items-start gap-2">
                       <span className="text-amber-300 text-xs mt-0.5">·</span>
@@ -1886,12 +1902,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                         savedIds={voiceNoteProductionIds}
                         onAdd={id => setVoiceNoteProductionIds(prev => [...prev, id])}
                         onRemove={id => setVoiceNoteProductionIds(prev => prev.filter(x => x !== id))}
+                        onReplace={(oldId, url) => setVoiceNoteProductionIds(prev => prev.map(x => x === oldId ? url : x))}
                         helperText="Optional voice note for production team" />
 
                       <VoiceRecorder label="Voice Note to Installation"
                         savedIds={voiceNoteInstallationIds}
                         onAdd={id => setVoiceNoteInstallationIds(prev => [...prev, id])}
                         onRemove={id => setVoiceNoteInstallationIds(prev => prev.filter(x => x !== id))}
+                        onReplace={(oldId, url) => setVoiceNoteInstallationIds(prev => prev.map(x => x === oldId ? url : x))}
                         helperText="Optional voice note for installation team" />
 
                       <div>
@@ -2065,12 +2083,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 savedIds={voiceNoteProductionIds}
                 onAdd={id => setVoiceNoteProductionIds(prev => [...prev, id])}
                 onRemove={id => setVoiceNoteProductionIds(prev => prev.filter(x => x !== id))}
+                onReplace={(oldId, url) => setVoiceNoteProductionIds(prev => prev.map(x => x === oldId ? url : x))}
                 helperText="Optional voice note for production team" />
 
               <VoiceRecorder label="Voice Note to Installation"
                 savedIds={voiceNoteInstallationIds}
                 onAdd={id => setVoiceNoteInstallationIds(prev => [...prev, id])}
                 onRemove={id => setVoiceNoteInstallationIds(prev => prev.filter(x => x !== id))}
+                onReplace={(oldId, url) => setVoiceNoteInstallationIds(prev => prev.map(x => x === oldId ? url : x))}
                 helperText="Optional voice note for installation team" />
 
               <div>
@@ -2982,6 +3002,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                               className={`${inp} ${advBalAmt ? 'bg-amber-50 border-amber-200' : ''}`} />
                           </div>
                           <div>
+                            <label className={lbl}>Due Date {req}</label>
+                            <input type="date" value={advDueDate} onChange={e => setAdvDueDate(e.target.value)} className={inp} />
+                          </div>
+                          <div>
                             <label className={lbl}>Payment Note <span className="text-slate-300 font-normal">(optional)</span></label>
                             <textarea rows={2} value={advNote} onChange={e => setAdvNote(e.target.value)}
                               placeholder="Payment method, reference number…" className={`${inp} resize-none`} />
@@ -3122,7 +3146,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <div className="space-y-2">
                 {availChecklist.map((item, idx) => {
-                  const isOptional = item.id === 'glass'
+                  const isOptional = item.id === 'glass' || item.id === 'hardware'
                   const borderCls = item.status === 'available' ? 'border-emerald-200 bg-emerald-50'
                     : item.status === 'order' ? 'border-amber-200 bg-amber-50'
                     : 'border-red-200 bg-red-50'
@@ -3163,7 +3187,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               </div>
 
               {(() => {
-                const mandatory = availChecklist.filter(i => i.id !== 'glass')
+                const mandatory = availChecklist.filter(i => i.id !== 'glass' && i.id !== 'hardware')
                 const allMandOk = mandatory.every(i => i.status === 'available')
                 return allMandOk ? (
                   <>
@@ -3238,7 +3262,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Material Availability Check</p>
               <div className="space-y-2">
                 {availChecklist.map((item, idx) => {
-                  const isOptional = item.id === 'glass'
+                  const isOptional = item.id === 'glass' || item.id === 'hardware'
                   const borderCls = item.status === 'available' ? 'border-emerald-200 bg-emerald-50'
                     : item.status === 'order' ? 'border-amber-200 bg-amber-50'
                     : 'border-red-200 bg-red-50'
@@ -3279,7 +3303,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               </div>
 
               {(() => {
-                const mandatory = availChecklist.filter(i => i.id !== 'glass')
+                const mandatory = availChecklist.filter(i => i.id !== 'glass' && i.id !== 'hardware')
                 const allMandOk = mandatory.every(i => i.status !== 'not_available')
                 return allMandOk ? (
                   <button type="button" onClick={submitDemoProductionCheck}
@@ -3415,6 +3439,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       onChange={e => setAdvBalAmt(e.target.value.replace(/[^0-9]/g, ''))}
                       placeholder="Auto-calculated from quotation total"
                       className={`${inp} ${advBalAmt ? 'bg-amber-50 border-amber-200' : ''}`} />
+                  </div>
+                  <div>
+                    <label className={lbl}>Due Date {req}</label>
+                    <input type="date" value={advDueDate} onChange={e => setAdvDueDate(e.target.value)} className={inp} />
                   </div>
                   <div>
                     <label className={lbl}>Payment Note <span className="text-slate-300 font-normal">(optional)</span></label>
@@ -4089,6 +4117,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 savedIds={voiceNoteInstallationIds}
                 onAdd={id => setVoiceNoteInstallationIds(prev => [...prev, id])}
                 onRemove={id => setVoiceNoteInstallationIds(prev => prev.filter(x => x !== id))}
+                onReplace={(oldId, url) => setVoiceNoteInstallationIds(prev => prev.map(x => x === oldId ? url : x))}
                 helperText="Optional voice note for the installation team" />
 
               <div>
@@ -4197,6 +4226,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                     savedIds={voiceNoteInstallationIds}
                     onAdd={id => setVoiceNoteInstallationIds(prev => [...prev, id])}
                     onRemove={id => setVoiceNoteInstallationIds(prev => prev.filter(x => x !== id))}
+                    onReplace={(oldId, url) => setVoiceNoteInstallationIds(prev => prev.map(x => x === oldId ? url : x))}
                     helperText="Record a voice note about the mistake" />
                 </div>
               )}
