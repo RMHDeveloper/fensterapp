@@ -201,7 +201,7 @@ export default function LeadsScreen() {
 
     if (status === 'contacted') {
       setPendingContactedId(selected.id)
-      setPendingFollowupDate('')
+      setPendingFollowupDate(new Date().toISOString().slice(0, 10))
       setShowFollowupDialog(true)
       return
     }

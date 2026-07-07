@@ -1,4 +1,5 @@
 import { X, AlertTriangle, CheckCircle2, Info } from 'lucide-react'
+import { createPortal } from 'react-dom'
 
 type Variant = 'default' | 'danger' | 'success' | 'info'
 
@@ -25,8 +26,8 @@ export function Dialog({ isOpen, onClose, title, message, variant = 'default', c
   if (!isOpen) return null
   const cfg = VARIANT_CONFIG[variant]
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-sheet w-full max-w-[320px] animate-fade-in">
         <div className="p-5">
@@ -57,6 +58,7 @@ export function Dialog({ isOpen, onClose, title, message, variant = 'default', c
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
