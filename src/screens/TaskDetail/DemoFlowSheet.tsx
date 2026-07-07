@@ -3020,7 +3020,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Material Availability Check</p>
 
-              {task.paidAmount != null && (role === 'owner' || role === 'lead_manager') && (
+              {task.paidAmount != null && role === 'owner' && (
                 <div className="bg-emerald-50 rounded-xl px-4 py-2.5">
                   <p className="text-[10px] text-emerald-500 font-bold uppercase">Advance Received</p>
                   <p className="text-sm font-bold text-emerald-700">₹{task.paidAmount.toLocaleString('en-IN')}</p>
@@ -3338,7 +3338,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Production Checklist</p>
 
-              {task.paidAmount != null && (role === 'owner' || role === 'lead_manager') && (
+              {task.paidAmount != null && role === 'owner' && (
                 <div className="bg-emerald-50 rounded-xl px-4 py-2.5">
                   <p className="text-[10px] text-emerald-500 font-bold uppercase">Advance Received</p>
                   <p className="text-sm font-bold text-emerald-700">₹{task.paidAmount.toLocaleString('en-IN')}</p>
