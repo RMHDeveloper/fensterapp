@@ -325,6 +325,10 @@ export default function LeadsScreen() {
     const lead = selected
     const name = `${lead.name} Project`
 
+    const assigneeUser = loadManagedUsers().find(u => u.fullName === lead.assignee)
+    const ownerId   = user?.role === 'lead_manager' ? user.id   : assigneeUser?.id
+    const ownerName = user?.role === 'lead_manager' ? user.name : (assigneeUser?.fullName ?? lead.assignee)
+
     const projectId = addProject({
       number:       `FC-${String(Date.now()).slice(-4)}`,
       name,
@@ -342,6 +346,8 @@ export default function LeadsScreen() {
       description:  lead.notes ?? lead.requirement ?? '',
       leadId:       lead.id,
       pendingConversion: true,
+      ...(ownerId   ? { ownerId }   : {}),
+      ...(ownerName ? { ownerName } : {}),
     })
 
     addTask({
