@@ -66,9 +66,10 @@ const STATUS_LABEL: Record<string, string> = {
 interface Props {
   task: Task
   onClick: () => void
+  role?: string
 }
 
-export function FlowTaskCard({ task, onClick }: Props) {
+export function FlowTaskCard({ task, onClick, role }: Props) {
   const stage    = task.flowStage ?? 'site_assign'
   const status   = task.flowStatus ?? 'ready'
   const isDone   = stage === 'completed'
@@ -108,8 +109,8 @@ export function FlowTaskCard({ task, onClick }: Props) {
         <p className="text-xs text-rose-700 font-semibold">Installer: {task.installationPerson}</p>
       )}
 
-      {/* Amount */}
-      {task.quotationAmount != null && stage !== 'site_review' && (
+      {/* Amount — visible to MD/ED/Admin (owner) and LO only */}
+      {(role === 'owner' || role === 'lead_manager') && task.quotationAmount != null && stage !== 'site_review' && (
         <p className="text-xs font-bold text-emerald-700">
           ₹{task.quotationAmount.toLocaleString('en-IN')}
           {task.paidAmount != null && task.paidAmount > 0

@@ -222,14 +222,14 @@ export default function HomeScreen() {
   // Quick access per role
   const QUICK: Record<UserRole, QuickItem[]> = {
     owner: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    label: 'Today Work',  link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    label: 'Pending',     link: '/tasks'      },
       { icon: FolderOpen,    iconColor: 'text-cyan-600',    iconBg: 'bg-cyan-100',    label: 'Projects',    link: '/projects'   },
       { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   label: 'Production',  link: '/production' },
       { icon: BarChart2,     iconColor: 'text-pink-600',    iconBg: 'bg-pink-100',    label: 'Reports',     link: '/reports'    },
     ],
     lead_manager: [
       { icon: Users,         iconColor: 'text-purple-600',  iconBg: 'bg-purple-100',  label: 'Leads',       link: '/leads'       },
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    label: 'Today Work',  link: '/tasks'       },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    label: 'Pending',     link: '/tasks'       },
       { icon: FileText,      iconColor: 'text-indigo-600',  iconBg: 'bg-indigo-100',  label: 'Quotations',  link: '/quotations'  },
       { icon: FolderOpen,    iconColor: 'text-cyan-600',    iconBg: 'bg-cyan-100',    label: 'Projects',    link: '/projects'    },
     ],
@@ -240,13 +240,13 @@ export default function HomeScreen() {
       { icon: Settings,      iconColor: 'text-slate-600',   iconBg: 'bg-slate-100',   label: 'Settings',    link: '/settings'    },
     ],
     production_admin: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    label: 'Today Work',  link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    label: 'Pending',     link: '/tasks'      },
       { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   label: 'Production',  link: '/production' },
       { icon: FolderOpen,    iconColor: 'text-cyan-600',    iconBg: 'bg-cyan-100',    label: 'Projects',    link: '/projects'   },
       { icon: FolderOpen,    iconColor: 'text-slate-600',   iconBg: 'bg-slate-100',   label: 'Files',       link: '/files'      },
     ],
     production_manager: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    label: 'Today Work',  link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    label: 'Pending',     link: '/tasks'      },
       { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   label: 'Production',  link: '/production' },
       { icon: FolderOpen,    iconColor: 'text-cyan-600',    iconBg: 'bg-cyan-100',    label: 'Projects',    link: '/projects'   },
       { icon: FolderOpen,    iconColor: 'text-slate-600',   iconBg: 'bg-slate-100',   label: 'Files',       link: '/files'      },
@@ -264,7 +264,7 @@ export default function HomeScreen() {
       { icon: Settings,      iconColor: 'text-slate-600',   iconBg: 'bg-slate-100',   label: 'Settings',    link: '/settings'   },
     ],
     production_team: [
-      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    label: 'Today Work',  link: '/tasks'      },
+      { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    label: 'Pending',     link: '/tasks'      },
       { icon: Layers,        iconColor: 'text-amber-600',   iconBg: 'bg-amber-100',   label: 'Production',  link: '/production' },
       { icon: FolderOpen,    iconColor: 'text-cyan-600',    iconBg: 'bg-cyan-100',    label: 'Projects',    link: '/projects'   },
       { icon: FolderOpen,    iconColor: 'text-slate-600',   iconBg: 'bg-slate-100',   label: 'Files',       link: '/files'      },
@@ -355,7 +355,7 @@ export default function HomeScreen() {
                 </span>
               </div>
               {activeFTs.slice(0, 3).map(t => (
-                <FlowTaskCard key={t.id} task={t} onClick={() => setFlowTaskId(t.id)} />
+                <FlowTaskCard key={t.id} task={t} role={role} onClick={() => setFlowTaskId(t.id)} />
               ))}
             </section>
           )

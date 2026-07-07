@@ -553,7 +553,9 @@ function handleSaveTask() {
                         </div>
                       </div>
                     ) : (
-                      entry.note && <p className="text-xs text-slate-700 leading-relaxed">{entry.note}</p>
+                      entry.note && <p className="text-xs text-slate-700 leading-relaxed">
+                        {entry.note.replace(/₹[\d,]+(\s*\([^)]*\))?/g, '').replace(/\s+/g, ' ').trim()}
+                      </p>
                     )}
                     {entry.files && entry.files.length > 0 && (
                       <div className="mt-1 space-y-0.5">
@@ -747,6 +749,7 @@ function handleSaveTask() {
             <p className="text-blue-300 text-xs mt-0.5 truncate">{project.name}</p>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               {(() => {
+                if (!canSeePayments) return null
                 const amt = getProjectAmount(project, flowTaskQuotation)
                 const balTask = tasks.find(t => t.balanceAmount && t.balanceAmount > 0)
                 const balance = balTask?.balanceAmount ?? 0

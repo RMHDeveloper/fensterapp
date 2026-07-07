@@ -839,7 +839,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         {task.siteEngineerName && stage !== 'site_assign' && (
           <p className="text-xs text-cyan-600 font-semibold pt-0.5">Engineer: {task.siteEngineerName}</p>
         )}
-        {canSeeCosts && task.quotationAmount != null && !['site_assign','site_visit','site_review','reschedule_review'].includes(stage) && (
+        {(role === 'owner' || role === 'lead_manager') && task.quotationAmount != null && !['site_assign','site_visit','site_review','reschedule_review'].includes(stage) && (
           <p className="text-xs font-bold text-emerald-600 pt-0.5">
             ₹{task.quotationAmount.toLocaleString('en-IN')} · {task.quotationProductType ?? ''}
           </p>
@@ -3020,7 +3020,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Material Availability Check</p>
 
-              {task.paidAmount != null && (
+              {task.paidAmount != null && (role === 'owner' || role === 'lead_manager') && (
                 <div className="bg-emerald-50 rounded-xl px-4 py-2.5">
                   <p className="text-[10px] text-emerald-500 font-bold uppercase">Advance Received</p>
                   <p className="text-sm font-bold text-emerald-700">₹{task.paidAmount.toLocaleString('en-IN')}</p>
@@ -3338,7 +3338,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Production Checklist</p>
 
-              {task.paidAmount != null && (
+              {task.paidAmount != null && (role === 'owner' || role === 'lead_manager') && (
                 <div className="bg-emerald-50 rounded-xl px-4 py-2.5">
                   <p className="text-[10px] text-emerald-500 font-bold uppercase">Advance Received</p>
                   <p className="text-sm font-bold text-emerald-700">₹{task.paidAmount.toLocaleString('en-IN')}</p>
