@@ -85,7 +85,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         getAllMistakes(),
         getAllProduction(),
       ])
-      setProjects(sbProjects)
+      // Backfill: push costBreakdown from task → project for existing records
+      const backfilledProjects = sbProjects.map(p => {
+        if (p.costBreakdown) return p
+        const task = sbTasks.find(t => t.projectId === p.id && t.costBreakdown)
+        if (!task?.costBreakdown) return p
+        const updated = { ...p, costBreakdown: task.costBreakdown }
+        upsertProject(updated)
+        return updated
+      })
+
+      setProjects(backfilledProjects)
       setTasks(sbTasks)
       setLeads(sbLeads)
       setPayments(sbPayments)
