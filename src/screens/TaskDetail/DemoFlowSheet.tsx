@@ -801,6 +801,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           updatedAt: new Date().toISOString(),
         } as Partial<import('../../types').Project>)
       }
+      if (updates.costBreakdown) {
+        updateProject(task.projectId, { costBreakdown: updates.costBreakdown } as Partial<import('../../types').Project>)
+      }
     }
 
     onClose()
