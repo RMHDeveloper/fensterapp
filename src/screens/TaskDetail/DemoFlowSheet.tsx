@@ -1157,6 +1157,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   function submitProductionAssign() {
     const hasJobSheet = jobSheetFiles.length > 0 || jobSheetText.trim().length > 0
     if (!hasJobSheet) { setError('Upload job sheet or type job sheet details.'); return }
+    if (productionAdminOptions.length > 0 && !jobSheetAssignee) { setError('Select a Production Incharge.'); return }
     save({
       flowStage: 'production_check', flowStatus: 'waiting', status: 'pending',
       title: 'Check Material Availability',
@@ -2957,9 +2958,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               {productionAdminOptions.length > 0 && (
                 <div>
-                  <label className={lbl}>Assign to Production Incharge <span className="text-slate-300 font-normal">(optional)</span></label>
+                  <label className={lbl}>Assign to Production Incharge {req}</label>
                   <select value={jobSheetAssignee} onChange={e => setJobSheetAssignee(e.target.value)} className={inp}>
-                    <option value="">Any available Production Incharge</option>
+                    <option value="" disabled>Select Production Incharge</option>
                     {productionAdminOptions.map(name => (
                       <option key={name} value={name}>{name}</option>
                     ))}
