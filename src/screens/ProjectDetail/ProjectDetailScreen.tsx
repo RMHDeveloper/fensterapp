@@ -13,6 +13,7 @@ import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { MediaPreviewList } from '../../components/media/MediaPreviewList'
 import { voicePreviewStore } from '../../utils/sessionStore'
 import { getDisplayFileName } from '../../utils/fileStorage'
+import { getVisibleTasksForRole, getSortedTasks, getTaskNavigation } from '../../utils/taskNavigation'
 import type { TimelineItem } from '../../components/layout/Timeline'
 import type { Task, TaskStatus, Project } from '../../types'
 
@@ -1046,14 +1047,31 @@ function handleSaveTask() {
         </div>
       </BottomSheet>
 
-      {flowTask && (
-        <DemoFlowSheet
-          isOpen={!!flowTask}
-          onClose={() => setFlowTaskId(null)}
-          task={flowTask}
-          onUpdate={handleFlowUpdate}
-        />
-      )}
+      {flowTask && (() => {
+        // A project only ever has one active flow task, so there's no
+        // meaningful "next task in this project" — fall back to every
+        // MD-visible task app-wide (owner only; DemoFlowSheet itself
+        // hides the buttons for every other role regardless).
+        const mdTaskList = user?.role === 'owner'
+          ? getSortedTasks(getVisibleTasksForRole(allTasks, user.role, user))
+          : []
+        const nav = getTaskNavigation(mdTaskList, flowTask.id)
+        return (
+          <DemoFlowSheet
+            isOpen={!!flowTask}
+            onClose={() => setFlowTaskId(null)}
+            task={flowTask}
+            onUpdate={handleFlowUpdate}
+            onNavigate={dir => {
+              const target = dir === 'prev' ? nav.previousTask : nav.nextTask
+              if (target) setFlowTaskId(target.id)
+            }}
+            hasPrev={nav.hasPrevious}
+            hasNext={nav.hasNext}
+            navPosition={nav.currentIndex >= 0 ? { current: nav.currentIndex + 1, total: nav.total } : undefined}
+          />
+        )
+      })()}
 
       {/* Edit Date BottomSheet */}
       <BottomSheet isOpen={editDateType !== null} onClose={() => setEditDateType(null)}
