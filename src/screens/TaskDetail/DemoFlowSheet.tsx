@@ -607,9 +607,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   // ── OWNER STAGE HISTORY BROWSING — Previous/Next stage buttons ────────────
   // null = viewing the live, actionable current stage. A number indexes into
-  // task.statusHistory to show a read-only summary of an earlier stage —
-  // browsing history never changes the task's real current stage.
+  // task.statusHistory to show a summary of an earlier stage. Browsing alone
+  // doesn't change anything — MD has to explicitly confirm "Roll Back to
+  // This Stage" (below) before the project's real current stage moves.
   const [historyIndex, setHistoryIndex] = useState<number | null>(null)
+  const [showRollbackConfirm, setShowRollbackConfirm] = useState(false)
 
   // ── FINAL PAYMENT ─────────────────────────────────────────────────────────
   const [finalPaidAmt,   setFinalPaidAmt]   = useState('')
@@ -796,6 +798,46 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     if (!viewingHistory) return
     if (historyIndex! + 1 >= stageHistory.length) setHistoryIndex(null)
     else setHistoryIndex(historyIndex! + 1)
+  }
+
+  // Actually moves the project back to a previous stage — drops every
+  // statusHistory entry after it and makes that stage live/editable again
+  // (the real per-stage action forms take over once flowStage matches it).
+  // Destructive: undoes whatever progress happened after this point, so it
+  // only runs after the MD explicitly confirms via the dialog below.
+  function rollbackToStage() {
+    if (historyIndex === null) return
+    const entry = stageHistory[historyIndex]
+    if (!entry) return
+    const now = new Date().toISOString()
+    const truncated = stageHistory.slice(0, historyIndex + 1)
+    const marker: StatusHistoryItem = {
+      stage: entry.stage,
+      status: entry.status,
+      note: `Rolled back to this stage by ${user?.name ?? 'MD'}`,
+      updatedBy: user?.name ?? 'MD',
+      updatedRole: role,
+      updatedAt: now,
+    }
+    onUpdate({
+      flowStage: entry.stage,
+      flowStatus: entry.status,
+      statusHistory: [...truncated, marker],
+    })
+    if (task.projectId) {
+      const newProjectStage = FLOW_TO_PROJECT_STAGE[entry.stage]
+      if (newProjectStage) {
+        updateProject(task.projectId, {
+          currentStage: newProjectStage,
+          stage: PROJECT_STAGE_LABEL[newProjectStage] ?? newProjectStage,
+          progress: PROJECT_STAGE_PROGRESS[newProjectStage] ?? undefined,
+          updatedAt: now,
+        } as Partial<Project>)
+      }
+    }
+    setHistoryIndex(null)
+    setShowRollbackConfirm(false)
+    onClose()
   }
 
   function pick(v: string) { setSel(v); setError('') }
@@ -1737,6 +1779,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   <span>{entry.updatedBy} · {entry.updatedRole}</span>
                   <span>{new Date(entry.updatedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
+                <button type="button" onClick={() => setShowRollbackConfirm(true)}
+                  className="w-full py-3.5 rounded-2xl border-2 border-red-200 bg-red-50 text-red-600 text-sm font-extrabold active:bg-red-100">
+                  ↺ Roll Back to This Stage
+                </button>
+                <Dialog
+                  isOpen={showRollbackConfirm}
+                  onClose={() => setShowRollbackConfirm(false)}
+                  onConfirm={rollbackToStage}
+                  variant="danger"
+                  title="Roll back this project?"
+                  message={`This moves the project back to "${STAGE_LABEL[entry.stage] ?? entry.stage}" and undoes everything that happened after it. This can't be undone.`}
+                  confirmLabel="Roll Back"
+                />
               </div>
             )
           })()}
