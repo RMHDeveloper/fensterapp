@@ -11,6 +11,7 @@ import { AppHeader } from '../../components/layout/AppHeader'
 import { FilterChips } from '../../components/forms/FilterChips'
 import type { Task } from '../../types'
 import { isDateFuture, isTaskForToday } from '../../utils/taskFilters'
+import { getTaskNavigation } from '../../utils/taskNavigation'
 
 type SortBy = 'status' | 'priority' | 'date'
 
@@ -274,7 +275,7 @@ export default function TodayTasksScreen() {
       </div>
 
       {flowTask && (() => {
-        const idx = activeFTs.findIndex(t => t.id === flowTask.id)
+        const nav = getTaskNavigation(activeFTs, flowTask.id)
         return (
           <DemoFlowSheet
             isOpen={!!flowTask}
@@ -282,12 +283,12 @@ export default function TodayTasksScreen() {
             task={flowTask}
             onUpdate={handleFlowUpdate}
             onNavigate={dir => {
-              const nextIdx = dir === 'prev' ? idx - 1 : idx + 1
-              const nextTask = activeFTs[nextIdx]
-              if (nextTask) setFlowTaskId(nextTask.id)
+              const target = dir === 'prev' ? nav.previousTask : nav.nextTask
+              if (target) setFlowTaskId(target.id)
             }}
-            hasPrev={idx > 0}
-            hasNext={idx >= 0 && idx < activeFTs.length - 1}
+            hasPrev={nav.hasPrevious}
+            hasNext={nav.hasNext}
+            navPosition={nav.currentIndex >= 0 ? { current: nav.currentIndex + 1, total: nav.total } : undefined}
           />
         )
       })()}

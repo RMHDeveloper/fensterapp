@@ -216,6 +216,7 @@ interface Props {
   onNavigate?: (direction: 'prev' | 'next') => void
   hasPrev?: boolean
   hasNext?: boolean
+  navPosition?: { current: number; total: number }  // current is 1-based
 }
 
 // ─── Opt defined OUTSIDE — prevents remount focus bug ─────────────────────────
@@ -458,7 +459,7 @@ const DEFAULT_AVAIL: AvailItem[] = [
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function DemoFlowSheet({ isOpen, onClose, task, onUpdate, onNavigate, hasPrev, hasNext }: Props) {
+export function DemoFlowSheet({ isOpen, onClose, task, onUpdate, onNavigate, hasPrev, hasNext, navPosition }: Props) {
   const { user, can }                        = useAuth()
   const { updateTask: ctxUpdateTask, updateProject, tasks, projects, leads } = useAppData()
   const navigate                             = useNavigate()
@@ -1629,43 +1630,50 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate, onNavigate, has
       <div className="relative bg-white rounded-t-3xl max-h-[94vh] overflow-y-auto">
 
         {/* Header */}
-        <div className={`sticky top-0 z-10 ${STAGE_BG[displayStage] ?? 'bg-blue-600'} px-5 py-4 rounded-t-3xl flex items-center justify-between`}>
-          <div>
-            {!project?.pendingConversion && (
-              <p className="text-white/70 text-[10px] font-bold uppercase tracking-wider">{task.projectName}</p>
-            )}
-            <h2 className="text-white text-base font-extrabold leading-tight">
-              {ownerNavStage ? STAGE_LABEL[ownerNavStage] ?? task.title : task.title}
-            </h2>
-            {leadOwnerName && (
-              <p className="text-white/60 text-[10px] mt-0.5">Lead Owner: {leadOwnerName}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {task.projectId && !project?.pendingConversion && (
-              <button type="button" onClick={() => { onClose(); navigate(`/project/${task.projectId}`) }}
-                className="flex items-center gap-1.5 px-3 h-8 bg-white/20 rounded-xl text-white text-xs font-bold active:bg-white/30">
-                <FolderOpen size={13} /> View Project
+        <div className={`sticky top-0 z-10 ${STAGE_BG[displayStage] ?? 'bg-blue-600'} px-5 py-4 rounded-t-3xl`}>
+          <div className="flex items-center justify-between">
+            <div>
+              {!project?.pendingConversion && (
+                <p className="text-white/70 text-[10px] font-bold uppercase tracking-wider">{task.projectName}</p>
+              )}
+              <h2 className="text-white text-base font-extrabold leading-tight">
+                {ownerNavStage ? STAGE_LABEL[ownerNavStage] ?? task.title : task.title}
+              </h2>
+              {leadOwnerName && (
+                <p className="text-white/60 text-[10px] mt-0.5">Lead Owner: {leadOwnerName}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {task.projectId && !project?.pendingConversion && (
+                <button type="button" onClick={() => { onClose(); navigate(`/project/${task.projectId}`) }}
+                  className="flex items-center gap-1.5 px-3 h-8 bg-white/20 rounded-xl text-white text-xs font-bold active:bg-white/30">
+                  <FolderOpen size={13} /> View Project
+                </button>
+              )}
+              <button type="button" onClick={onClose} className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                <X size={16} className="text-white" />
               </button>
-            )}
-            {onNavigate && (
-              <>
-                <button type="button" onClick={() => onNavigate('prev')} disabled={!hasPrev}
-                  aria-label="Previous task"
-                  className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0 disabled:opacity-30">
-                  <ChevronLeft size={16} className="text-white" />
-                </button>
-                <button type="button" onClick={() => onNavigate('next')} disabled={!hasNext}
-                  aria-label="Next task"
-                  className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0 disabled:opacity-30">
-                  <ChevronRight size={16} className="text-white" />
-                </button>
-              </>
-            )}
-            <button type="button" onClick={onClose} className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-              <X size={16} className="text-white" />
-            </button>
+            </div>
           </div>
+
+          {/* Previous/Next task navigation — MD/ED/Owner only */}
+          {role === 'owner' && onNavigate && (
+            <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-white/20">
+              <button type="button" onClick={() => onNavigate('prev')} disabled={!hasPrev}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/20 text-white text-xs font-bold active:bg-white/30 disabled:opacity-30 disabled:pointer-events-none">
+                <ChevronLeft size={14} /> Previous
+              </button>
+              {navPosition && (
+                <span className="text-[11px] text-white/80 font-semibold flex-shrink-0">
+                  Task {navPosition.current} of {navPosition.total}
+                </span>
+              )}
+              <button type="button" onClick={() => onNavigate('next')} disabled={!hasNext}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/20 text-white text-xs font-bold active:bg-white/30 disabled:opacity-30 disabled:pointer-events-none">
+                Next <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="px-5 py-4 space-y-3 pb-10">

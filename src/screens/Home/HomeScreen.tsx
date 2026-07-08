@@ -16,6 +16,7 @@ import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { ProjectCard } from '../../components/cards/ProjectCard'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { getRoleForStage } from '../../utils/workflow'
+import { getTaskNavigation } from '../../utils/taskNavigation'
 import type { Task, UserRole } from '../../types'
 import type { ComponentType } from 'react'
 import type { LucideProps } from 'lucide-react'
@@ -418,7 +419,7 @@ export default function HomeScreen() {
       </div>
 
       {flowTask && (() => {
-        const idx = activeFTs.findIndex(t => t.id === flowTask.id)
+        const nav = getTaskNavigation(activeFTs, flowTask.id)
         return (
           <DemoFlowSheet
             isOpen={!!flowTask}
@@ -429,12 +430,12 @@ export default function HomeScreen() {
               setFlowTaskId(null)
             }}
             onNavigate={dir => {
-              const nextIdx = dir === 'prev' ? idx - 1 : idx + 1
-              const nextTask = activeFTs[nextIdx]
-              if (nextTask) setFlowTaskId(nextTask.id)
+              const target = dir === 'prev' ? nav.previousTask : nav.nextTask
+              if (target) setFlowTaskId(target.id)
             }}
-            hasPrev={idx > 0}
-            hasNext={idx >= 0 && idx < activeFTs.length - 1}
+            hasPrev={nav.hasPrevious}
+            hasNext={nav.hasNext}
+            navPosition={nav.currentIndex >= 0 ? { current: nav.currentIndex + 1, total: nav.total } : undefined}
           />
         )
       })()}
