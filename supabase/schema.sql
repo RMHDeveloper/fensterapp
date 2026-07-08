@@ -112,6 +112,16 @@ CREATE POLICY "Allow all for anon" ON fenster_files FOR ALL TO anon USING (true)
 -- category is one of: project_file, project_doc, site_photo, measurement_doc, voice_note,
 --   quotation, job_sheet, glass_sheet, cutting_sheet, production_doc, installation_doc
 
+-- ─── Dashboard Targets (single row, id = 'default') ────────────────────────────
+CREATE TABLE IF NOT EXISTS fenster_dashboard_targets (
+  id          TEXT        PRIMARY KEY,
+  data        JSONB       NOT NULL DEFAULT '{}',
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE fenster_dashboard_targets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for anon" ON fenster_dashboard_targets FOR ALL TO anon USING (true) WITH CHECK (true);
+-- `data` holds: { daily: {ordersAmount, productionSqft, installationSqft, collectionAmount}, weekly: {...}, monthly: {...} }
+
 -- ─── Realtime — enable for all tables ────────────────────────────────────────
 -- Run in Supabase Dashboard → Database → Replication → enable for each table above,
 -- or run these statements:

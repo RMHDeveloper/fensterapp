@@ -1,0 +1,73 @@
+import { getDashboardTargetsRemote, saveDashboardTargetsRemote } from '../services/dashboardTargetsService'
+import type { DateFilter } from './dateRange'
+
+const LOCAL_KEY = 'fenster_dashboard_targets'
+
+export interface PeriodTargets {
+  ordersAmount: number
+  productionSqft: number
+  installationSqft: number
+  collectionAmount: number
+}
+
+export interface DashboardTargets {
+  daily:   PeriodTargets
+  weekly:  PeriodTargets
+  monthly: PeriodTargets
+}
+
+const DEFAULT_PERIOD: PeriodTargets = { ordersAmount: 0, productionSqft: 0, installationSqft: 0, collectionAmount: 0 }
+const DEFAULT_TARGETS: DashboardTargets = { daily: { ...DEFAULT_PERIOD }, weekly: { ...DEFAULT_PERIOD }, monthly: { ...DEFAULT_PERIOD } }
+
+function mergePeriod(saved: Partial<PeriodTargets> | undefined): PeriodTargets {
+  return { ...DEFAULT_PERIOD, ...saved }
+}
+
+export function loadLocalTargets(): DashboardTargets {
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY)
+    if (!raw) return { daily: { ...DEFAULT_PERIOD }, weekly: { ...DEFAULT_PERIOD }, monthly: { ...DEFAULT_PERIOD } }
+    const parsed = JSON.parse(raw) as Partial<DashboardTargets>
+    return {
+      daily:   mergePeriod(parsed.daily),
+      weekly:  mergePeriod(parsed.weekly),
+      monthly: mergePeriod(parsed.monthly),
+    }
+  } catch {
+    return { daily: { ...DEFAULT_PERIOD }, weekly: { ...DEFAULT_PERIOD }, monthly: { ...DEFAULT_PERIOD } }
+  }
+}
+
+function saveLocalTargets(targets: DashboardTargets): void {
+  try { localStorage.setItem(LOCAL_KEY, JSON.stringify(targets)) } catch { /* storage unavailable */ }
+}
+
+export async function loadDashboardTargets(): Promise<DashboardTargets> {
+  const remote = await getDashboardTargetsRemote().catch(() => null)
+  if (remote) {
+    saveLocalTargets(remote)
+    return remote
+  }
+  return loadLocalTargets()
+}
+
+export async function saveDashboardTargets(targets: DashboardTargets): Promise<void> {
+  saveLocalTargets(targets)
+  await saveDashboardTargetsRemote(targets).catch(() => {})
+}
+
+// Custom range falls back to daily × number of selected days.
+export function getPeriodTargets(targets: DashboardTargets, filter: DateFilter, days: number): PeriodTargets {
+  if (filter === 'today') return targets.daily
+  if (filter === 'week')  return targets.weekly
+  if (filter === 'month') return targets.monthly
+  const n = Math.max(1, days)
+  return {
+    ordersAmount:      targets.daily.ordersAmount      * n,
+    productionSqft:    targets.daily.productionSqft    * n,
+    installationSqft:  targets.daily.installationSqft  * n,
+    collectionAmount:  targets.daily.collectionAmount  * n,
+  }
+}
+
+export { DEFAULT_TARGETS }

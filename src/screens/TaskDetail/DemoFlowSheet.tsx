@@ -1487,8 +1487,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     if (!sel) return
     if (sel === 'full_paid') {
       const advance = task.paidAmount ?? 0
-      const newPaid = finalPaidAmt ? Number(finalPaidAmt) : 0
-      const totalPaid = advance + newPaid || (task.quotationAmount ?? 0)
+      const total   = task.quotationAmount ?? 0
+      const finalIncrement = Math.max(0, total - advance)
+      const totalPaid = advance + finalIncrement
       save({
         flowStage: 'final_completion',
         flowStatus: 'full_paid',
@@ -1496,7 +1497,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         title: 'Complete Project',
         paidAmount: totalPaid,
         balanceAmount: 0,
-      }, `Full payment ₹${totalPaid.toLocaleString('en-IN')} received`)
+      }, `Final payment ₹${finalIncrement.toLocaleString('en-IN')} received (total ₹${totalPaid.toLocaleString('en-IN')})`)
     } else if (sel === 'partial_paid') {
       if (!finalPaidAmt) { setError('Enter additional paid amount.'); return }
       const advance  = task.paidAmount ?? 0
