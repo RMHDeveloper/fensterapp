@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   X, CheckCircle2, AlertTriangle, Camera, Clock, Send, PhoneCall,
   Package, Wrench, CreditCard, Eye, Download, FileText, Copy, Check, FolderOpen, MapPin,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useAppData } from '../../context/AppDataContext'
@@ -212,6 +213,9 @@ interface Props {
   onClose: () => void
   task: Task
   onUpdate: (updates: Partial<Task>) => void
+  onNavigate?: (direction: 'prev' | 'next') => void
+  hasPrev?: boolean
+  hasNext?: boolean
 }
 
 // ─── Opt defined OUTSIDE — prevents remount focus bug ─────────────────────────
@@ -454,7 +458,7 @@ const DEFAULT_AVAIL: AvailItem[] = [
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
+export function DemoFlowSheet({ isOpen, onClose, task, onUpdate, onNavigate, hasPrev, hasNext }: Props) {
   const { user, can }                        = useAuth()
   const { updateTask: ctxUpdateTask, updateProject, tasks, projects, leads } = useAppData()
   const navigate                             = useNavigate()
@@ -1643,6 +1647,20 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 className="flex items-center gap-1.5 px-3 h-8 bg-white/20 rounded-xl text-white text-xs font-bold active:bg-white/30">
                 <FolderOpen size={13} /> View Project
               </button>
+            )}
+            {onNavigate && (
+              <>
+                <button type="button" onClick={() => onNavigate('prev')} disabled={!hasPrev}
+                  aria-label="Previous task"
+                  className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0 disabled:opacity-30">
+                  <ChevronLeft size={16} className="text-white" />
+                </button>
+                <button type="button" onClick={() => onNavigate('next')} disabled={!hasNext}
+                  aria-label="Next task"
+                  className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0 disabled:opacity-30">
+                  <ChevronRight size={16} className="text-white" />
+                </button>
+              </>
             )}
             <button type="button" onClick={onClose} className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
               <X size={16} className="text-white" />

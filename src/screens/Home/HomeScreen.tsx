@@ -125,6 +125,26 @@ export default function HomeScreen() {
   // LO: projects owned by this user
   const myProjectIds = new Set(projects.filter(isMyProject).map(p => p.id))
 
+  // "Ready for Next Step" flow tasks — lifted to component scope (not just
+  // the render-time IIFE below) so the DemoFlowSheet popup can offer
+  // Previous/Next navigation through the same list it was opened from.
+  const isAssignedToFTMe = (t: Task) =>
+    t.assignedTo === user?.name || t.assignedTo === user?.id ||
+    t.assignee   === user?.name || t.assignee   === user?.id ||
+    t.siteEngineerName === user?.name
+  const activeFTs = tasks.filter(t => {
+    if (t.flowStage == null || t.flowStage === 'completed') return false
+    if (role === 'site_engineer') return t.flowStage === 'site_visit' && isAssignedToFTMe(t)
+    if (role === 'owner') return t.flowStage === 'owner_approval' || t.flowStage === 'reschedule_review' || (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
+    if (role === 'production_admin') return t.flowStage === 'production_check' || t.flowStage === 'admin_availability_check'
+    if (role === 'production_manager') return t.flowStage === 'production_work'
+    if (role === 'production_team') return t.flowStage === 'production_check' || t.flowStage === 'production_work'
+    if (role === 'site_engineer_lead') return t.flowStage === 'site_lead_approval'
+    if (role === 'technician' || role === 'installation_incharge') return (t.flowStage === 'installation_assign' || t.flowStage === 'installation_update') && isAssignedToFTMe(t)
+    if (role === 'lead_manager') return myProjectIds.has(t.projectId)
+    return false
+  })
+
   // LO: pending flow tasks (any active flow stage in their projects)
   const loPendingFlow = role === 'lead_manager'
     ? tasks.filter(t => t.flowStage && t.flowStage !== 'completed' && myProjectIds.has(t.projectId)).length
@@ -341,22 +361,6 @@ export default function HomeScreen() {
 
         {/* 3. Flow Tasks ──────────────────────────────────────────────────────── */}
         {(() => {
-          const isAssignedToMe = (t: Task) =>
-            t.assignedTo === user?.name || t.assignedTo === user?.id ||
-            t.assignee   === user?.name || t.assignee   === user?.id ||
-            t.siteEngineerName === user?.name
-          const activeFTs = tasks.filter(t => {
-            if (t.flowStage == null || t.flowStage === 'completed') return false
-            if (role === 'site_engineer') return t.flowStage === 'site_visit' && isAssignedToMe(t)
-            if (role === 'owner') return t.flowStage === 'owner_approval' || t.flowStage === 'reschedule_review' || (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
-            if (role === 'production_admin') return t.flowStage === 'production_check' || t.flowStage === 'admin_availability_check'
-            if (role === 'production_manager') return t.flowStage === 'production_work'
-            if (role === 'production_team') return t.flowStage === 'production_check' || t.flowStage === 'production_work'
-            if (role === 'site_engineer_lead') return t.flowStage === 'site_lead_approval'
-            if (role === 'technician' || role === 'installation_incharge') return (t.flowStage === 'installation_assign' || t.flowStage === 'installation_update') && isAssignedToMe(t)
-            if (role === 'lead_manager') return myProjectIds.has(t.projectId)
-            return false
-          })
           if (activeFTs.length === 0) return null
           return (
             <section>
@@ -413,17 +417,27 @@ export default function HomeScreen() {
 
       </div>
 
-      {flowTask && (
-        <DemoFlowSheet
-          isOpen={!!flowTask}
-          onClose={() => setFlowTaskId(null)}
-          task={flowTask}
-          onUpdate={(updates) => {
-            updateTask(flowTask!.id, updates)
-            setFlowTaskId(null)
-          }}
-        />
-      )}
+      {flowTask && (() => {
+        const idx = activeFTs.findIndex(t => t.id === flowTask.id)
+        return (
+          <DemoFlowSheet
+            isOpen={!!flowTask}
+            onClose={() => setFlowTaskId(null)}
+            task={flowTask}
+            onUpdate={(updates) => {
+              updateTask(flowTask!.id, updates)
+              setFlowTaskId(null)
+            }}
+            onNavigate={dir => {
+              const nextIdx = dir === 'prev' ? idx - 1 : idx + 1
+              const nextTask = activeFTs[nextIdx]
+              if (nextTask) setFlowTaskId(nextTask.id)
+            }}
+            hasPrev={idx > 0}
+            hasNext={idx >= 0 && idx < activeFTs.length - 1}
+          />
+        )
+      })()}
     </div>
   )
 }

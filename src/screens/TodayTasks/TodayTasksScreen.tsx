@@ -273,14 +273,24 @@ export default function TodayTasksScreen() {
         )}
       </div>
 
-      {flowTask && (
-        <DemoFlowSheet
-          isOpen={!!flowTask}
-          onClose={() => setFlowTaskId(null)}
-          task={flowTask}
-          onUpdate={handleFlowUpdate}
-        />
-      )}
+      {flowTask && (() => {
+        const idx = activeFTs.findIndex(t => t.id === flowTask.id)
+        return (
+          <DemoFlowSheet
+            isOpen={!!flowTask}
+            onClose={() => setFlowTaskId(null)}
+            task={flowTask}
+            onUpdate={handleFlowUpdate}
+            onNavigate={dir => {
+              const nextIdx = dir === 'prev' ? idx - 1 : idx + 1
+              const nextTask = activeFTs[nextIdx]
+              if (nextTask) setFlowTaskId(nextTask.id)
+            }}
+            hasPrev={idx > 0}
+            hasNext={idx >= 0 && idx < activeFTs.length - 1}
+          />
+        )
+      })()}
 
       <Snackbar
         isOpen={snack.open}
