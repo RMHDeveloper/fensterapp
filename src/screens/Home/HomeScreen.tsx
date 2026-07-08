@@ -16,7 +16,6 @@ import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { ProjectCard } from '../../components/cards/ProjectCard'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { getRoleForStage } from '../../utils/workflow'
-import { getTaskNavigation } from '../../utils/taskNavigation'
 import type { Task, UserRole } from '../../types'
 import type { ComponentType } from 'react'
 import type { LucideProps } from 'lucide-react'
@@ -418,27 +417,17 @@ export default function HomeScreen() {
 
       </div>
 
-      {flowTask && (() => {
-        const nav = getTaskNavigation(activeFTs, flowTask.id)
-        return (
-          <DemoFlowSheet
-            isOpen={!!flowTask}
-            onClose={() => setFlowTaskId(null)}
-            task={flowTask}
-            onUpdate={(updates) => {
-              updateTask(flowTask!.id, updates)
-              setFlowTaskId(null)
-            }}
-            onNavigate={dir => {
-              const target = dir === 'prev' ? nav.previousTask : nav.nextTask
-              if (target) setFlowTaskId(target.id)
-            }}
-            hasPrev={nav.hasPrevious}
-            hasNext={nav.hasNext}
-            navPosition={nav.currentIndex >= 0 ? { current: nav.currentIndex + 1, total: nav.total } : undefined}
-          />
-        )
-      })()}
+      {flowTask && (
+        <DemoFlowSheet
+          isOpen={!!flowTask}
+          onClose={() => setFlowTaskId(null)}
+          task={flowTask}
+          onUpdate={(updates) => {
+            updateTask(flowTask!.id, updates)
+            setFlowTaskId(null)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -213,10 +213,6 @@ interface Props {
   onClose: () => void
   task: Task
   onUpdate: (updates: Partial<Task>) => void
-  onNavigate?: (direction: 'prev' | 'next') => void
-  hasPrev?: boolean
-  hasNext?: boolean
-  navPosition?: { current: number; total: number }  // current is 1-based
 }
 
 // ─── Opt defined OUTSIDE — prevents remount focus bug ─────────────────────────
@@ -459,7 +455,7 @@ const DEFAULT_AVAIL: AvailItem[] = [
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function DemoFlowSheet({ isOpen, onClose, task, onUpdate, onNavigate, hasPrev, hasNext, navPosition }: Props) {
+export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const { user, can }                        = useAuth()
   const { updateTask: ctxUpdateTask, updateProject, tasks, projects, leads } = useAppData()
   const navigate                             = useNavigate()
@@ -609,6 +605,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate, onNavigate, has
   // ── OWNER STAGE NAVIGATION ─────────────────────────────────────────────────
   const [ownerNavStage, setOwnerNavStage] = useState<string | null>(null)
 
+  // ── OWNER STAGE HISTORY BROWSING — Previous/Next stage buttons ────────────
+  // null = viewing the live, actionable current stage. A number indexes into
+  // task.statusHistory to show a read-only summary of an earlier stage —
+  // browsing history never changes the task's real current stage.
+  const [historyIndex, setHistoryIndex] = useState<number | null>(null)
+
   // ── FINAL PAYMENT ─────────────────────────────────────────────────────────
   const [finalPaidAmt,   setFinalPaidAmt]   = useState('')
   const [finalBalAmt,    setFinalBalAmt]    = useState('')
@@ -715,6 +717,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate, onNavigate, has
     setInstCompletedPhotos([])
     setExtraSheets([])
     setOwnerNavStage(null)
+    setHistoryIndex(null)
     setFinalPaidAmt(task.paidAmount ? String(task.paidAmount) : '')
     setFinalBalAmt(task.balanceAmount ? String(task.balanceAmount) : '')
     setFinalPayScreenshot([])
@@ -766,8 +769,34 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate, onNavigate, has
   if (!isOpen) return null
 
   const stage        = task.flowStage ?? 'site_assign'
-  const displayStage = (role === 'owner' && ownerNavStage) ? ownerNavStage : stage
+  const stageHistory = task.statusHistory ?? []
+  // Owner-only: browsing an earlier stage swaps the whole actionable stage
+  // tree for a read-only summary card — '__history__' matches none of the
+  // `displayStage === <FlowStage>` blocks below, so they all naturally
+  // render nothing while history is open.
+  const viewingHistory = role === 'owner' && historyIndex !== null && historyIndex >= 0 && historyIndex < stageHistory.length
+  const displayStage = viewingHistory ? '__history__' : ((role === 'owner' && ownerNavStage) ? ownerNavStage : stage)
   const flowStatus   = task.flowStatus ?? 'ready'
+
+  // Previous/Next STAGE — steps through this task's own statusHistory
+  // (read-only), landing back on the live actionable stage at the end.
+  const stageNavTotal   = stageHistory.length + 1
+  const stageNavCurrent = viewingHistory ? historyIndex! + 1 : stageNavTotal
+  const stageNavHasPrev = viewingHistory ? historyIndex! > 0 : stageHistory.length > 0
+  const stageNavHasNext = viewingHistory
+
+  function goPrevStage() {
+    if (viewingHistory) {
+      if (historyIndex! > 0) setHistoryIndex(historyIndex! - 1)
+    } else if (stageHistory.length > 0) {
+      setHistoryIndex(stageHistory.length - 1)
+    }
+  }
+  function goNextStage() {
+    if (!viewingHistory) return
+    if (historyIndex! + 1 >= stageHistory.length) setHistoryIndex(null)
+    else setHistoryIndex(historyIndex! + 1)
+  }
 
   function pick(v: string) { setSel(v); setError('') }
 
@@ -1656,19 +1685,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate, onNavigate, has
             </div>
           </div>
 
-          {/* Previous/Next task navigation — MD/ED/Owner only */}
-          {role === 'owner' && onNavigate && (
+          {/* Previous/Next STAGE of this project — MD/ED/Owner only */}
+          {role === 'owner' && (
             <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-white/20">
-              <button type="button" onClick={() => onNavigate('prev')} disabled={!hasPrev}
+              <button type="button" onClick={goPrevStage} disabled={!stageNavHasPrev}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/20 text-white text-xs font-bold active:bg-white/30 disabled:opacity-30 disabled:pointer-events-none">
                 <ChevronLeft size={14} /> Previous
               </button>
-              {navPosition && (
-                <span className="text-[11px] text-white/80 font-semibold flex-shrink-0">
-                  Task {navPosition.current} of {navPosition.total}
-                </span>
-              )}
-              <button type="button" onClick={() => onNavigate('next')} disabled={!hasNext}
+              <span className="text-[11px] text-white/80 font-semibold flex-shrink-0">
+                Stage {stageNavCurrent} of {stageNavTotal}
+              </span>
+              <button type="button" onClick={goNextStage} disabled={!stageNavHasNext}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/20 text-white text-xs font-bold active:bg-white/30 disabled:opacity-30 disabled:pointer-events-none">
                 Next <ChevronRight size={14} />
               </button>
@@ -1686,6 +1713,33 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate, onNavigate, has
               <p className="text-xs font-semibold text-red-600">{error}</p>
             </div>
           )}
+
+          {/* ── Read-only stage history (Previous/Next stage browsing) ────── */}
+          {viewingHistory && (() => {
+            const entry = stageHistory[historyIndex!]
+            return (
+              <div className="space-y-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Stage History</p>
+                  <p className="text-sm font-extrabold text-slate-800">{STAGE_LABEL[entry.stage] ?? entry.stage}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 capitalize">{entry.status.replace(/_/g, ' ')}</p>
+                </div>
+                {entry.note && (
+                  <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Note</p>
+                    <p className="text-sm text-slate-700">{entry.note}</p>
+                  </div>
+                )}
+                {entry.files && entry.files.length > 0 && (
+                  <MediaPreviewList files={entry.files} title="Attachments" voiceStore={voicePreviewStore} />
+                )}
+                <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                  <span>{entry.updatedBy} · {entry.updatedRole}</span>
+                  <span>{new Date(entry.updatedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* ── Stage Hand-off Summary (3 specific transitions only) ──────── */}
           {(() => {
