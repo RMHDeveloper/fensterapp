@@ -9,6 +9,7 @@ export interface MockUser {
   initials: string
   role: UserRole
   displayRole?: string
+  roles?: UserRole[]
 }
 
 export type AuthResult =
@@ -40,6 +41,7 @@ export function authenticateUser(mobile: string, password: string): AuthResult {
       initials,
       role:        found.role,
       displayRole: found.displayRole,
+      roles:       found.roles,
     },
   }
 }

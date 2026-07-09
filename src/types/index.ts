@@ -54,6 +54,7 @@ export interface AuthUser {
   initials: string
   email: string
   displayRole?: string   // set for managed users; undefined for built-in demo accounts
+  roles?: UserRole[]     // all assigned roles when the account has more than one — permissions are the union
   photo?: string         // Hostinger URL or dataUrl
 }
 
@@ -169,6 +170,8 @@ export type FlowStage =
 export interface CostBreakdown {
   quotationAmount: number
   numberOfSqft?: number
+  numberOfWindows?: number
+  numberOfDoors?: number
   materialCost: number
   productionCost: number
   installationCost: number
@@ -697,8 +700,10 @@ export interface ManagedUser {
   mobile: string
   email: string
   password: string
-  role: UserRole        // internal role key used for permissions
-  displayRole: string   // human-readable label shown in UI
+  role: UserRole        // primary internal role — used for nav layout & default login identity
+  displayRole: string   // human-readable label for the primary role, shown in UI
+  roles?: UserRole[]        // all assigned roles (including the primary one) — permissions are the union of all of them
+  displayRoles?: string[]   // human-readable labels matching `roles`, in the same order
   department?: string
   status: 'active' | 'inactive'
   notes?: string

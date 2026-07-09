@@ -1,11 +1,14 @@
 import type { UserRole, Permission } from '../types'
 import { ROLE_PERMISSIONS, SCREEN_PERMISSIONS } from '../data/permissions'
 
-export function hasPermission(role: UserRole, permission: Permission): boolean {
-  return ROLE_PERMISSIONS[role]?.includes(permission) ?? false
+// Accepts either a single role or every role assigned to a multi-role user —
+// permission is granted if ANY assigned role grants it.
+export function hasPermission(role: UserRole | UserRole[], permission: Permission): boolean {
+  const roles = Array.isArray(role) ? role : [role]
+  return roles.some(r => ROLE_PERMISSIONS[r]?.includes(permission) ?? false)
 }
 
-export function canAccessScreen(role: UserRole, screenPath: string): boolean {
+export function canAccessScreen(role: UserRole | UserRole[], screenPath: string): boolean {
   const required = SCREEN_PERMISSIONS[screenPath]
   if (!required) return true
   return hasPermission(role, required)

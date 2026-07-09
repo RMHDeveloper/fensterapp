@@ -65,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       initials:    account.initials,
       email:       account.email,
       displayRole: account.displayRole,
+      roles:       account.roles,
     })
     return { success: true }
   }
@@ -85,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function can(permission: Permission): boolean {
     if (!user) return false
-    return hasPermission(user.role, permission)
+    return hasPermission(user.roles ?? user.role, permission)
   }
 
   function updateProfile(updates: Partial<Pick<AuthUser, 'name' | 'photo'>>) {

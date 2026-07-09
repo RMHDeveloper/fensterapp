@@ -13,7 +13,7 @@ export function ProtectedRoute({ children, screenPath }: ProtectedRouteProps) {
 
   if (!isLoggedIn) return <Navigate to="/login" replace />
 
-  if (!canAccessScreen(user!.role, screenPath)) {
+  if (!canAccessScreen(user!.roles ?? user!.role, screenPath)) {
     return <NoPermission />
   }
 

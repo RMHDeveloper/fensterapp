@@ -24,7 +24,7 @@ interface FormState {
   mobile: string
   email: string
   password: string
-  displayRole: string
+  displayRoles: string[]
   department: string
   status: 'active' | 'inactive'
   notes: string
@@ -32,7 +32,7 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   fullName: '', mobile: '', email: '', password: '',
-  displayRole: '', department: '', status: 'active', notes: '',
+  displayRoles: [], department: '', status: 'active', notes: '',
 }
 
 const inp = 'w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm focus:outline-none focus:border-blue-400 transition-colors'
@@ -105,7 +105,7 @@ export default function UserManagementScreen() {
       mobile:      u.mobile,
       email:       u.email,
       password:    u.password,
-      displayRole: u.displayRole,
+      displayRoles: u.displayRoles && u.displayRoles.length > 0 ? u.displayRoles : [u.displayRole],
       department:  u.department ?? '',
       status:      u.status,
       notes:       u.notes ?? '',
@@ -115,13 +115,22 @@ export default function UserManagementScreen() {
     setShowForm(true)
   }
 
+  function toggleRole(displayRole: string) {
+    setForm(f => ({
+      ...f,
+      displayRoles: f.displayRoles.includes(displayRole)
+        ? f.displayRoles.filter(r => r !== displayRole)
+        : [...f.displayRoles, displayRole],
+    }))
+  }
+
   function validate(): boolean {
     const errs: Partial<Record<keyof FormState, string>> = {}
-    if (!form.fullName.trim())   errs.fullName    = 'Full Name is required'
-    if (!form.mobile.trim())     errs.mobile      = 'Mobile Number is required'
-    if (!form.email.trim())      errs.email       = 'Email / Username is required'
-    if (!form.password.trim())   errs.password    = 'Password is required'
-    if (!form.displayRole)       errs.displayRole = 'Role is required'
+    if (!form.fullName.trim())        errs.fullName = 'Full Name is required'
+    if (!form.mobile.trim())          errs.mobile   = 'Mobile Number is required'
+    if (!form.email.trim())           errs.email    = 'Email / Username is required'
+    if (!form.password.trim())        errs.password = 'Password is required'
+    if (form.displayRoles.length === 0) errs.displayRoles = 'Select at least one role'
     if (form.email.trim() && isEmailTaken(form.email.trim(), editUser?.id)) {
       errs.email = 'This email is already taken'
     }
@@ -134,8 +143,12 @@ export default function UserManagementScreen() {
 
   function handleSave() {
     if (!validate()) return
-    const now          = new Date().toISOString()
-    const internalRole: UserRole = DISPLAY_ROLE_TO_INTERNAL[form.displayRole] ?? 'viewer'
+    const now = new Date().toISOString()
+    // First selected role stays the "primary" role — drives nav layout and
+    // default login identity — the rest are additional permission grants.
+    const primaryDisplayRole = form.displayRoles[0]
+    const internalRole: UserRole = DISPLAY_ROLE_TO_INTERNAL[primaryDisplayRole] ?? 'viewer'
+    const internalRoles: UserRole[] = [...new Set(form.displayRoles.map(r => DISPLAY_ROLE_TO_INTERNAL[r] ?? 'viewer'))]
     let updated: ManagedUser[]
 
     if (editUser) {
@@ -143,36 +156,40 @@ export default function UserManagementScreen() {
         u.id === editUser.id
           ? {
               ...u,
-              fullName:    form.fullName.trim(),
-              mobile:      form.mobile.trim(),
-              email:       form.email.trim().toLowerCase(),
-              password:    form.password.trim(),
-              role:        internalRole,
-              displayRole: form.displayRole,
-              department:  form.department.trim() || undefined,
-              status:      form.status,
-              notes:       form.notes.trim() || undefined,
-              updatedAt:   now,
+              fullName:     form.fullName.trim(),
+              mobile:       form.mobile.trim(),
+              email:        form.email.trim().toLowerCase(),
+              password:     form.password.trim(),
+              role:         internalRole,
+              displayRole:  primaryDisplayRole,
+              roles:        internalRoles,
+              displayRoles: form.displayRoles,
+              department:   form.department.trim() || undefined,
+              status:       form.status,
+              notes:        form.notes.trim() || undefined,
+              updatedAt:    now,
             }
           : u
       )
       setSnack({ open: true, msg: 'User updated successfully', type: 'success' })
     } else {
       const newUser: ManagedUser = {
-        id:          `managed_${Date.now()}`,
-        fullName:    form.fullName.trim(),
-        mobile:      form.mobile.trim(),
-        email:       form.email.trim().toLowerCase(),
-        password:    form.password.trim(),
-        role:        internalRole,
-        displayRole: form.displayRole,
-        department:  form.department.trim() || undefined,
-        status:      form.status,
-        notes:       form.notes.trim() || undefined,
-        createdBy:   authUser?.name ?? 'System',
+        id:           `managed_${Date.now()}`,
+        fullName:     form.fullName.trim(),
+        mobile:       form.mobile.trim(),
+        email:        form.email.trim().toLowerCase(),
+        password:     form.password.trim(),
+        role:         internalRole,
+        displayRole:  primaryDisplayRole,
+        roles:        internalRoles,
+        displayRoles: form.displayRoles,
+        department:   form.department.trim() || undefined,
+        status:       form.status,
+        notes:        form.notes.trim() || undefined,
+        createdBy:    authUser?.name ?? 'System',
         createdByRole: authUser?.role ?? 'owner',
-        createdAt:   now,
-        updatedAt:   now,
+        createdAt:    now,
+        updatedAt:    now,
       }
       updated = [...users, newUser]
       setSnack({ open: true, msg: 'User created successfully', type: 'success' })
@@ -291,10 +308,12 @@ export default function UserManagementScreen() {
                 </div>
 
                 <div className="mt-2.5 pt-2.5 border-t border-slate-50 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full truncate">
-                      {getRoleDisplayLabel(u.role, u.displayRole)}
-                    </span>
+                  <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                    {(u.displayRoles && u.displayRoles.length > 0 ? u.displayRoles : [u.displayRole]).map(r => (
+                      <span key={r} className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full truncate">
+                        {r === u.displayRole ? getRoleDisplayLabel(u.role, u.displayRole) : r}
+                      </span>
+                    ))}
                     {u.department && (
                       <span className="text-[10px] text-slate-400 truncate">{u.department}</span>
                     )}
@@ -419,19 +438,37 @@ export default function UserManagementScreen() {
                 {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password}</p>}
               </div>
 
-              {/* Role */}
+              {/* Role(s) — a user can hold more than one */}
               <div>
-                <label className={lbl}>Role <span className="text-red-500">*</span></label>
-                <select
-                  {...field('displayRole')}
-                  className={`${inp} ${errors.displayRole ? 'border-red-300' : ''}`}
-                >
-                  <option value="">— Select Role —</option>
-                  {DISPLAY_ROLES.map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-                {errors.displayRole && <p className="text-xs text-red-500 mt-1">{errors.displayRole}</p>}
+                <label className={lbl}>Role(s) <span className="text-red-500">*</span></label>
+                <p className="text-[11px] text-slate-400 mb-2 -mt-0.5">Select every role this user should have. The first one picked is their primary role.</p>
+                <div className="space-y-1.5">
+                  {DISPLAY_ROLES.map(r => {
+                    const checked = form.displayRoles.includes(r)
+                    const order = form.displayRoles.indexOf(r)
+                    return (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => toggleRole(r)}
+                        className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border text-left transition-colors ${
+                          checked ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 border-slate-200'
+                        }`}
+                      >
+                        <div className={`w-4.5 h-4.5 rounded-md border-2 flex-shrink-0 flex items-center justify-center ${
+                          checked ? 'bg-blue-600 border-blue-600' : 'border-slate-300'
+                        }`}>
+                          {checked && <span className="text-white text-[10px] leading-none">✓</span>}
+                        </div>
+                        <span className={`text-sm flex-1 ${checked ? 'font-semibold text-blue-800' : 'text-slate-600'}`}>{r}</span>
+                        {checked && order === 0 && (
+                          <span className="text-[9px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full flex-shrink-0">PRIMARY</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+                {errors.displayRoles && <p className="text-xs text-red-500 mt-1">{errors.displayRoles}</p>}
               </div>
 
               {/* Status */}

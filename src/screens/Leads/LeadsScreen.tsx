@@ -627,6 +627,10 @@ export default function LeadsScreen() {
                     <span className="text-xs text-slate-500">{lead.city}</span>
                     {lead.interest && <InterestBadge interest={lead.interest} />}
                   </div>
+                  {/* Lead Owner — visible to MD/ED/Admin only */}
+                  {user?.role === 'owner' && lead.assignee && (
+                    <p className="text-[11px] text-indigo-500 font-semibold mb-1">Lead Owner: {lead.assignee}</p>
+                  )}
                   {/* Requirement */}
                   <p className="text-xs text-slate-600 truncate mb-1">{lead.requirement}</p>
                   {/* Source */}

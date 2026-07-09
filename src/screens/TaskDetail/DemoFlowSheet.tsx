@@ -344,7 +344,6 @@ const lbl = 'text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 blo
 const req = <span className="text-red-500"> *</span>
 
 const DEFAULT_INSTALLERS    = ['Ravi Kumar', 'Mani K', 'Senthil R', 'Arjun S', 'Balamurugan R']
-const DEFAULT_SITE_ENGINEERS = ['Kavya M', 'Arun S', 'Balamurugan R']
 
 // ── Customer / location helpers ───────────────────────────────────────────────
 
@@ -402,6 +401,11 @@ function MapButton({ url, className }: { url: string; className?: string }) {
 }
 
 // Customer details card shown to Site Engineer inside Visit Customer Site task
+function formatWhatsAppNumber(phone: string): string {
+  const digits = phone.replace(/\D/g, '')
+  return digits.length === 10 ? `91${digits}` : digits
+}
+
 function CustomerDetailsCard({ task, project }: { task: Task; project?: Project }) {
   const name     = getCustomerName(task, project)
   const phone    = getCustomerPhone(task, project)
@@ -430,14 +434,14 @@ function CustomerDetailsCard({ task, project }: { task: Task; project?: Project 
             📞 No Phone
           </div>
         )}
-        {mapUrl ? (
-          <a href={mapUrl} target="_blank" rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1.5 bg-white border-2 border-emerald-500 text-emerald-700 rounded-xl py-3 text-sm font-bold min-h-[44px] active:bg-emerald-50 transition-colors">
-            📍 View Maps
+        {phone ? (
+          <a href={`https://wa.me/${formatWhatsAppNumber(phone)}`} target="_blank" rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 bg-[#25D366] text-white rounded-xl py-3 text-sm font-bold min-h-[44px] active:opacity-90 transition-colors">
+            💬 WhatsApp
           </a>
         ) : (
-          <div className="flex items-center justify-center gap-1.5 bg-green-50 border border-green-200 text-green-400 rounded-xl py-3 text-[11px] font-semibold min-h-[44px] text-center px-2">
-            📍 Map Link Not Added
+          <div className="flex items-center justify-center gap-1.5 bg-slate-100 text-slate-400 rounded-xl py-3 text-sm font-semibold min-h-[44px]">
+            💬 No Phone
           </div>
         )}
       </div>
@@ -465,11 +469,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const leadOwnerName                        = project?.leadId ? leads.find(l => l.id === project.leadId)?.assignee ?? project.ownerName : project?.ownerName
   const [{ productionRate, installationRate }] = useState(getAppSettings)
 
-  // Merge managed users with defaults for assignment dropdowns
-  const engineerOptions = [
-    ...DEFAULT_SITE_ENGINEERS,
-    ...getActiveManagedUsersByDisplayRole('Site Engineer').filter(n => !DEFAULT_SITE_ENGINEERS.includes(n)),
-  ]
+  // Site engineer dropdown shows only real managed users — no seed/demo names
+  const engineerOptions = getActiveManagedUsersByDisplayRole('Site Engineer')
   const installerOptions = [
     ...DEFAULT_INSTALLERS,
     ...getActiveManagedUsersByDisplayRole('Installation Incharge').filter(n => !DEFAULT_INSTALLERS.includes(n)),
@@ -504,6 +505,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [visitTime,      setVisitTime]      = useState('')
   const [assignNote,     setAssignNote]     = useState('')
   const [assignLocation, setAssignLocation] = useState('')
+  const [assignMapLink,  setAssignMapLink]  = useState('')
 
   // ── SITE VISIT: reschedule ─────────────────────────────────────────────────
   const [reschedDate,   setReschedDate]   = useState('')
@@ -634,6 +636,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [costSqft,     setCostSqft]     = useState('')
   const [costMaterial, setCostMaterial] = useState('')
   const [costTransAmt, setCostTransAmt] = useState('')
+  const [costWindows,  setCostWindows]  = useState('')
+  const [costDoors,    setCostDoors]    = useState('')
 
   // ── PHASE 8: Admin availability checklist ──────────────────────
   const [availChecklist, setAvailChecklist] = useState<AvailItem[]>(DEFAULT_AVAIL)
@@ -666,6 +670,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setEngineerName(task.siteEngineerName ?? 'Kavya M')
     setVisitDate(task.visitDate ?? todayStr); setVisitTime(task.visitTime ?? '')
     setAssignNote(''); setAssignLocation(task.location ?? '')
+    setAssignMapLink(task.locationPin?.mapLink ?? '')
     setReschedDate(todayStr); setReschedTime(''); setReschedReason('')
     setSitePhotos(task.sitePhotos ?? [])
     setMeasFiles(task.measurementFiles ?? [])
@@ -736,6 +741,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setCostSqft(task.costBreakdown?.numberOfSqft ? String(task.costBreakdown.numberOfSqft) : '')
     setCostMaterial(task.costBreakdown?.materialCost ? String(task.costBreakdown.materialCost) : '')
     setCostTransAmt(task.costBreakdown?.transportCost ? String(task.costBreakdown.transportCost) : '')
+    setCostWindows(task.costBreakdown?.numberOfWindows ? String(task.costBreakdown.numberOfWindows) : '')
+    setCostDoors(task.costBreakdown?.numberOfDoors ? String(task.costBreakdown.numberOfDoors) : '')
     // Phase 8 — restore from task state if available, else use defaults
     setAvailChecklist(
       task.availabilityChecklist?.length
@@ -972,6 +979,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       visitTime: visitTime || undefined,
       note: assignNote || undefined,
       ...(assignLocation.trim() ? { location: assignLocation.trim() } : {}),
+      ...(assignMapLink.trim() ? { locationPin: { latitude: '', longitude: '', mapLink: assignMapLink.trim(), label: assignLocation.trim() || undefined } } : {}),
     }, `Assigned ${engineerName}${visitDate ? ` for ${visitDate}` : ''}${visitTime ? ` at ${visitTime}` : ''}`)
   }
 
@@ -1089,6 +1097,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     const prodC = sqft > 0 ? sqft * productionRate : 0
     const instC = sqft > 0 ? sqft * installationRate : 0
     const transC= costTransAmt ? Number(costTransAmt) : 0
+    const windows = costWindows ? Number(costWindows) : 0
+    const doors   = costDoors ? Number(costDoors) : 0
     const totalC = matC + prodC + instC + transC
     const hasCosts = matC > 0 || prodC > 0 || instC > 0 || transC > 0
     if (hasCosts && totalC > quotAmount) {
@@ -1097,9 +1107,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       return
     }
     setShowLossWarn(false)
-    const breakdown: CostBreakdown | undefined = hasCosts ? {
+    const breakdown: CostBreakdown | undefined = (hasCosts || windows > 0 || doors > 0) ? {
       quotationAmount: quotAmount,
       numberOfSqft:    sqft > 0 ? sqft : undefined,
+      numberOfWindows: windows > 0 ? windows : undefined,
+      numberOfDoors:   doors > 0 ? doors : undefined,
       materialCost:    matC,
       productionCost:  prodC,
       installationCost:instC,
@@ -1962,6 +1974,13 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               </div>
 
               <div>
+                <label className={lbl}>Map Link <span className="text-slate-300 font-normal">(optional)</span></label>
+                <input type="text" value={assignMapLink}
+                  onChange={e => setAssignMapLink(e.target.value)}
+                  placeholder="Paste Google Maps link" className={inp} />
+              </div>
+
+              <div>
                 <label className={lbl}>Note <span className="text-slate-300 font-normal">(optional)</span></label>
                 <textarea rows={2} value={assignNote} onChange={e => setAssignNote(e.target.value)}
                   placeholder="Any instructions for the engineer…" className={`${inp} resize-none`} />
@@ -2349,7 +2368,66 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           ════════════════════════════════════════════════════════════════ */}
           {displayStage === 'site_review' && (
             <>
+              {/* ── Site Visit Summary (moved to top — everything except site location) ── */}
+              {(task.siteEngineerName || task.visitDate || task.sitePhotos?.length || task.measurementDetails) && (
+                <div className="space-y-3 pb-3 border-b border-slate-100">
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Site Visit Summary</p>
+
+                  {(task.siteEngineerName || task.visitDate) && (
+                    <div className="bg-cyan-50 border border-cyan-200 rounded-xl px-4 py-3 space-y-0.5">
+                      <p className="text-[10px] font-bold text-cyan-500 uppercase mb-1">Site Engineer Details</p>
+                      {task.siteEngineerName && <p className="text-sm font-bold text-cyan-800">{task.siteEngineerName}</p>}
+                      {task.visitDate && <p className="text-xs text-cyan-600">Visit Date: {task.visitDate}{task.visitTime ? ` at ${task.visitTime}` : ''}</p>}
+                      {task.note && <p className="text-xs text-cyan-500 italic mt-0.5">"{task.note}"</p>}
+                    </div>
+                  )}
+                  {task.sitePhotos && task.sitePhotos.length > 0 && (
+                    <div className="bg-teal-50 rounded-xl px-4 py-3">
+                      <MediaPreviewList files={task.sitePhotos} title={`Site Photos (${task.sitePhotos.length})`} />
+                    </div>
+                  )}
+                  {task.measurementFiles && task.measurementFiles.length > 0 && (
+                    <div className="bg-violet-50 rounded-xl px-4 py-3">
+                      <MediaPreviewList files={task.measurementFiles} title={`Measurement Files (${task.measurementFiles.length})`} />
+                    </div>
+                  )}
+                  {task.measurementDetails && (
+                    <div className="bg-slate-50 rounded-xl px-4 py-3">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Measurements</p>
+                      <p className="text-xs text-slate-700 whitespace-pre-wrap">{task.measurementDetails}</p>
+                    </div>
+                  )}
+                  {task.measurementType && (
+                    <div className="bg-slate-50 rounded-xl px-4 py-2.5">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase mb-0.5">Measurement Type</p>
+                      <p className="text-xs font-semibold text-slate-700">{task.measurementType}</p>
+                    </div>
+                  )}
+                  {(!!task.specialNoteProduction?.length || !!task.specialNoteInstallation?.length) && (
+                    <div className="bg-purple-50 rounded-xl px-4 py-3 space-y-2">
+                      <p className="text-[10px] text-purple-500 font-bold uppercase">Voice Notes</p>
+                      {!!task.specialNoteProduction?.length && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-purple-400 font-semibold">To Production</p>
+                          <MediaPreviewList files={task.specialNoteProduction} />
+                        </div>
+                      )}
+                      {!!task.specialNoteInstallation?.length && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-purple-400 font-semibold">To Installation</p>
+                          <MediaPreviewList files={task.specialNoteInstallation} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Create Quotation</p>
+
+              <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png"
+                files={quotFiles} onChange={setQuotFiles} maxFiles={1}
+                helperText="Upload quotation PDF or document — required" />
 
               <div>
                 <label className={lbl}>Quotation Amount (₹) {req}</label>
@@ -2357,10 +2435,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   onChange={e => setQuotAmt(e.target.value.replace(/[^0-9]/g, ''))}
                   placeholder="e.g. 175000" className={inp} />
               </div>
-
-              <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png"
-                files={quotFiles} onChange={setQuotFiles} maxFiles={1}
-                helperText="Upload quotation PDF or document — required" />
 
               <div>
                 <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
@@ -2372,13 +2446,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <div className="space-y-3">
                 <div>
-                  <label className={lbl}>Transport Cost (₹)</label>
-                  <input type="text" inputMode="numeric" value={costTransAmt}
-                    onChange={e => setCostTransAmt(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder="Enter transport cost" className={inp} />
-                </div>
-
-                <div>
                   <label className={lbl}>Material Cost (₹)</label>
                   <input type="text" inputMode="numeric" value={costMaterial}
                     onChange={e => setCostMaterial(e.target.value.replace(/[^0-9]/g, ''))}
@@ -2386,10 +2453,32 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 </div>
 
                 <div>
+                  <label className={lbl}>Transport Cost (₹)</label>
+                  <input type="text" inputMode="numeric" value={costTransAmt}
+                    onChange={e => setCostTransAmt(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="Enter transport cost" className={inp} />
+                </div>
+
+                <div>
                   <label className={lbl}>Total Sq. ft</label>
                   <input type="text" inputMode="numeric" value={costSqft}
                     onChange={e => setCostSqft(e.target.value.replace(/[^0-9.]/g, ''))}
                     placeholder="e.g. 120 — drives production & installation cost" className={inp} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={lbl}>No. of Windows <span className="text-slate-300 font-normal">(optional)</span></label>
+                    <input type="text" inputMode="numeric" value={costWindows}
+                      onChange={e => setCostWindows(e.target.value.replace(/[^0-9]/g, ''))}
+                      placeholder="0" className={inp} />
+                  </div>
+                  <div>
+                    <label className={lbl}>No. of Doors <span className="text-slate-300 font-normal">(optional)</span></label>
+                    <input type="text" inputMode="numeric" value={costDoors}
+                      onChange={e => setCostDoors(e.target.value.replace(/[^0-9]/g, ''))}
+                      placeholder="0" className={inp} />
+                  </div>
                 </div>
 
                 {(costSqft || costMaterial || costTransAmt) && (() => {
@@ -2460,82 +2549,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 className="w-full py-4 rounded-2xl bg-violet-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
                 <Send size={15} /> Send Quotation for Approval
               </button>
-
-              {/* ── Site Visit Summary (below send button) ── */}
-              {(task.siteEngineerName || task.visitDate || task.sitePhotos?.length || task.measurementDetails || task.locationPin) && (
-                <div className="border-t border-slate-100 pt-3 space-y-3">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Site Visit Summary</p>
-
-                  {(task.siteEngineerName || task.visitDate) && (
-                    <div className="bg-cyan-50 border border-cyan-200 rounded-xl px-4 py-3 space-y-0.5">
-                      <p className="text-[10px] font-bold text-cyan-500 uppercase mb-1">Site Engineer Details</p>
-                      {task.siteEngineerName && <p className="text-sm font-bold text-cyan-800">{task.siteEngineerName}</p>}
-                      {task.visitDate && <p className="text-xs text-cyan-600">Visit Date: {task.visitDate}{task.visitTime ? ` at ${task.visitTime}` : ''}</p>}
-                      {task.note && <p className="text-xs text-cyan-500 italic mt-0.5">"{task.note}"</p>}
-                    </div>
-                  )}
-                  {task.sitePhotos && task.sitePhotos.length > 0 && (
-                    <div className="bg-teal-50 rounded-xl px-4 py-3">
-                      <MediaPreviewList files={task.sitePhotos} title={`Site Photos (${task.sitePhotos.length})`} />
-                    </div>
-                  )}
-                  {task.measurementFiles && task.measurementFiles.length > 0 && (
-                    <div className="bg-violet-50 rounded-xl px-4 py-3">
-                      <MediaPreviewList files={task.measurementFiles} title={`Measurement Files (${task.measurementFiles.length})`} />
-                    </div>
-                  )}
-                  {task.measurementDetails && (
-                    <div className="bg-slate-50 rounded-xl px-4 py-3">
-                      <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Measurements</p>
-                      <p className="text-xs text-slate-700 whitespace-pre-wrap">{task.measurementDetails}</p>
-                    </div>
-                  )}
-                  {task.locationPin && (task.locationPin.latitude || task.locationPin.mapLink) && (
-                    <div className="bg-emerald-50 rounded-xl px-4 py-3 space-y-2">
-                      <p className="text-[10px] text-emerald-500 font-bold uppercase mb-1">Site Location</p>
-                      {(() => {
-                        const readable = getReadableLocation(task)
-                        const mapUrl   = getSiteMapUrl(task)
-                        return (
-                          <>
-                            {readable
-                              ? <p className="text-sm font-semibold text-slate-700">{readable}</p>
-                              : <p className="text-sm text-slate-500 italic">Site location pinned</p>
-                            }
-                            {mapUrl && (
-                              <MapButton url={mapUrl}
-                                className="flex items-center justify-center gap-2 bg-green-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold active:bg-green-700 w-full min-h-[44px]" />
-                            )}
-                          </>
-                        )
-                      })()}
-                    </div>
-                  )}
-                  {task.measurementType && (
-                    <div className="bg-slate-50 rounded-xl px-4 py-2.5">
-                      <p className="text-[10px] text-slate-400 font-bold uppercase mb-0.5">Measurement Type</p>
-                      <p className="text-xs font-semibold text-slate-700">{task.measurementType}</p>
-                    </div>
-                  )}
-                  {(!!task.specialNoteProduction?.length || !!task.specialNoteInstallation?.length) && (
-                    <div className="bg-purple-50 rounded-xl px-4 py-3 space-y-2">
-                      <p className="text-[10px] text-purple-500 font-bold uppercase">Voice Notes</p>
-                      {!!task.specialNoteProduction?.length && (
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-purple-400 font-semibold">To Production</p>
-                          <MediaPreviewList files={task.specialNoteProduction} />
-                        </div>
-                      )}
-                      {!!task.specialNoteInstallation?.length && (
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-purple-400 font-semibold">To Installation</p>
-                          <MediaPreviewList files={task.specialNoteInstallation} />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
             </>
           )}
 
@@ -4406,6 +4419,18 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       Total: ₹{totalCost.toLocaleString('en-IN')}
                     </p>
                   )}
+                </div>
+              )}
+
+              {task.location && (
+                <div className="bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 space-y-1.5">
+                  <p className="text-[10px] text-teal-500 font-bold uppercase">Site Location</p>
+                  <p className="text-sm font-semibold text-teal-800">{task.location}</p>
+                  <a href={task.locationPin?.mapLink || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(task.location)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 bg-teal-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold active:bg-teal-700 w-full min-h-[44px]">
+                    <MapPin size={15} /> Open in Maps
+                  </a>
                 </div>
               )}
 

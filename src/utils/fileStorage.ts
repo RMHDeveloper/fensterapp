@@ -88,12 +88,18 @@ export async function storeFile(file: File): Promise<string> {
 }
 
 // Uploaded remote URLs carry a `<timestamp>_<random>_<originalName>` filename
-// to avoid server-side overwrites — strip that prefix back off for display.
+// (our own client-side prefix) to avoid server-side overwrites — strip that
+// back off for display. The upload server also prepends its own uniqid-style
+// prefix (e.g. "5f2a1b3c4d5e6.12345678_") ahead of whatever name we send, so
+// both prefixes have to be stripped, in either order, or the ugly generated
+// name leaks through instead of the file the user actually picked.
 export function getDisplayFileName(nameOrUrl: string): string {
-  const raw = nameOrUrl.startsWith('http')
+  let raw = nameOrUrl.startsWith('http')
     ? decodeURIComponent(nameOrUrl.split('/').pop() ?? nameOrUrl)
     : nameOrUrl
-  return raw.replace(/^\d+_[a-z0-9]{1,8}_/i, '')
+  raw = raw.replace(/^[a-f0-9]{10,20}\.\d{4,12}_/i, '')
+  raw = raw.replace(/^\d+_[a-z0-9]{1,8}_/i, '')
+  return raw
 }
 
 export function getFileUrl(nameOrUrl: string): string | undefined {
