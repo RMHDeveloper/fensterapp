@@ -109,7 +109,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return
+    if (!isSupabaseConfigured) { setIsSupabaseReady(true); return }
 
     // Initial fetch from Supabase
     refetchAll().then(() => setIsSupabaseReady(true))

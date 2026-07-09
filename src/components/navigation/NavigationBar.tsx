@@ -26,7 +26,7 @@ const ROLE_PATHS: Record<UserRole, string[]> = {
   site_engineer:        ['/home', '/tasks', '/site-visits', '/projects',   '/settings'],
   site_engineer_lead:   ['/home', '/tasks', '/projects',    '/settings'],
   production_admin:     ['/home', '/tasks', '/production',  '/projects',   '/settings'],
-  production_manager:   ['/home', '/tasks', '/production',  '/projects',   '/settings'],
+  production_manager:   ['/home', '/tasks', '/projects',    '/settings'],
   technician:           ['/home', '/tasks', '/projects', '/leave-applications', '/settings'],
   installation_incharge:['/home', '/tasks', '/projects', '/leave-applications', '/settings'],  // legacy
   production_team:      ['/home', '/tasks', '/production',  '/projects',   '/settings'],

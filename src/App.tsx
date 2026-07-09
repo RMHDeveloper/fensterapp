@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider }             from './context/AuthContext'
-import { AppDataProvider }          from './context/AppDataContext'
+import { AppDataProvider, useAppData } from './context/AppDataContext'
 import { OfflineBanner }            from './components/pwa/OfflineBanner'
 import { DbBanner }               from './components/pwa/DbBanner'
 import { InstallAppPrompt }         from './components/pwa/InstallAppPrompt'
@@ -8,6 +8,7 @@ import { PWAUpdatePrompt }          from './components/pwa/PWAUpdatePrompt'
 import { SidebarNavigation }        from './components/navigation/SidebarNavigation'
 import { NavigationBar }            from './components/navigation/NavigationBar'
 import { ProtectedRoute }           from './components/layout/ProtectedRoute'
+import { ErrorBoundary }            from './components/layout/ErrorBoundary'
 import { useAuth }                  from './context/AuthContext'
 import LoginScreen                  from './screens/Login/LoginScreen'
 import HomeScreen                   from './screens/Home/HomeScreen'
@@ -99,24 +100,42 @@ function LoginShell() {
   )
 }
 
+// Shown while auth/data rehydration is in progress after a refresh — prevents
+// protected pages from mounting before tasks/projects/leads have loaded, which
+// is what caused blank/crashed screens on refresh.
+function AppLoadingScreen() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-[#f8f9fa] gap-3">
+      <div className="w-9 h-9 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+      <p className="text-sm text-slate-400">Loading Fenster...</p>
+    </div>
+  )
+}
+
 // Route switcher — uses auth state to decide which shell to render
 function AppRoutes() {
   const { isLoggedIn } = useAuth()
-  return isLoggedIn ? <AppShell /> : <LoginShell />
+  const { isSupabaseReady } = useAppData()
+
+  if (!isLoggedIn) return <LoginShell />
+  if (!isSupabaseReady) return <AppLoadingScreen />
+  return <AppShell />
 }
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <AppDataProvider>
-          <DbBanner />
-          <OfflineBanner />
-          <AppRoutes />
-          <InstallAppPrompt />
-          <PWAUpdatePrompt />
-        </AppDataProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <AppDataProvider>
+            <DbBanner />
+            <OfflineBanner />
+            <AppRoutes />
+            <InstallAppPrompt />
+            <PWAUpdatePrompt />
+          </AppDataProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }

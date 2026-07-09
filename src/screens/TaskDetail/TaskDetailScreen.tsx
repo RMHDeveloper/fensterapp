@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, MapPin, Clock, Phone, RefreshCw, MessageSquare, History } from 'lucide-react'
+import { ArrowLeft, MapPin, Clock, Phone, RefreshCw, MessageSquare, History, FileX } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
 import { StatusUpdateSheet } from '../../components/feedback/StatusUpdateSheet'
 import { WorkflowStatusSheet } from './WorkflowStatusSheet'
 import { ProofBadge } from '../../components/badges/ProofBadge'
 import { Snackbar } from '../../components/feedback/Snackbar'
+import { EmptyState } from '../../components/feedback/EmptyState'
 import { taskTypeToModule, getStatusesForRole, mapDisplayStatusToTaskStatus } from '../../data/statusOptions'
 import type { TaskStatus, UserRole, StatusHistoryItem, FlowStage } from '../../types'
 
@@ -32,12 +33,25 @@ export default function TaskDetailScreen() {
   const navigate = useNavigate()
   const { tasks, updateTaskStatus, updateTask, completeWorkflowStep } = useAppData()
   const { user } = useAuth()
-  const task     = tasks.find(t => t.id === id) ?? tasks[0]
+  const task     = tasks.find(t => t.id === id)
 
-  const [checklist, setChecklist]   = useState(task.checklistItems ?? [])
-  const [status, setStatus]         = useState<TaskStatus>(task.status)
+  const [checklist, setChecklist]   = useState(task?.checklistItems ?? [])
+  const [status, setStatus]         = useState<TaskStatus>(task?.status ?? 'pending')
   const [showStatus, setShowStatus] = useState(false)
   const [snack, setSnack]           = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
+
+  if (!task) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa]">
+        <EmptyState
+          icon={FileX}
+          title="Task not found"
+          message="This task may have been removed or the link is incorrect."
+          action={{ label: 'Back to Tasks', onClick: () => navigate('/tasks') }}
+        />
+      </div>
+    )
+  }
 
   const isViewer = user?.role === 'viewer'
   const canEdit  = user?.role === 'owner' || user?.role === 'lead_manager' ||

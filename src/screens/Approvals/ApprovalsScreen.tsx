@@ -1,40 +1,32 @@
-import { useNavigate } from 'react-router-dom'
-import { useAppData } from '../../context/AppDataContext'
-import { useAuth } from '../../context/AuthContext'
-import { AppHeader } from '../../components/layout/AppHeader'
-import { Snackbar } from '../../components/feedback/Snackbar'
 import { useState } from 'react'
-import type { TaskStatus } from '../../types'
+import { useAppData } from '../../context/AppDataContext'
+import { AppHeader } from '../../components/layout/AppHeader'
+import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
+import { MapPin, CheckCircle2 } from 'lucide-react'
+import type { Task } from '../../types'
 
 export default function ApprovalsScreen() {
-  const navigate = useNavigate()
-  const { tasks, updateTaskStatus, completeWorkflowStep } = useAppData()
-  const { user } = useAuth()
-  const [snack, setSnack] = useState({ open: false, msg: '' })
+  const { tasks, projects, leads, updateTask } = useAppData()
+  const [flowTaskId, setFlowTaskId] = useState<string | null>(null)
 
-  const approvalTasks = tasks.filter(t =>
-    t.workflowStep === 'quotation_owner_approval' && t.status !== 'completed' && t.status !== 'overdue'
-  )
+  // The real, live pending-approval set — driven by the same flowStage the
+  // rest of the app uses, not the legacy workflowStep field this screen used
+  // to filter on (which no task has set anymore, so it always showed empty).
+  const approvalTasks = tasks.filter(t => t.flowStage === 'owner_approval' && t.flowStatus !== 'rejected')
+  const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
 
-  function handleApprove(taskId: string) {
-    const task = tasks.find(t => t.id === taskId)
-    if (!task) return
-    completeWorkflowStep(task, 'approved', {
-      amount: task.quotationAmount ?? 0,
-      productType: task.quotationProductType ?? '',
-    })
-    updateTaskStatus(taskId, 'completed' as TaskStatus)
-    setSnack({ open: true, msg: 'Quotation approved! LM has been notified.' })
+  function leadOwnerFor(task: Task): string {
+    const proj = projects.find(p => p.id === task.projectId)
+    if (proj?.leadId) {
+      const lead = leads.find(l => l.id === proj.leadId)
+      if (lead?.assignee) return lead.assignee
+    }
+    return proj?.ownerName || task.assignee || '—'
   }
 
-  function handleReject(taskId: string) {
-    const task = tasks.find(t => t.id === taskId)
-    if (!task) return
-    completeWorkflowStep(task, 'rejected', {
-      productType: task.quotationProductType ?? '',
-    })
-    updateTaskStatus(taskId, 'overdue' as TaskStatus)
-    setSnack({ open: true, msg: 'Quotation rejected. LM has been notified.' })
+  function uploadedAt(task: Task): string | undefined {
+    return [...(task.statusHistory ?? [])].reverse()
+      .find(h => h.stage === 'site_review' && h.status === 'completed')?.updatedAt
   }
 
   return (
@@ -42,65 +34,75 @@ export default function ApprovalsScreen() {
       <AppHeader />
 
       <div className="px-4 pt-4 space-y-3">
-        <h2 className="text-base font-extrabold text-slate-800 mb-3">Pending Approvals</h2>
+        <div>
+          <h2 className="text-base font-extrabold text-slate-800">Pending Quotation Approvals</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{approvalTasks.length} waiting for your review</p>
+        </div>
 
         {approvalTasks.length === 0 && (
           <div className="mt-10 text-center">
             <div className="w-16 h-16 bg-violet-50 rounded-full flex items-center justify-center mx-auto mb-3">
-              <span className="text-2xl">✓</span>
+              <CheckCircle2 size={28} className="text-violet-400" />
             </div>
             <h3 className="text-lg font-extrabold text-slate-700 mb-2">No Pending Approvals</h3>
             <p className="text-sm text-slate-400">All quotations have been reviewed.</p>
           </div>
         )}
 
-        {approvalTasks.map(task => (
-          <div key={task.id}
-            className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
-            <div>
-              <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wide mb-1">{task.projectName}</p>
-              <h3 className="text-sm font-extrabold text-slate-800">{task.title}</h3>
-              {task.description && <p className="text-xs text-slate-500 mt-1">{task.description}</p>}
-            </div>
-
-            {task.quotationAmount && (
-              <div className="bg-violet-50 rounded-xl px-4 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] text-violet-400 font-semibold uppercase">Amount</p>
-                  <p className="text-xl font-extrabold text-violet-700">₹{task.quotationAmount.toLocaleString('en-IN')}</p>
-                </div>
-                <div className="text-right">
-                  {task.quotationProductType && (
-                    <p className="text-xs text-violet-600">{task.quotationProductType}</p>
-                  )}
-                  {task.quotationQuantity && (
-                    <p className="text-xs text-violet-500">{task.quotationQuantity} units</p>
-                  )}
-                </div>
+        {approvalTasks.map(task => {
+          const uploaded = uploadedAt(task)
+          return (
+            <button key={task.id} onClick={() => setFlowTaskId(task.id)}
+              className="w-full text-left bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3 active:bg-slate-50">
+              <div>
+                <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wide mb-1">{task.projectName}</p>
+                <h3 className="text-sm font-extrabold text-slate-800">{task.clientName ?? task.title}</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Lead Owner: {leadOwnerFor(task)}</p>
               </div>
-            )}
 
-            <button onClick={() => navigate(`/task/${task.id}`)}
-              className="text-xs text-blue-500 font-semibold">
-              View Full Details →
+              {task.quotationAmount != null && (
+                <div className="bg-violet-50 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] text-violet-400 font-semibold uppercase">Quotation Amount</p>
+                    <p className="text-xl font-extrabold text-violet-700">₹{task.quotationAmount.toLocaleString('en-IN')}</p>
+                    {task.quotationProductType && <p className="text-xs text-violet-500 mt-0.5">{task.quotationProductType}</p>}
+                  </div>
+                  {uploaded && (
+                    <p className="text-[10px] text-violet-400 text-right flex-shrink-0">
+                      Uploaded<br />
+                      {new Date(uploaded).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {(task.measurementDetails || task.location) && (
+                <div className="bg-slate-50 rounded-xl px-3 py-2.5 flex items-start gap-1.5">
+                  <MapPin size={13} className="text-slate-400 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Site Visit Summary</p>
+                    {task.location && <p className="text-[11px] text-slate-500">{task.location}</p>}
+                    {task.measurementDetails && <p className="text-[11px] text-slate-500 line-clamp-2">{task.measurementDetails}</p>}
+                  </div>
+                </div>
+              )}
+
+              <div className="w-full text-center py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold">
+                Review · Approve / Reject →
+              </div>
             </button>
-
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <button onClick={() => handleReject(task.id)}
-                className="py-3 rounded-xl border-2 border-red-200 text-red-600 text-sm font-bold active:bg-red-50">
-                Reject
-              </button>
-              <button onClick={() => handleApprove(task.id)}
-                className="py-3 rounded-xl bg-emerald-600 text-white text-sm font-bold active:bg-emerald-700">
-                Approve ✓
-              </button>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
-      <Snackbar isOpen={snack.open} message={snack.msg} type="success"
-        onClose={() => setSnack(s => ({ ...s, open: false }))} />
+      {flowTask && (
+        <DemoFlowSheet
+          isOpen={!!flowTask}
+          onClose={() => setFlowTaskId(null)}
+          task={flowTask}
+          onUpdate={updates => { updateTask(flowTask.id, updates); setFlowTaskId(null) }}
+        />
+      )}
     </div>
   )
 }

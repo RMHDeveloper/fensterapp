@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Calendar, MapPin, Phone, CheckCircle2, Star, Navigation, MessageCircle, Pencil, AlertTriangle, X } from 'lucide-react'
+import { ArrowLeft, Calendar, MapPin, Phone, CheckCircle2, Star, Navigation, MessageCircle, Pencil, AlertTriangle, X, FolderX } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
 import { StatusBadge } from '../../components/badges/StatusBadge'
@@ -9,10 +9,10 @@ import { Timeline } from '../../components/layout/Timeline'
 import { Accordion } from '../../components/layout/Accordion'
 import { BottomSheet } from '../../components/feedback/BottomSheet'
 import { Snackbar } from '../../components/feedback/Snackbar'
+import { EmptyState } from '../../components/feedback/EmptyState'
 import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { MediaPreviewList } from '../../components/media/MediaPreviewList'
 import { voicePreviewStore } from '../../utils/sessionStore'
-import { getDisplayFileName } from '../../utils/fileStorage'
 import type { TimelineItem } from '../../components/layout/Timeline'
 import type { Task, TaskStatus, Project } from '../../types'
 
@@ -243,7 +243,7 @@ export default function ProjectDetailScreen() {
   // Profit is sensitive even among owner-role accounts — MD/ED only, not Admin, not LO, not anyone else
   const canSeeProfit = user?.role === 'owner' && !!(user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED'))
 
-  const project  = projects.find(p => p.id === id) ?? projects[0]
+  const project  = projects.find(p => p.id === id)
   const tasks    = allTasks.filter(t => t.projectId === id)
   const payment  = payments.find(p => p.projectId === id)
   const timeline = buildProjectTimeline(project?.currentStage, project?.createdAt)
@@ -293,6 +293,19 @@ export default function ProjectDetailScreen() {
   const [taskLocation,  setTaskLocation]  = useState('')
   const [taskNote,      setTaskNote]      = useState('')
 
+  if (!project) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa]">
+        <EmptyState
+          icon={FolderX}
+          title="Project not found"
+          message="This project may have been removed or the link is incorrect."
+          action={{ label: 'Back to Projects', onClick: () => navigate('/projects') }}
+        />
+      </div>
+    )
+  }
+
   function handleCallClient() {
     if (!project?.clientPhone) {
       setSnack({ open: true, msg: 'Phone number not available', type: 'error' })
@@ -324,6 +337,7 @@ export default function ProjectDetailScreen() {
   }
 
   function handleSavePayment(advTaskId: string) {
+    if (!project) return
     const paid = Number(editPaid.replace(/[^0-9]/g, '')) || 0
     const balance = Number(editBalance.replace(/[^0-9]/g, '')) || 0
     const quoted = Number(editQuoted.replace(/[^0-9]/g, '')) || 0
@@ -573,13 +587,6 @@ function handleSaveTask() {
         return (
           <div className="space-y-3 divide-y divide-slate-100">
             {allEntries.map((entry, i) => {
-              const timeStr = (() => {
-                try {
-                  const d = new Date(entry.updatedAt)
-                  if (!isNaN(d.getTime())) return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
-                } catch { /* fall through */ }
-                return ''
-              })()
               return (
                 <div key={i} className={`flex gap-2.5 ${i > 0 ? 'pt-3' : ''}`}>
                   <div className="flex flex-col items-center pt-1 flex-shrink-0">
@@ -623,12 +630,8 @@ function handleSaveTask() {
                       </p>
                     )}
                     {entry.files && entry.files.length > 0 && (
-                      <div className="mt-1 space-y-0.5">
-                        {entry.files.map((f, fi) => (
-                          <p key={fi} className="text-[10px] text-slate-400">
-                            📎 {getDisplayFileName(f)}{timeStr ? <span className="text-slate-300"> · {timeStr}</span> : null}
-                          </p>
-                        ))}
+                      <div className="mt-1.5">
+                        <MediaPreviewList files={entry.files} voiceStore={voicePreviewStore} />
                       </div>
                     )}
                     <p className="text-[10px] text-slate-400 mt-1">
@@ -779,8 +782,6 @@ function handleSaveTask() {
       ),
     },
   ]
-
-  if (!project) return null
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-24">

@@ -573,7 +573,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [proposedInstPerson, setProposedInstPerson] = useState('')
   const [proposedInstDate,   setProposedInstDate]   = useState('')
   const [adminAvailNotes,    setAdminAvailNotes]    = useState('')
-  const [availStatus,        setAvailStatus]        = useState<'available' | 'not_available' | 'need_approval'>('available')
   const [siteLeadAction,     setSiteLeadAction]     = useState<'assign' | 'change' | ''>('')
   const [changedInstPerson,  setChangedInstPerson]  = useState('')
   const [changedInstDate,    setChangedInstDate]    = useState('')
@@ -705,7 +704,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setLmNewDate(todayStr); setLmNote('')
     setProposedInstPerson(task.proposedInstallationPerson ?? '')
     setProposedInstDate(task.proposedInstallationDate ?? todayStr)
-    setAdminAvailNotes(''); setAvailStatus('available')
+    setAdminAvailNotes('')
     setSiteLeadAction(''); setChangedInstPerson(''); setChangedInstDate(todayStr); setChangedInstNotes('')
     setInstPerson(task.installationPerson ?? '')
     setInstDate(task.installationDate ?? todayStr)
@@ -1412,8 +1411,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       proposedInstallationPerson: proposedInstPerson,
       proposedInstallationDate: proposedInstDate,
       adminAvailabilityNotes: adminAvailNotes || undefined,
-      availabilityStatus: availStatus,
-    }, `Admin proposed ${proposedInstPerson} for installation on ${proposedInstDate}`)
+      availabilityStatus: 'need_approval',
+    }, `Admin requested Site Engineer Lead approval for installation assignment — proposed ${proposedInstPerson} on ${proposedInstDate}`)
   }
 
   function submitSiteLeadAssignContinue() {
@@ -1557,6 +1556,46 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         title: 'Collect Final Payment',
       }, 'Installation mistake resolved — collecting final payment')
     }
+  }
+
+  // Bundles "record the final balance payment" + "log actual expenses/extra
+  // charge" + "mark the project completed" into a single save — previously
+  // these were two separate steps and save() always closes the popup, so
+  // completing a project in one go meant closing then having to reopen the
+  // same task just to see the Extra Charge / Complete Project step.
+  function completeProjectWithPayment(paidAmount: number, balanceAmount: number, paymentNote: string) {
+    if ((role === 'owner' || role === 'lead_manager') && !extraChargeAmt.trim()) {
+      setError('Enter Extra Cost (enter 0 if none).')
+      return
+    }
+    const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport]
+      .reduce((s, v) => s + (Number(v) || 0), 0)
+    const extraCharge = Number(extraChargeAmt) || 0
+    if (task.projectId) {
+      updateProject(task.projectId, {
+        status: 'completed', isCompleted: true,
+        completedAt: new Date().toISOString(),
+        actualCompletedDate: new Date().toISOString(),
+        workflowStatus: 'Finished', paymentStatus: 'Full Paid', progress: 100,
+        ...(totalExpenses > 0 ? {
+          actualCosts: {
+            quotationAmount: task.quotationAmount ?? task.costBreakdown?.quotationAmount ?? 0,
+            materialCost:    Number(actualMaterial)     || 0,
+            productionCost:  Number(actualProduction)   || 0,
+            installationCost:Number(actualInstallation) || 0,
+            transportCost:   Number(actualTransport)    || 0,
+            extraCharge,
+            profit:          ((task.quotationAmount ?? 0) + extraCharge) - totalExpenses,
+          },
+        } : {}),
+      } as Partial<Project>)
+    }
+    save({
+      flowStage: 'completed', flowStatus: 'done', status: 'completed',
+      title: 'Project Completed',
+      paidAmount, balanceAmount,
+      finalPaymentScreenshot: finalPayScreenshot.length > 0 ? finalPayScreenshot : undefined,
+    }, `${paymentNote} — Project completed by ${user?.name ?? role}`, finalPayScreenshot)
   }
 
   function submitFinalPayment() {
@@ -1800,26 +1839,30 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {(() => {
             // 1. Production Admin → Production Manager: show what admin verified
             if (displayStage === 'production_work') {
+              const assignEntry = [...(task.statusHistory ?? [])].reverse()
+                .find(h => h.stage === 'production_assign' && h.status === 'completed')
+              const uploadMeta = assignEntry
+                ? `Uploaded by ${assignEntry.updatedBy} (${assignEntry.updatedRole}) · ${new Date(assignEntry.updatedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                : undefined
               const items: string[] = []
               if (!task.jobSheet && task.jobSheetDetails) items.push(`Job Sheet: ${task.jobSheetDetails.slice(0, 60)}`)
-              if (task.glassSheet)   items.push('Glass Sheet: Uploaded ✓')
-              if (task.cuttingSheet) items.push('Cutting Sheet: Uploaded ✓')
-              if (task.additionalDocs?.length) items.push(`${task.additionalDocs.length} additional doc(s)`)
               if (task.productionSheetNote) items.push(`LO Notes: ${task.productionSheetNote.slice(0, 80)}`)
               if (task.availabilityChecklist?.length)
                 task.availabilityChecklist.forEach(i => {
                   items.push(`${i.label}: ${i.available ? '✓ Available' : i.ordered ? '⏳ Ordered' : '✗ N/A'}`)
                 })
-              if (items.length === 0 && !task.jobSheet) return null
+              const hasDocs = !!(task.jobSheet || task.glassSheet || task.cuttingSheet || task.additionalDocs?.length)
+              if (items.length === 0 && !hasDocs) return null
               return (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-1.5">
-                  <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Production Admin Update</p>
-                  {task.jobSheet && (
-                    <a href={task.jobSheet} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-xs font-bold text-amber-700 underline">
-                      <FileText size={13} /> View Job Sheet
-                    </a>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2.5">
+                  <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Production Documents from LO / Admin</p>
+                  {task.jobSheet && <MediaPreviewList files={[task.jobSheet]} title="Job Sheet" />}
+                  {task.glassSheet && <MediaPreviewList files={[task.glassSheet]} title="Glass Sheet" />}
+                  {task.cuttingSheet && <MediaPreviewList files={[task.cuttingSheet]} title="Cutting Sheet" />}
+                  {task.additionalDocs && task.additionalDocs.length > 0 && (
+                    <MediaPreviewList files={task.additionalDocs} title="Additional Docs" />
                   )}
+                  {uploadMeta && <p className="text-[10px] text-amber-500">{uploadMeta}</p>}
                   {items.map((item, i) => (
                     <div key={i} className="flex items-start gap-2">
                       <span className="text-amber-300 text-xs mt-0.5">·</span>
@@ -3969,21 +4012,74 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 onOverride={() => setDemoOverride(true)} variant="owner" />
             </>
           )}
-          {displayStage === 'dispatch_assign' && (role === 'lead_manager' || (role === 'owner' && demoOverride)) && (
-            <>
-              <div className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-4 space-y-1">
-                <div className="flex items-center gap-2">
-                  <Package size={16} className="text-orange-600 flex-shrink-0" />
-                  <p className="text-sm font-bold text-orange-700">Production Complete — Ready to Dispatch</p>
+          {displayStage === 'dispatch_assign' && (role === 'lead_manager' || (role === 'owner' && demoOverride)) && (() => {
+            const checklist = task.productionChecklist ?? []
+            const doneCt = checklist.filter(i => i.done).length
+            const pct = checklist.length > 0 ? Math.round((doneCt / checklist.length) * 100) : 0
+            const allDone = checklist.length === 0 || doneCt === checklist.length
+            const workEntry = [...(task.statusHistory ?? [])].reverse().find(h => h.stage === 'production_work' && h.status === 'completed')
+            return (
+              <>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 space-y-2">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Production Manager Status</p>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500">Production Manager</span>
+                    <span className="font-semibold text-slate-700">{task.assignee || '—'}</span>
+                  </div>
+                  {checklist.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500">Checklist Progress</span>
+                        <span className="font-bold text-slate-700">{pct}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+                        <div className="h-full bg-emerald-500" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="space-y-1 pt-1">
+                        {checklist.map(item => (
+                          <div key={item.id} className="flex items-center gap-1.5 text-[11px]">
+                            <span className={item.done ? 'text-emerald-600' : 'text-slate-400'}>{item.done ? '✓' : '○'}</span>
+                            <span className={item.done ? 'text-slate-600' : 'text-slate-400'}>{item.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200">
+                    <span className="text-slate-500">Ready to Dispatch</span>
+                    <span className={`font-bold ${allDone ? 'text-emerald-600' : 'text-amber-600'}`}>{allDone ? 'Yes ✓' : 'Not yet'}</span>
+                  </div>
+                  {workEntry && (
+                    <p className="text-[10px] text-slate-400">
+                      Last updated {new Date(workEntry.updatedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  )}
+                  {task.productionOverdueReason && (
+                    <p className="text-[11px] text-amber-600">Notes: {task.productionOverdueReason}</p>
+                  )}
                 </div>
-                <p className="text-xs text-orange-600 pl-6">Send this project to Admin to check installation availability.</p>
-              </div>
-              <button type="button" onClick={submitAssignToDispatch}
-                className="w-full py-4 rounded-2xl bg-orange-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
-                <Package size={15} /> Assign to Dispatch
-              </button>
-            </>
-          )}
+
+                <div className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-4 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Package size={16} className="text-orange-600 flex-shrink-0" />
+                    <p className="text-sm font-bold text-orange-700">Production Complete — Ready to Dispatch</p>
+                  </div>
+                  <p className="text-xs text-orange-600 pl-6">Send this project to Admin to check installation availability.</p>
+                </div>
+
+                {allDone ? (
+                  <button type="button" onClick={submitAssignToDispatch}
+                    className="w-full py-4 rounded-2xl bg-orange-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
+                    <Package size={15} /> Assign to Dispatch
+                  </button>
+                ) : (
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                    <p className="text-xs font-bold text-red-600">Production is not fully completed yet.</p>
+                  </div>
+                )}
+              </>
+            )
+          })()}
 
           {/* ═══════════════════════════════════════════════════════════════
               9c. ADMIN AVAILABILITY CHECK — Admin (production_admin)
@@ -4023,15 +4119,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <textarea rows={2} value={adminAvailNotes} onChange={e => setAdminAvailNotes(e.target.value)}
                   placeholder="Any notes for Site Engineer Lead…" className={`${inp} resize-none`} />
               </div>
-              <div className="space-y-2">
-                <label className={lbl}>Availability Status</label>
-                <Opt value="available"     label="Available"     sub="Proposed person is available"              accent="border-emerald-200" sel={availStatus} onPick={v => setAvailStatus(v as typeof availStatus)} />
-                <Opt value="not_available" label="Not Available" sub="Proposed person is not available"           accent="border-red-200"     sel={availStatus} onPick={v => setAvailStatus(v as typeof availStatus)} />
-                <Opt value="need_approval" label="Need Site Engineer Lead Approval" sub="Send for Site Engineer Lead review" accent="border-amber-200" sel={availStatus} onPick={v => setAvailStatus(v as typeof availStatus)} />
-              </div>
               <button type="button" onClick={submitAdminAvailabilityCheck}
                 className="w-full py-4 rounded-2xl bg-amber-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
-                <CheckCircle2 size={15} /> Check Availability
+                <CheckCircle2 size={15} /> Need Site Engineer Lead Approval
               </button>
             </>
           )}
@@ -4385,7 +4475,23 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               11b. INSTALLATION MISTAKE REVIEW — LM
           ════════════════════════════════════════════════════════════════ */}
-          {displayStage === 'installation_update' && (flowStatus === 'mistake' || flowStatus === 'not_completed') && (
+          {displayStage === 'installation_update' && (flowStatus === 'mistake' || flowStatus === 'not_completed') && role !== 'lead_manager' && role !== 'owner' && !demoOverride && (
+            <WaitingView icon={Wrench} color="bg-red-50 border border-red-200 text-red-700"
+              title={flowStatus === 'not_completed' ? 'Installation Not Completed' : 'Installation Mistake Reported'}
+              sub="Waiting for Sales Team to review and decide next steps" />
+          )}
+
+          {displayStage === 'installation_update' && (flowStatus === 'mistake' || flowStatus === 'not_completed') && role === 'owner' && !demoOverride && (
+            <>
+              <WaitingView icon={Wrench} color="bg-red-50 border border-red-200 text-red-700"
+                title={flowStatus === 'not_completed' ? 'Installation Not Completed' : 'Installation Mistake Reported'}
+                sub="Sales Team needs to review and decide next steps" />
+              <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team reviews the installation issue and decides next steps."
+                onOverride={() => setDemoOverride(true)} variant="owner" />
+            </>
+          )}
+
+          {displayStage === 'installation_update' && (flowStatus === 'mistake' || flowStatus === 'not_completed') && (role === 'lead_manager' || demoOverride) && (
             <>
               <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-4 space-y-2">
                 <p className="text-xs font-bold text-red-600 uppercase">
@@ -4446,6 +4552,89 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 const paid    = task.paidAmount ?? 0
                 const balance = task.balanceAmount != null ? task.balanceAmount : Math.max(0, total - paid)
                 const allPaid = balance <= 0
+
+                const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport]
+                  .reduce((s, v) => s + (Number(v) || 0), 0)
+                const extraCharge  = Number(extraChargeAmt) || 0
+                const totalRevenue = total + extraCharge
+                const profit       = totalRevenue - totalExpenses
+                const profitPct    = totalRevenue > 0 ? (profit / totalRevenue * 100) : 0
+
+                const expensesAndCompletion = (
+                  <>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Actual Project Expenses</p>
+                    {([
+                      { label: 'Material Cost (₹)',     val: actualMaterial,     set: setActualMaterial     },
+                      { label: 'Production Cost (₹)',   val: actualProduction,   set: setActualProduction   },
+                      { label: 'Installation Cost (₹)', val: actualInstallation, set: setActualInstallation },
+                      { label: 'Transport Cost (₹)',    val: actualTransport,    set: setActualTransport    },
+                    ]).map(({ label, val, set }) => (
+                      <div key={label}>
+                        <label className={lbl}>{label} <span className="text-slate-300 font-normal">(optional)</span></label>
+                        <input type="text" inputMode="numeric" value={val}
+                          onChange={e => set(e.target.value.replace(/[^0-9]/g, ''))}
+                          placeholder="0" className={inp} />
+                      </div>
+                    ))}
+                    {/* Extra Cost — mandatory, visible to MD/ED/Admin/LO */}
+                    {(role === 'owner' || role === 'lead_manager') && (
+                      <div>
+                        <label className={lbl}>Extra Cost (₹) {req}</label>
+                        <input type="text" inputMode="numeric" value={extraChargeAmt}
+                          onChange={e => setExtraChargeAmt(e.target.value.replace(/[^0-9]/g, ''))}
+                          placeholder="0 (enter 0 if no additional work was done)" className={inp} />
+                        {extraChargeAmt.trim() !== '' && (
+                          <p className="text-xs font-semibold text-blue-700 mt-1.5">
+                            Extra Cost: ₹{extraCharge.toLocaleString('en-IN')}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {totalExpenses > 0 && (
+                      <div className="bg-slate-50 rounded-xl px-4 py-3 space-y-1.5">
+                        {role === 'owner' && (
+                          <>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-slate-500">Project Value</span>
+                              <span className="font-semibold text-slate-700">₹{total.toLocaleString('en-IN')}</span>
+                            </div>
+                            {extraCharge > 0 && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-blue-500">Extra Charge</span>
+                                <span className="font-semibold text-blue-700">+₹{extraCharge.toLocaleString('en-IN')}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between text-xs border-t border-slate-200 pt-1">
+                              <span className="text-slate-600 font-semibold">Total Revenue</span>
+                              <span className="font-bold text-slate-800">₹{totalRevenue.toLocaleString('en-IN')}</span>
+                            </div>
+                          </>
+                        )}
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500">Total Expenses</span>
+                          <span className="font-bold text-slate-700">₹{totalExpenses.toLocaleString('en-IN')}</span>
+                        </div>
+                        {role === 'owner' && total > 0 && (
+                          <div className={`flex justify-between text-sm border-t border-slate-200 pt-1.5 mt-0.5 rounded-xl px-2 py-1.5 ${profit >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                            <span className={`font-bold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{profit >= 0 ? 'Profit' : 'Loss'}</span>
+                            <span className={`font-extrabold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                              ₹{Math.abs(profit).toLocaleString('en-IN')}
+                              <span className="text-xs font-normal opacity-70"> ({profitPct.toFixed(1)}%)</span>
+                            </span>
+                          </div>
+                        )}
+                        {role !== 'owner' && canSeeProfit && total > 0 && (
+                          <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5">
+                            <span className={profit >= 0 ? 'text-emerald-600' : 'text-red-500'}>Profit</span>
+                            <span className={`font-extrabold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>₹{profit.toLocaleString('en-IN')}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )
+
                 return (
                   <>
                     <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 space-y-1.5">
@@ -4485,39 +4674,46 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           </div>
                         )}
 
-                        {sel && (
+                        {sel === 'partial_paid' && (
                           <>
                             <MultiFileUploadField
                               label="Payment Screenshot"
-                              accept="image/*,.pdf"
+                              accept=".jpg,.jpeg,.png,.webp,.pdf"
                               files={finalPayScreenshot}
                               onChange={setFinalPayScreenshot}
                               helperText="Upload payment proof / bank screenshot (optional)" />
                             <button type="button"
                               onClick={() => {
-                                if (sel === 'partial_paid') {
-                                  const amt = Number(finalPaidAmt) || 0
-                                  if (amt <= 0) { setError('Enter the amount received.'); return }
-                                  const totalPaid = paid + amt
-                                  const newBalance = Math.max(0, total - totalPaid)
-                                  save({
-                                    paidAmount: totalPaid,
-                                    balanceAmount: newBalance,
-                                    flowStatus: newBalance <= 0 ? 'full_paid' : 'partial_paid',
-                                    finalPaymentScreenshot: finalPayScreenshot.length > 0 ? finalPayScreenshot : undefined,
-                                  }, `Partial payment ₹${amt.toLocaleString('en-IN')} received`, finalPayScreenshot)
-                                } else {
-                                  const totalPaid = paid + balance
-                                  save({
-                                    paidAmount: totalPaid,
-                                    balanceAmount: 0,
-                                    flowStatus: 'full_paid',
-                                    finalPaymentScreenshot: finalPayScreenshot.length > 0 ? finalPayScreenshot : undefined,
-                                  }, `Payment ₹${balance.toLocaleString('en-IN')} received — fully paid`, finalPayScreenshot)
-                                }
+                                const amt = Number(finalPaidAmt) || 0
+                                if (amt <= 0) { setError('Enter the amount received.'); return }
+                                const totalPaid = paid + amt
+                                const newBalance = Math.max(0, total - totalPaid)
+                                save({
+                                  paidAmount: totalPaid,
+                                  balanceAmount: newBalance,
+                                  flowStatus: newBalance <= 0 ? 'full_paid' : 'partial_paid',
+                                  finalPaymentScreenshot: finalPayScreenshot.length > 0 ? finalPayScreenshot : undefined,
+                                }, `Partial payment ₹${amt.toLocaleString('en-IN')} received`, finalPayScreenshot)
                               }}
                               className="w-full py-4 rounded-2xl bg-green-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
-                              <CreditCard size={15} /> Complete Project
+                              <CreditCard size={15} /> Record Partial Payment
+                            </button>
+                          </>
+                        )}
+
+                        {sel === 'full_paid' && (
+                          <>
+                            <MultiFileUploadField
+                              label="Payment Screenshot"
+                              accept=".jpg,.jpeg,.png,.webp,.pdf"
+                              files={finalPayScreenshot}
+                              onChange={setFinalPayScreenshot}
+                              helperText="Upload payment proof / bank screenshot (optional)" />
+                            {expensesAndCompletion}
+                            <button type="button"
+                              onClick={() => completeProjectWithPayment(paid + balance, 0, `Payment ₹${balance.toLocaleString('en-IN')} received — fully paid`)}
+                              className="w-full py-4 rounded-2xl bg-emerald-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
+                              <CheckCircle2 size={15} /> Complete Project
                             </button>
                           </>
                         )}
@@ -4526,117 +4722,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
                     {allPaid && (
                       <>
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Actual Project Expenses</p>
-                        {([
-                          { label: 'Material Cost (₹)',     val: actualMaterial,     set: setActualMaterial,     required: false },
-                          { label: 'Production Cost (₹)',   val: actualProduction,   set: setActualProduction,   required: false },
-                          { label: 'Installation Cost (₹)', val: actualInstallation, set: setActualInstallation, required: false },
-                          { label: 'Transport Cost (₹)',    val: actualTransport,    set: setActualTransport,    required: false },
-                        ] as { label: string; val: string; set: (v: string) => void; required: boolean }[]).map(({ label, val, set, required }) => (
-                          <div key={label}>
-                            <label className={lbl}>{label} {required ? req : <span className="text-slate-300 font-normal">(optional)</span>}</label>
-                            <input type="text" inputMode="numeric" value={val}
-                              onChange={e => set(e.target.value.replace(/[^0-9]/g, ''))}
-                              placeholder="0" className={inp} />
-                          </div>
-                        ))}
-                        {/* Extra Cost — visible to MD/ED/Admin/LO */}
-                        {(role === 'owner' || role === 'lead_manager') && (
-                          <div>
-                            <label className={lbl}>Extra Cost (₹) {req}</label>
-                            <input type="text" inputMode="numeric" value={extraChargeAmt}
-                              onChange={e => setExtraChargeAmt(e.target.value.replace(/[^0-9]/g, ''))}
-                              placeholder="0 (enter 0 if no additional work was done)" className={inp} />
-                            {extraChargeAmt.trim() !== '' && (
-                              <p className="text-xs font-semibold text-blue-700 mt-1.5">
-                                Extra Cost: ₹{(Number(extraChargeAmt) || 0).toLocaleString('en-IN')}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {(() => {
-                          const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport]
-                            .reduce((s, v) => s + (Number(v) || 0), 0)
-                          const quotation  = task.quotationAmount ?? task.costBreakdown?.quotationAmount ?? 0
-                          const extraCharge = Number(extraChargeAmt) || 0
-                          const totalRevenue = quotation + extraCharge
-                          const profit = totalRevenue - totalExpenses
-                          const profitPct = totalRevenue > 0 ? (profit / totalRevenue * 100) : 0
-                          return totalExpenses > 0 ? (
-                            <div className="bg-slate-50 rounded-xl px-4 py-3 space-y-1.5">
-                              {role === 'owner' && (
-                                <>
-                                  <div className="flex justify-between text-xs">
-                                    <span className="text-slate-500">Project Value</span>
-                                    <span className="font-semibold text-slate-700">₹{quotation.toLocaleString('en-IN')}</span>
-                                  </div>
-                                  {extraCharge > 0 && (
-                                    <div className="flex justify-between text-xs">
-                                      <span className="text-blue-500">Extra Charge</span>
-                                      <span className="font-semibold text-blue-700">+₹{extraCharge.toLocaleString('en-IN')}</span>
-                                    </div>
-                                  )}
-                                  <div className="flex justify-between text-xs border-t border-slate-200 pt-1">
-                                    <span className="text-slate-600 font-semibold">Total Revenue</span>
-                                    <span className="font-bold text-slate-800">₹{totalRevenue.toLocaleString('en-IN')}</span>
-                                  </div>
-                                </>
-                              )}
-                              <div className="flex justify-between text-xs">
-                                <span className="text-slate-500">Total Expenses</span>
-                                <span className="font-bold text-slate-700">₹{totalExpenses.toLocaleString('en-IN')}</span>
-                              </div>
-                              {role === 'owner' && quotation > 0 && (
-                                <div className={`flex justify-between text-sm border-t border-slate-200 pt-1.5 mt-0.5 rounded-xl px-2 py-1.5 ${profit >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
-                                  <span className={`font-bold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{profit >= 0 ? 'Profit' : 'Loss'}</span>
-                                  <span className={`font-extrabold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                                    ₹{Math.abs(profit).toLocaleString('en-IN')}
-                                    <span className="text-xs font-normal opacity-70"> ({profitPct.toFixed(1)}%)</span>
-                                  </span>
-                                </div>
-                              )}
-                              {!role || role !== 'owner' ? (
-                                canSeeProfit && quotation > 0 ? (
-                                  <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5">
-                                    <span className={profit >= 0 ? 'text-emerald-600' : 'text-red-500'}>Profit</span>
-                                    <span className={`font-extrabold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>₹{profit.toLocaleString('en-IN')}</span>
-                                  </div>
-                                ) : null
-                              ) : null}
-                            </div>
-                          ) : null
-                        })()}
+                        {expensesAndCompletion}
                         <button type="button"
-                          onClick={() => {
-                            if ((role === 'owner' || role === 'lead_manager') && !extraChargeAmt.trim()) { setError('Enter Extra Cost (enter 0 if none).'); return }
-                            const totalExpenses = [actualMaterial, actualProduction, actualInstallation, actualTransport]
-                              .reduce((s, v) => s + (Number(v) || 0), 0)
-                            const extraCharge = Number(extraChargeAmt) || 0
-                            if (task.projectId) {
-                              updateProject(task.projectId, {
-                                status: 'completed', isCompleted: true,
-                                completedAt: new Date().toISOString(),
-                                actualCompletedDate: new Date().toISOString(),
-                                workflowStatus: 'Finished', paymentStatus: 'Full Paid', progress: 100,
-                                ...(totalExpenses > 0 ? {
-                                  actualCosts: {
-                                    quotationAmount: task.quotationAmount ?? task.costBreakdown?.quotationAmount ?? 0,
-                                    materialCost:    Number(actualMaterial)     || 0,
-                                    productionCost:  Number(actualProduction)   || 0,
-                                    installationCost:Number(actualInstallation) || 0,
-                                    transportCost:   Number(actualTransport)    || 0,
-                                    extraCharge,
-                                    profit:          ((task.quotationAmount ?? 0) + extraCharge) - totalExpenses,
-                                  },
-                                } : {}),
-                              })
-                            }
-                            save({
-                              flowStage: 'completed', flowStatus: 'done', status: 'completed',
-                              title: 'Project Completed',
-                            }, 'Project completed — full payment received')
-                          }}
+                          onClick={() => completeProjectWithPayment(paid, 0, 'Final balance already settled')}
                           className="w-full py-4 rounded-2xl bg-emerald-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
                           <CheckCircle2 size={15} /> Complete Project
                         </button>
