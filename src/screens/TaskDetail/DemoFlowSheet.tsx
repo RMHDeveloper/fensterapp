@@ -1437,6 +1437,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       installationPerson: person,
       installationDate: date,
       installationApprovedBy: user?.name,
+      assignedTo: person,
+      assignee: person,
     }, `Site Engineer Lead approved installation person ${person} for ${date}.`)
   }
 
@@ -1452,6 +1454,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       installationApprovedBy: user?.name,
       installationPersonChangedFrom: oldPerson,
       note: changedInstNotes || undefined,
+      assignedTo: changedInstPerson,
+      assignee: changedInstPerson,
     }, `Site Engineer Lead changed installation person from ${oldPerson} to ${changedInstPerson}.`)
   }
 
@@ -1513,6 +1517,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       installationFiles: instFiles.length ? instFiles : undefined,
       installationNote: instNote || undefined,
       specialNoteInstallation: voiceNoteInstallationIds.length ? voiceNoteInstallationIds : undefined,
+      assignedTo: instPerson,
+      assignee: instPerson,
     }, `Installation assigned to ${instPerson} on ${instDate}`, instFiles)
   }
 
@@ -1561,6 +1567,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         title: 'Assign Installation',
         installationPerson: undefined,
         installationDate: undefined,
+        assignedTo: undefined,
+        assignee: undefined,
       }, 'Installation mistake — reassigning installation team')
     } else if (instMistakeReviewAction === 'mark_resolved') {
       save({
