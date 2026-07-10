@@ -94,6 +94,7 @@ export async function storeFile(file: File): Promise<string> {
 // both prefixes have to be stripped, in either order, or the ugly generated
 // name leaks through instead of the file the user actually picked.
 export function getDisplayFileName(nameOrUrl: string): string {
+  if (nameOrUrl.startsWith('data:')) return 'Voice Recording'
   let raw = nameOrUrl.startsWith('http')
     ? decodeURIComponent(nameOrUrl.split('/').pop() ?? nameOrUrl)
     : nameOrUrl

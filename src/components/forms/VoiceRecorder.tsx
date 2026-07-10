@@ -1,33 +1,50 @@
 import { useState, useRef } from 'react'
 import { Mic, Square, Trash2, Play, Pause } from 'lucide-react'
 import { voicePreviewStore as voiceBlobStore, resolveFileUrl } from '../../utils/sessionStore'
-import { storeFile } from '../../utils/fileStorage'
 
 // Re-export for backward compat with any existing imports
 export { voiceBlobStore }
 
-// Uploads the recording and swaps the throwaway session id for the durable
-// URL in the parent's saved list — otherwise only the temp id (which means
-// nothing outside this browser session) ever gets persisted onto the task,
-// and the recording becomes unplayable the moment the tab is closed. Returns
-// whether the upload succeeded so the caller can surface a retry option
-// instead of silently leaving a broken reference on the task.
+// Voice notes are embedded as data: URLs directly on the task instead of
+// being uploaded to the file server — the server's MIME whitelist rejects
+// audio-only WebM/Opus recordings (they get magic-byte-sniffed as
+// video/webm by the server's file-type check), which silently left every
+// voice note unplayable for anyone but the person who recorded it. This
+// sidesteps that server dependency entirely. Capped well under typical
+// DB/localStorage row limits — plenty for a voice note.
+const MAX_VOICE_BYTES = 5 * 1024 * 1024
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload  = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read recording'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+// Swaps the throwaway session id for the durable data: URL in the parent's
+// saved list — otherwise only the temp id (which means nothing outside this
+// browser session) ever gets persisted onto the task, and the recording
+// becomes unplayable the moment the tab is closed. Returns whether it
+// succeeded so the caller can surface a retry option instead of silently
+// leaving a broken reference on the task.
 async function persistVoiceBlob(id: string, blob: Blob, onReplace: (oldId: string, url: string) => void): Promise<boolean> {
+  if (blob.size > MAX_VOICE_BYTES) return false
   try {
-    const file = new File([blob], `${id}.webm`, { type: blob.type || 'audio/webm' })
-    const url  = await storeFile(file)
-    voiceBlobStore.set(id, url)
-    voiceBlobStore.set(url, url)
-    onReplace(id, url)
+    const dataUrl = await blobToDataUrl(blob)
+    voiceBlobStore.set(id, dataUrl)
+    voiceBlobStore.set(dataUrl, dataUrl)
+    onReplace(id, dataUrl)
     return true
   } catch {
     return false
   }
 }
 
-function VoiceNoteItem({ id, label, onRemove, uploading, failed, onRetry }: {
+function VoiceNoteItem({ id, label, onRemove, uploading, failed, tooLarge, onRetry }: {
   id: string; label: string; onRemove: () => void
-  uploading?: boolean; failed?: boolean; onRetry?: () => void
+  uploading?: boolean; failed?: boolean; tooLarge?: boolean; onRetry?: () => void
 }) {
   const [playing, setPlaying] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -51,10 +68,11 @@ function VoiceNoteItem({ id, label, onRemove, uploading, failed, onRetry }: {
       </button>
       <div className="flex-1">
         <p className="text-xs font-semibold text-purple-700">{label}</p>
-        {uploading && <p className="text-[10px] text-purple-400">Uploading — don't submit yet…</p>}
-        {failed && <p className="text-[10px] text-red-500 font-semibold">Upload failed — won't play for others.</p>}
+        {uploading && <p className="text-[10px] text-purple-400">Saving — don't submit yet…</p>}
+        {failed && tooLarge && <p className="text-[10px] text-red-500 font-semibold">Recording too long — delete and re-record something shorter.</p>}
+        {failed && !tooLarge && <p className="text-[10px] text-red-500 font-semibold">Couldn't save — won't play for others.</p>}
       </div>
-      {failed && (
+      {failed && !tooLarge && (
         <button type="button" onClick={onRetry} className="text-[10px] font-extrabold text-red-600 underline flex-shrink-0">
           Retry
         </button>
@@ -145,6 +163,7 @@ export function VoiceRecorder({ label, savedIds, onAdd, onRemove, onReplace, hel
         <VoiceNoteItem key={id} id={id} label={`Voice Note ${num}`} onRemove={() => onRemove(id)}
           uploading={uploadingIds.has(id)}
           failed={failedIds.has(id)}
+          tooLarge={(blobsRef.current.get(id)?.size ?? 0) > MAX_VOICE_BYTES}
           onRetry={() => { const blob = blobsRef.current.get(id); if (blob) uploadRecording(id, blob) }} />
       ))}
 

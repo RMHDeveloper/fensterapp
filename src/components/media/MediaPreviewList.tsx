@@ -5,7 +5,7 @@ import { getDisplayFileName } from '../../utils/fileStorage'
 import { FilePreviewModal } from '../feedback/FilePreviewModal'
 
 function isImageName(name: string) { return /\.(jpg|jpeg|png|gif|webp)$/i.test(name) }
-function isAudioId(name: string)   { return name.startsWith('voice_') || /\.(mp3|wav|webm|ogg|aac|m4a)$/i.test(name) }
+function isAudioId(name: string)   { return name.startsWith('voice_') || name.startsWith('data:audio/') || /\.(mp3|wav|webm|ogg|aac|m4a)$/i.test(name) }
 function isPdfName(name: string)   { return /\.pdf$/i.test(name) }
 
 function fmtUploadedAt(iso: string): string {

@@ -19,6 +19,6 @@ export function isAudioId(id: string) {
 }
 
 export function resolveFileUrl(name: string): string | undefined {
-  if (name.startsWith('http')) return name
+  if (name.startsWith('http') || name.startsWith('data:')) return name
   return filePreviewStore.get(name) ?? getFileUrl(name) ?? undefined
 }
