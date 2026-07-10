@@ -3,6 +3,7 @@ import type { AuthUser, UserRole, Permission } from '../types'
 import { hasPermission } from '../utils/permissions'
 import { authenticateUser } from '../data/mockUsers'
 import { loadManagedUsers, initUsersFromSupabase, DEFAULT_PRODUCTION_USERS } from '../utils/userStorage'
+import { ROLE_LABELS } from '../data/permissions'
 
 const SESSION_KEY = 'fenster_session'
 
@@ -20,6 +21,7 @@ interface AuthContextValue {
   logout:               () => void
   can:                  (permission: Permission) => boolean
   updateProfile:        (updates: Partial<Pick<AuthUser, 'name' | 'photo'>>) => void
+  switchRole:           (role: UserRole) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -100,8 +102,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  // Switches the active role for a user who's been assigned more than one —
+  // only allowed among their own assigned `roles`, so screens/tasks that key
+  // off `user.role` everywhere in the app pick up the switch automatically.
+  function switchRole(role: UserRole) {
+    setUser(prev => {
+      if (!prev || !prev.roles?.includes(role)) return prev
+      return { ...prev, role, displayRole: ROLE_LABELS[role] }
+    })
+  }
+
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn: !!user, isAuthReady, loginWithCredentials, login, logout, can, updateProfile }}>
+    <AuthContext.Provider value={{ user, isLoggedIn: !!user, isAuthReady, loginWithCredentials, login, logout, can, updateProfile, switchRole }}>
       {children}
     </AuthContext.Provider>
   )

@@ -9,18 +9,26 @@ export { voiceBlobStore }
 // Uploads the recording and swaps the throwaway session id for the durable
 // URL in the parent's saved list — otherwise only the temp id (which means
 // nothing outside this browser session) ever gets persisted onto the task,
-// and the recording becomes unplayable the moment the tab is closed.
-async function persistVoiceBlob(id: string, blob: Blob, onReplace: (oldId: string, url: string) => void) {
+// and the recording becomes unplayable the moment the tab is closed. Returns
+// whether the upload succeeded so the caller can surface a retry option
+// instead of silently leaving a broken reference on the task.
+async function persistVoiceBlob(id: string, blob: Blob, onReplace: (oldId: string, url: string) => void): Promise<boolean> {
   try {
     const file = new File([blob], `${id}.webm`, { type: blob.type || 'audio/webm' })
     const url  = await storeFile(file)
     voiceBlobStore.set(id, url)
     voiceBlobStore.set(url, url)
     onReplace(id, url)
-  } catch { /* keep the blob:// url for this session */ }
+    return true
+  } catch {
+    return false
+  }
 }
 
-function VoiceNoteItem({ id, label, onRemove }: { id: string; label: string; onRemove: () => void }) {
+function VoiceNoteItem({ id, label, onRemove, uploading, failed, onRetry }: {
+  id: string; label: string; onRemove: () => void
+  uploading?: boolean; failed?: boolean; onRetry?: () => void
+}) {
   const [playing, setPlaying] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const url = voiceBlobStore.get(id) ?? resolveFileUrl(id)
@@ -41,7 +49,16 @@ function VoiceNoteItem({ id, label, onRemove }: { id: string; label: string; onR
           : <Play  size={12} className="text-white ml-0.5" />
         }
       </button>
-      <p className="flex-1 text-xs font-semibold text-purple-700">{label}</p>
+      <div className="flex-1">
+        <p className="text-xs font-semibold text-purple-700">{label}</p>
+        {uploading && <p className="text-[10px] text-purple-400">Uploading — don't submit yet…</p>}
+        {failed && <p className="text-[10px] text-red-500 font-semibold">Upload failed — won't play for others.</p>}
+      </div>
+      {failed && (
+        <button type="button" onClick={onRetry} className="text-[10px] font-extrabold text-red-600 underline flex-shrink-0">
+          Retry
+        </button>
+      )}
       <button type="button" onClick={onRemove} className="p-1 active:opacity-70">
         <Trash2 size={14} className="text-red-400" />
       </button>
@@ -60,13 +77,24 @@ interface Props {
 }
 
 export function VoiceRecorder({ label, savedIds, onAdd, onRemove, onReplace, helperText }: Props) {
-  const [recording, setRecording] = useState(false)
-  const [timer,     setTimer]     = useState(0)
-  const [micErr,    setMicErr]    = useState('')
+  const [recording, setRecording]     = useState(false)
+  const [timer,     setTimer]         = useState(0)
+  const [micErr,    setMicErr]        = useState('')
+  const [uploadingIds, setUploadingIds] = useState<Set<string>>(new Set())
+  const [failedIds,    setFailedIds]    = useState<Set<string>>(new Set())
 
   const mediaRecRef = useRef<MediaRecorder | null>(null)
   const chunksRef   = useRef<Blob[]>([])
   const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null)
+  const blobsRef    = useRef<Map<string, Blob>>(new Map())
+
+  async function uploadRecording(id: string, blob: Blob) {
+    setUploadingIds(prev => new Set(prev).add(id))
+    setFailedIds(prev => { const n = new Set(prev); n.delete(id); return n })
+    const ok = await persistVoiceBlob(id, blob, (oldId, realUrl) => onReplace?.(oldId, realUrl))
+    setUploadingIds(prev => { const n = new Set(prev); n.delete(id); return n })
+    if (!ok) setFailedIds(prev => new Set(prev).add(id))
+  }
 
   async function startRecording() {
     setMicErr('')
@@ -82,8 +110,9 @@ export function VoiceRecorder({ label, savedIds, onAdd, onRemove, onReplace, hel
         const url  = URL.createObjectURL(blob)
         const id   = `voice_${Date.now()}`
         voiceBlobStore.set(id, url)
+        blobsRef.current.set(id, blob)
         onAdd(id)
-        persistVoiceBlob(id, blob, (oldId, realUrl) => onReplace?.(oldId, realUrl))
+        uploadRecording(id, blob)
         stream.getTracks().forEach(t => t.stop())
         setRecording(false)
         if (timerRef.current) clearInterval(timerRef.current)
@@ -113,7 +142,10 @@ export function VoiceRecorder({ label, savedIds, onAdd, onRemove, onReplace, hel
 
       {/* Saved recordings — numbered by upload order (1 = first uploaded), newest first */}
       {savedIds.map((id, i) => ({ id, num: i + 1 })).reverse().map(({ id, num }) => (
-        <VoiceNoteItem key={id} id={id} label={`Voice Note ${num}`} onRemove={() => onRemove(id)} />
+        <VoiceNoteItem key={id} id={id} label={`Voice Note ${num}`} onRemove={() => onRemove(id)}
+          uploading={uploadingIds.has(id)}
+          failed={failedIds.has(id)}
+          onRetry={() => { const blob = blobsRef.current.get(id); if (blob) uploadRecording(id, blob) }} />
       ))}
 
       {/* Recording in progress */}

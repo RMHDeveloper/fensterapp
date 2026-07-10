@@ -36,7 +36,7 @@ const ROLE_ICONS: Record<UserRole, string> = {
 
 export default function SettingsScreen() {
   const navigate = useNavigate()
-  const { user, login, logout, can, updateProfile } = useAuth()
+  const { user, login, logout, can, updateProfile, switchRole } = useAuth()
   const { resetAllData }             = useAppData()
 
   const [showLogout,    setShowLogout]    = useState(false)
@@ -203,6 +203,28 @@ export default function SettingsScreen() {
             <Pencil size={15} className="text-slate-500" />
           </button>
         </div>
+
+        {/* Active role switcher — only shown when this account has more than one assigned role */}
+        {user && user.roles && user.roles.length > 1 && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Active Role</p>
+            <div className="flex flex-wrap gap-1.5">
+              {user.roles.map(r => (
+                <button
+                  key={r}
+                  onClick={() => { switchRole(r); setSnack({ open: true, msg: `Switched to ${ROLE_LABELS[r]}` }) }}
+                  className={[
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-colors',
+                    user.role === r ? 'bg-green-700 text-white' : 'bg-slate-100 text-slate-600 active:bg-slate-200',
+                  ].join(' ')}
+                >
+                  <span>{ROLE_ICONS[r]}</span>
+                  {ROLE_LABELS[r]}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="px-4 pt-4 space-y-4">

@@ -1488,10 +1488,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   }
 
   function submitAssignToDispatch() {
+    if (!proposedInstPerson) { setError('Select an installation technician.'); return }
+    if (!proposedInstDate)   { setError('Select proposed installation date.'); return }
+    const hasPin = (installLocPin.latitude && installLocPin.longitude) || installLocPin.mapLink.trim()
+    if (!hasPin) { setError('Pin the installation location before continuing.'); return }
     save({
-      flowStage: 'admin_availability_check', flowStatus: 'pending', status: 'pending',
-      title: 'Check Installation Availability',
-    }, 'Lead Owner sent project for dispatch assignment.')
+      flowStage: 'site_lead_approval', flowStatus: 'pending', status: 'pending',
+      title: 'Approve Installation Availability',
+      proposedInstallationPerson: proposedInstPerson,
+      proposedInstallationDate: proposedInstDate,
+      adminAvailabilityNotes: adminAvailNotes || undefined,
+      availabilityStatus: 'need_approval',
+      installationLocationPin: installLocPin,
+    }, `Lead Owner assigned ${proposedInstPerson} for installation on ${proposedInstDate} — sent to Site Engineer Lead for approval.`)
   }
 
   function submitAdminAvailabilityCheck() {
@@ -3512,11 +3521,20 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           className="w-full text-xs bg-white border border-red-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-400" />
                       )}
                       {item.status === 'order' && (
-                        <div>
-                          <label className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1 block">Expected Due Date {!isOptional && <span className="text-red-500">*</span>}</label>
-                          <input type="date" value={item.dueDate ?? ''}
-                            onChange={e => { const n=[...availChecklist]; n[idx]={...item,dueDate:e.target.value}; setAvailChecklist(n) }}
-                            className="w-full text-xs bg-white border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400" />
+                        <div className="space-y-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1 block">Expected Due Date {!isOptional && <span className="text-red-500">*</span>}</label>
+                            <input type="date" value={item.dueDate ?? ''}
+                              onChange={e => { const n=[...availChecklist]; n[idx]={...item,dueDate:e.target.value}; setAvailChecklist(n) }}
+                              className="w-full text-xs bg-white border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400" />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1 block">Reason <span className="text-slate-300 font-normal normal-case">(optional)</span></label>
+                            <input type="text" value={item.reason}
+                              onChange={e => { const n=[...availChecklist]; n[idx]={...item,reason:e.target.value}; setAvailChecklist(n) }}
+                              placeholder="Why is it on order…"
+                              className="w-full text-xs bg-white border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400" />
+                          </div>
                         </div>
                       )}
                     </div>
@@ -3632,11 +3650,20 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           className="w-full text-xs bg-white border border-red-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-400" />
                       )}
                       {item.status === 'order' && (
-                        <div>
-                          <label className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1 block">Expected Due Date {!isOptional && <span className="text-red-500">*</span>}</label>
-                          <input type="date" value={item.dueDate ?? ''}
-                            onChange={e => { const n=[...availChecklist]; n[idx]={...item,dueDate:e.target.value}; setAvailChecklist(n) }}
-                            className="w-full text-xs bg-white border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400" />
+                        <div className="space-y-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1 block">Expected Due Date {!isOptional && <span className="text-red-500">*</span>}</label>
+                            <input type="date" value={item.dueDate ?? ''}
+                              onChange={e => { const n=[...availChecklist]; n[idx]={...item,dueDate:e.target.value}; setAvailChecklist(n) }}
+                              className="w-full text-xs bg-white border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400" />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1 block">Reason <span className="text-slate-300 font-normal normal-case">(optional)</span></label>
+                            <input type="text" value={item.reason}
+                              onChange={e => { const n=[...availChecklist]; n[idx]={...item,reason:e.target.value}; setAvailChecklist(n) }}
+                              placeholder="Why is it on order…"
+                              className="w-full text-xs bg-white border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400" />
+                          </div>
                         </div>
                       )}
                     </div>
@@ -4193,14 +4220,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {displayStage === 'dispatch_assign' && role !== 'lead_manager' && role !== 'owner' && !demoOverride && (
             <WaitingView icon={Package} color="bg-orange-50 border border-orange-200 text-orange-700"
               title="Ready to Dispatch"
-              sub="Sales Team will assign this project for dispatch" />
+              sub="Sales Team will assign the installation technician and check availability" />
           )}
           {displayStage === 'dispatch_assign' && role === 'owner' && !demoOverride && (
             <>
               <WaitingView icon={Package} color="bg-orange-50 border border-orange-200 text-orange-700"
                 title="Ready to Dispatch"
-                sub="Sales Team needs to assign this project for dispatch" />
-              <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team assigns the project for dispatch."
+                sub="Sales Team needs to assign the installation technician and check availability" />
+              <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team assigns the installation technician and checks their availability."
                 onOverride={() => setDemoOverride(true)} variant="owner" />
             </>
           )}
@@ -4256,14 +4283,36 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                     <Package size={16} className="text-orange-600 flex-shrink-0" />
                     <p className="text-sm font-bold text-orange-700">Production Complete — Ready to Dispatch</p>
                   </div>
-                  <p className="text-xs text-orange-600 pl-6">Send this project to Admin to check installation availability.</p>
+                  <p className="text-xs text-orange-600 pl-6">Assign the installation technician and check their availability.</p>
                 </div>
 
                 {allDone ? (
-                  <button type="button" onClick={submitAssignToDispatch}
-                    className="w-full py-4 rounded-2xl bg-orange-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
-                    <Package size={15} /> Assign to Dispatch
-                  </button>
+                  <>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Assign Installation Technician</p>
+                    <div>
+                      <label className={lbl}>Installation Technician / Person {req}</label>
+                      <select value={proposedInstPerson} onChange={e => setProposedInstPerson(e.target.value)} className={inp}>
+                        <option value="">Select installation person…</option>
+                        {installerOptions.map(name => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={lbl}>Proposed Installation Date {req}</label>
+                      <input type="date" value={proposedInstDate} onChange={e => setProposedInstDate(e.target.value)} className={inp} />
+                    </div>
+                    <LocationPinField value={installLocPin} onChange={setInstallLocPin} />
+                    <div>
+                      <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
+                      <textarea rows={2} value={adminAvailNotes} onChange={e => setAdminAvailNotes(e.target.value)}
+                        placeholder="Any notes for Site Engineer Lead…" className={`${inp} resize-none`} />
+                    </div>
+                    <button type="button" onClick={submitAssignToDispatch}
+                      className="w-full py-4 rounded-2xl bg-orange-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
+                      <Package size={15} /> Assign — Check Availability
+                    </button>
+                  </>
                 ) : (
                   <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
                     <p className="text-xs font-bold text-red-600">Production is not fully completed yet.</p>
@@ -4365,7 +4414,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               </div>
 
               <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl px-4 py-3 space-y-1.5">
-                <p className="text-[10px] font-bold text-fuchsia-500 uppercase">Admin Proposal</p>
+                <p className="text-[10px] font-bold text-fuchsia-500 uppercase">Lead Owner Proposal</p>
                 <div className="flex justify-between text-xs">
                   <span className="text-fuchsia-600">Proposed Person</span>
                   <span className="font-bold text-fuchsia-800">{task.proposedInstallationPerson ?? '—'}</span>
