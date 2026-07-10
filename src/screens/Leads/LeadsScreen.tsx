@@ -98,7 +98,8 @@ function parseCSV(text: string): string[][] {
 
 const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: 'existing_customer', label: 'Existing Client'    },
-  { value: 'md_ed_ref',         label: 'MD / ED Reference'  },
+  { value: 'md_ref',            label: 'MD Reference'       },
+  { value: 'ed_ref',            label: 'ED Reference'       },
   { value: 'google',            label: 'Google'             },
   { value: 'instagram',         label: 'Instagram'          },
   { value: 'facebook',          label: 'Facebook'           },
@@ -113,9 +114,10 @@ const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: 'other',             label: 'Other'              },
 ]
 
-const SOURCE_LABEL: Record<string, string> = Object.fromEntries(
-  SOURCE_OPTIONS.map(o => [o.value, o.label])
-)
+const SOURCE_LABEL: Record<string, string> = {
+  ...Object.fromEntries(SOURCE_OPTIONS.map(o => [o.value, o.label])),
+  md_ed_ref: 'MD / ED Reference', // legacy value — no longer selectable, kept so old leads still show a label
+}
 
 const INTEREST_OPTIONS: { value: LeadInterest; label: string; color: string; badge: string }[] = [
   { value: 'hot',    label: '🔥 Hot',    color: 'bg-red-50 border-red-300 text-red-700',     badge: 'bg-red-100 text-red-700'     },

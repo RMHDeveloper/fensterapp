@@ -19,14 +19,12 @@ import { MediaPreviewList } from '../../components/media/MediaPreviewList'
 import { getActiveManagedUsersByDisplayRole, loadManagedUsers } from '../../utils/userStorage'
 import { Dialog } from '../../components/feedback/Dialog'
 import { recordUploadedFile, getQuotationVersions, subscribeToProjectFiles, type FileRow } from '../../services/fileService'
-import { getFileUrl } from '../../utils/fileStorage'
+import { getFileUrl, getDisplayFileName } from '../../utils/fileStorage'
 import { getAppSettings } from '../../utils/appSettings'
 
 function recordQuotationVersion(task: Task, fileName: string, uploadedBy: string, uploadedByRole: string) {
   const url = fileName.startsWith('http') ? fileName : (getFileUrl(fileName) ?? fileName)
-  const displayName = fileName.startsWith('http')
-    ? decodeURIComponent(fileName.split('/').pop() ?? fileName)
-    : fileName
+  const displayName = getDisplayFileName(fileName)
   recordUploadedFile({
     projectId: task.projectId,
     taskId: task.id,
@@ -113,7 +111,7 @@ function QuotationVersionsPanel({ task }: { task: Task }) {
               <p className="text-[10px] font-bold text-indigo-500 uppercase mb-2">Latest Quotation File</p>
               <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-2.5">
                 <FileText size={16} className="text-indigo-400 flex-shrink-0" />
-                <p className="text-xs text-slate-700 flex-1 truncate">{task.quotationFile}</p>
+                <p className="text-xs text-slate-700 flex-1 truncate">{getDisplayFileName(task.quotationFile!)}</p>
                 {qFileUrl && (
                   <>
                     <a href={qFileUrl} target="_blank" rel="noopener noreferrer"
@@ -137,7 +135,7 @@ function QuotationVersionsPanel({ task }: { task: Task }) {
               <p className="text-[10px] font-bold text-red-500 uppercase mb-2">Previously Rejected Quotation</p>
               <div className="flex items-center gap-2 bg-white border border-red-100 rounded-xl px-3 py-2.5">
                 <FileText size={13} className="text-red-400 flex-shrink-0" />
-                <p className="text-xs text-red-700 flex-1 truncate">{task.previousQuotationFile}</p>
+                <p className="text-xs text-red-700 flex-1 truncate">{getDisplayFileName(task.previousQuotationFile!)}</p>
                 {prevUrl && (
                   <>
                     <a href={prevUrl} target="_blank" rel="noopener noreferrer"
@@ -157,11 +155,6 @@ function QuotationVersionsPanel({ task }: { task: Task }) {
             </div>
           )
         })()}
-        <div className="mt-2 text-[10px] text-slate-400">
-          <p className="font-semibold">Debug (task fields):</p>
-          <p className="truncate">task.quotationFile: {String(task.quotationFile)}</p>
-          <p className="truncate">task.previousQuotationFile: {String(task.previousQuotationFile)}</p>
-        </div>
       </>
     )
   }
@@ -1649,8 +1642,13 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     }
   }
 
-  // ── DEMO OVERRIDE helpers ──────────────────────────────────────────────────
-  const canDemoOverride = role === 'lead_manager' || role === 'owner'
+  // ── DEMO OVERRIDE helpers ────────────────────────────────────────────────
+  // Override (acting on behalf of another role's stage) is MD-only — Lead
+  // Owner no longer gets it. Every canDemoOverride usage below is already
+  // paired with `role !== 'owner'`, so restricting this to 'owner' makes
+  // those LM-override blocks unreachable while leaving the owner's own
+  // separate override path (gated directly on role === 'owner') untouched.
+  const canDemoOverride = role === 'owner'
 
   function demoSave(updates: Partial<Task>, histNote?: string, histFiles?: string[]) {
     const by   = role === 'owner' ? 'MD/ED' : 'Sales Team'
@@ -1808,6 +1806,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
           <ContextStrip />
 
+          {/* Site Engineer can view the quotation for their assigned project
+              once one exists, even though quotation/approval isn't their stage. */}
+          {role === 'site_engineer' && task.quotationFile && (
+            <MediaPreviewList files={[task.quotationFile]} title="Quotation File" />
+          )}
+
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />
@@ -1857,8 +1861,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
           {/* ── Stage Hand-off Summary (3 specific transitions only) ──────── */}
           {(() => {
-            // 1. Production Admin → Production Manager: show what admin verified
-            if (displayStage === 'production_work') {
+            // 1. LO → Admin → Production Manager: show what LO sent (job sheet,
+            // glass/cutting sheet, voice note) at both stages that receive it.
+            if (displayStage === 'production_check' || displayStage === 'production_work') {
               const assignEntry = [...(task.statusHistory ?? [])].reverse()
                 .find(h => h.stage === 'production_assign' && h.status === 'completed')
               const uploadMeta = assignEntry
@@ -1867,11 +1872,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               const items: string[] = []
               if (!task.jobSheet && task.jobSheetDetails) items.push(`Job Sheet: ${task.jobSheetDetails.slice(0, 60)}`)
               if (task.productionSheetNote) items.push(`LO Notes: ${task.productionSheetNote.slice(0, 80)}`)
-              if (task.availabilityChecklist?.length)
+              if (displayStage === 'production_work' && task.availabilityChecklist?.length)
                 task.availabilityChecklist.forEach(i => {
                   items.push(`${i.label}: ${i.available ? '✓ Available' : i.ordered ? '⏳ Ordered' : '✗ N/A'}`)
                 })
-              const hasDocs = !!(task.jobSheet || task.glassSheet || task.cuttingSheet || task.additionalDocs?.length)
+              const hasDocs = !!(task.jobSheet || task.glassSheet || task.cuttingSheet || task.additionalDocs?.length || task.specialNoteProduction?.length)
               if (items.length === 0 && !hasDocs) return null
               return (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2.5">
@@ -1881,6 +1886,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   {task.cuttingSheet && <MediaPreviewList files={[task.cuttingSheet]} title="Cutting Sheet" />}
                   {task.additionalDocs && task.additionalDocs.length > 0 && (
                     <MediaPreviewList files={task.additionalDocs} title="Additional Docs" />
+                  )}
+                  {task.specialNoteProduction && task.specialNoteProduction.length > 0 && (
+                    <MediaPreviewList files={task.specialNoteProduction} title="Voice Note to Production" voiceStore={voicePreviewStore} />
                   )}
                   {uploadMeta && <p className="text-[10px] text-amber-500">{uploadMeta}</p>}
                   {items.map((item, i) => (
@@ -1922,18 +1930,22 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             }
 
             // 3. Production availability check → Installation team
-            if (displayStage === 'installation_update') {
+            if (displayStage === 'installation_update' || displayStage === 'site_lead_approval') {
               const items: string[] = []
               if (task.availabilityChecklist?.length)
                 task.availabilityChecklist.forEach(i => {
                   items.push(`${i.label}: ${i.available ? '✓ Available' : i.ordered ? '⏳ Ordered' : '✗ N/A'}`)
                 })
-              if (task.jobSheet)   items.push('Job Sheet: Available ✓')
-              if (task.glassSheet) items.push('Glass Sheet: Available ✓')
-              if (items.length === 0) return null
+              const hasDocs = !!(task.jobSheet || task.glassSheet || task.specialNoteInstallation?.length)
+              if (items.length === 0 && !hasDocs) return null
               return (
-                <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 space-y-1.5">
+                <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 space-y-2.5">
                   <p className="text-[10px] font-bold text-purple-500 uppercase tracking-wider">Production Availability Check</p>
+                  {task.jobSheet && <MediaPreviewList files={[task.jobSheet]} title="Job Sheet" />}
+                  {task.glassSheet && <MediaPreviewList files={[task.glassSheet]} title="Glass Sheet" />}
+                  {task.specialNoteInstallation && task.specialNoteInstallation.length > 0 && (
+                    <MediaPreviewList files={task.specialNoteInstallation} title="Voice Note to Installation" voiceStore={voicePreviewStore} />
+                  )}
                   {items.map((item, i) => (
                     <div key={i} className="flex items-start gap-2">
                       <span className="text-purple-300 text-xs mt-0.5">·</span>
@@ -2434,7 +2446,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Create Quotation</p>
 
               <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png"
-                files={quotFiles} onChange={setQuotFiles} maxFiles={1}
+                files={quotFiles} onChange={setQuotFiles}
                 helperText="Upload quotation PDF or document — required" />
 
               <div>
@@ -2626,6 +2638,23 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 </div>
               )}
 
+              {task.costBreakdown && (task.costBreakdown.numberOfWindows || task.costBreakdown.numberOfDoors) && (
+                <div className="grid grid-cols-2 gap-3">
+                  {task.costBreakdown.numberOfWindows != null && (
+                    <div className="bg-slate-50 rounded-xl px-4 py-2.5">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">No. of Windows</p>
+                      <p className="text-sm font-bold text-slate-700">{task.costBreakdown.numberOfWindows}</p>
+                    </div>
+                  )}
+                  {task.costBreakdown.numberOfDoors != null && (
+                    <div className="bg-slate-50 rounded-xl px-4 py-2.5">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">No. of Doors</p>
+                      <p className="text-sm font-bold text-slate-700">{task.costBreakdown.numberOfDoors}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <Opt value="approved" label="Approve" sub="Quotation is correct — send to client" accent="border-emerald-200" sel={sel} onPick={pick} />
               <Opt value="rejected" label="Reject"  sub="Quotation needs revision"              accent="border-red-200"     sel={sel} onPick={pick} />
 
@@ -2756,7 +2785,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   placeholder="e.g. 160000" className={inp} />
               </div>
 
-              <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png" files={quotFiles} onChange={setQuotFiles} maxFiles={1} helperText="Upload revised quotation document" />
+              <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png" files={quotFiles} onChange={setQuotFiles} helperText="Upload revised quotation document" />
 
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pt-1">Cost Breakdown {req}</p>
 
@@ -2911,7 +2940,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       </div>
 
                       <MultiFileUploadField label="Quotation File" required accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png"
-                        files={quotFiles} onChange={setQuotFiles} maxFiles={1} helperText="Upload revised quotation document" />
+                        files={quotFiles} onChange={setQuotFiles} helperText="Upload revised quotation document" />
 
                       <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cost Breakdown (optional)</p>
 
@@ -3260,7 +3289,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <div className="space-y-2">
                 <label className={lbl}>Job Sheet {req}</label>
                 <MultiFileUploadField label="" accept=".pdf,application/pdf" uploadButtonLabel="Upload Job Sheet PDF"
-                  files={jobSheetFiles} onChange={setJobSheetFiles} maxFiles={1} helperText="PDF only" />
+                  files={jobSheetFiles} onChange={setJobSheetFiles} helperText="PDF only" />
                 <p className="text-[11px] text-slate-400 text-center">— OR type job sheet details below —</p>
                 <textarea rows={3} value={jobSheetText} onChange={e => setJobSheetText(e.target.value)}
                   placeholder="Type job sheet details: product specs, dimensions, quantities…"
@@ -3284,12 +3313,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <div>
                 <label className={lbl}>Glass Sheet <span className="text-slate-300 font-normal">(optional)</span></label>
-                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={glassSheetFiles} onChange={setGlassSheetFiles} maxFiles={1} />
+                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={glassSheetFiles} onChange={setGlassSheetFiles} />
               </div>
 
               <div>
                 <label className={lbl}>Cutting Sheet <span className="text-slate-300 font-normal">(optional)</span></label>
-                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={cuttingSheetFiles} onChange={setCuttingSheetFiles} maxFiles={1} />
+                <MultiFileUploadField label="" accept=".pdf,.jpg,.png,.xlsx" files={cuttingSheetFiles} onChange={setCuttingSheetFiles} />
               </div>
 
               <div>

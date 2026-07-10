@@ -21,7 +21,8 @@ const LEAD_SOURCE_ORDER: { value: LeadSource; label: string }[] = [
   { value: 'bni',               label: 'BNI'               },
   { value: 'referral',          label: 'Referral'          },
   { value: 'online',            label: 'Online'            },
-  { value: 'md_ed_ref',         label: 'MD / ED Reference' },
+  { value: 'md_ref',            label: 'MD Reference'      },
+  { value: 'ed_ref',            label: 'ED Reference'      },
   { value: 'other',             label: 'Other'             },
 ]
 

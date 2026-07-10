@@ -175,7 +175,7 @@ export default function SiteVisitScreen() {
                   )}
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
-                  <StatusBadge status={task.status} size="xs" />
+                  <StatusBadge status={visitStatus(task)} size="xs" />
                   {task.flowStage === 'site_visit' && (
                     <span className="text-[9px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded-full">VISIT</span>
                   )}

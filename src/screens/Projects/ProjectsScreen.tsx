@@ -122,8 +122,11 @@ export default function ProjectsScreen() {
   }
 
   const filtered = projects.filter(p => {
-    // Not yet converted from its lead (still managed from the Leads page) — hidden everywhere, including for MD
-    if (!isConvertedProject(p)) return false
+    // Not yet converted from its lead (still managed from the Leads page) — hidden
+    // everywhere except for the site engineer, whose only assigned work (site
+    // visits) happens during this exact pre-conversion phase; hiding it there
+    // left them with an empty Projects tab despite having active site visits.
+    if (!isConvertedProject(p) && normalizeRole(user?.role) !== 'site_engineer') return false
     const bucket = getProjectFilterStage(p, allTasks)
     if (!matchesRoleVisibility(p, bucket)) return false
     const matchF = matchesFilter(p, filter, bucket)
@@ -267,7 +270,7 @@ export default function ProjectsScreen() {
             title={filter === 'completed' ? 'No completed projects yet' : 'No projects found'}
             message={
               filter === 'completed' ? 'Complete a project flow to see it here.' :
-              filter === 'active' ? 'Tap + to create your first project.' :
+              filter === 'active' ? 'Projects appear here once a lead is converted, or once you have an assigned site visit.' :
               'No projects in this stage yet.'
             }
           />

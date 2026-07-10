@@ -28,7 +28,6 @@ export function MultiFileUploadField({ label, files, onChange, accept = DEFAULT_
   const [previewName, setPreviewName] = useState<string>('')
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
-  const [debugUrls, setDebugUrls] = useState<string[]>([])
 
   function openPreview(src: string, name: string) {
     setPreviewSrc(src)
@@ -44,7 +43,6 @@ export function MultiFileUploadField({ label, files, onChange, accept = DEFAULT_
     try {
       for (const f of Array.from(selected)) {
         const url = await storeFile(f)
-        setDebugUrls(prev => [...prev, `${f.name} -> ${url}`])
         const identifier = url.startsWith('http') ? url : f.name
         previewStore.set(identifier, url)
         names.push(identifier)
@@ -107,14 +105,6 @@ export function MultiFileUploadField({ label, files, onChange, accept = DEFAULT_
 
       {helperText && !error && !uploadError && (
         <p className="text-[11px] text-slate-400 mt-1">{helperText}</p>
-      )}
-      {debugUrls.length > 0 && (
-        <div className="mt-2 text-[11px] text-slate-500">
-          <p className="font-semibold text-slate-600">Upload debug:</p>
-          {debugUrls.map((d, i) => (
-            <p key={i} className="truncate">{d}</p>
-          ))}
-        </div>
       )}
       {(error || uploadError) && (
         <p className="text-[11px] text-red-500 font-semibold mt-1">{uploadError ?? error}</p>

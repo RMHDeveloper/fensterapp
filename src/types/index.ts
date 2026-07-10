@@ -143,7 +143,7 @@ export type ProductionStage = 'cutting' | 'routing' | 'welding' | 'assembly' | '
 export type MistakeStatus = 'open' | 'in_progress' | 'rework' | 'resolved'
 export type InstallationStatus = 'scheduled' | 'in_progress' | 'completed' | 'rescheduled'
 export type FileCategory = 'site_photo' | 'quotation' | 'job_sheet' | 'qc_photo' | 'cutting_sheet' | 'glass_sheet' | 'proof' | 'voice_note' | 'other' | 'project_file' | 'project_doc' | 'measurement_doc' | 'production_doc' | 'installation_doc'
-export type LeadSource = 'cold_call' | 'referral' | 'walk_in' | 'online' | 'whatsapp' | 'instagram' | 'facebook' | 'existing_customer' | 'other' | 'md_ed_ref' | 'google' | 'client_ref' | 'cni' | 'bni'
+export type LeadSource = 'cold_call' | 'referral' | 'walk_in' | 'online' | 'whatsapp' | 'instagram' | 'facebook' | 'existing_customer' | 'other' | 'md_ed_ref' | 'md_ref' | 'ed_ref' | 'google' | 'client_ref' | 'cni' | 'bni'
 
 // ─── Flow Stage — per-task active workflow step ────────────────────────────────
 export type FlowStage =
