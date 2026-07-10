@@ -37,7 +37,14 @@ $MAX_SIZE    = 20 * 1024 * 1024; // 20 MB
 $ALLOWED_TYPES = [
     'image/jpeg', 'image/png', 'image/webp', 'image/gif',
     'application/pdf',
-    'audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/mp4',
+    // Audio-only WebM/Opus recordings from MediaRecorder are frequently
+    // magic-byte-sniffed as 'video/webm' (or a generic binary type) by
+    // libmagic since WebM is a Matroska container — without allowing
+    // those too, every voice note recorded in the app gets rejected here
+    // with a 415, which is why they never survive to be playable for
+    // anyone but the person who recorded them.
+    'audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/mp4', 'video/webm',
+    'application/octet-stream',
 ];
 
 // Auth

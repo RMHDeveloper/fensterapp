@@ -1644,7 +1644,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   function submitInstallationMistakeReview() {
     if (!instMistakeReviewAction) return
-    if (instMistakeReviewAction === 'send_back_prod_admin') {
+    if (instMistakeReviewAction === 'send_back_technician') {
+      save({
+        flowStatus: 'assigned', status: 'in_progress',
+        title: 'Update Installation Status',
+      }, `Lead Owner reviewed and sent back to ${task.installationPerson ?? 'installation technician'} to complete the task`)
+    } else if (instMistakeReviewAction === 'send_back_prod_admin') {
       save({
         flowStage: 'production_check', flowStatus: 'waiting', status: 'pending',
         title: 'Check Material Availability',
@@ -1656,13 +1661,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       }, 'Installation mistake — sent back to Admin for rework')
     } else if (instMistakeReviewAction === 'reassign_installation') {
       save({
-        flowStage: 'installation_assign', flowStatus: 'ready', status: 'pending',
-        title: 'Assign Installation',
-        installationPerson: undefined,
-        installationDate: undefined,
-        assignedTo: undefined,
-        assignee: undefined,
-      }, 'Installation mistake — reassigning installation team')
+        flowStage: 'site_lead_approval', flowStatus: 'pending', status: 'pending',
+        title: 'Approve Installation Availability',
+      }, 'Installation mistake — sent to Site Engineer Lead to reassign the installation team')
     } else if (instMistakeReviewAction === 'mark_resolved') {
       save({
         flowStage: 'final_payment', flowStatus: 'pending', status: 'pending',
@@ -4776,17 +4777,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Review Action</p>
 
+              <Opt value="send_back_technician"    label="Send Back to Technician"          sub="No blocker — retry the same installation"            accent="border-teal-200"   sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
               <Opt value="send_back_prod_admin"    label="Send Back to Production Admin"    sub="Material or profile issue — recheck availability"   accent="border-amber-200"  sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
               <Opt value="send_back_prod_manager"  label="Send Back to Production Manager"  sub="Rework required — send back to production"           accent="border-orange-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
-              <Opt value="reassign_installation"   label="Reassign Installation"            sub="Send new installation team"                          accent="border-blue-200"   sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
+              <Opt value="reassign_installation"   label="Reassign Installation"            sub="Send to Site Engineer Lead to pick a new installer"  accent="border-blue-200"   sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
               <Opt value="mark_resolved"           label="Mark Resolved"                    sub="Issue is resolved — proceed to final payment"        accent="border-emerald-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
 
               {instMistakeReviewAction && (
                 <button type="button" onClick={submitInstallationMistakeReview}
-                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${instMistakeReviewAction === 'mark_resolved' ? 'bg-emerald-600' : instMistakeReviewAction === 'reassign_installation' ? 'bg-blue-600' : 'bg-orange-600'}`}>
-                  {instMistakeReviewAction === 'send_back_prod_admin' ? 'Send to Production Admin' :
+                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${instMistakeReviewAction === 'mark_resolved' ? 'bg-emerald-600' : instMistakeReviewAction === 'reassign_installation' ? 'bg-blue-600' : instMistakeReviewAction === 'send_back_technician' ? 'bg-teal-600' : 'bg-orange-600'}`}>
+                  {instMistakeReviewAction === 'send_back_technician' ? 'Send Back to Technician' :
+                   instMistakeReviewAction === 'send_back_prod_admin' ? 'Send to Production Admin' :
                    instMistakeReviewAction === 'send_back_prod_manager' ? 'Send to Production Manager' :
-                   instMistakeReviewAction === 'reassign_installation' ? 'Reassign Installation' :
+                   instMistakeReviewAction === 'reassign_installation' ? 'Send to Site Engineer Lead' :
                    '✓ Mark Resolved — Proceed to Payment'}
                 </button>
               )}
