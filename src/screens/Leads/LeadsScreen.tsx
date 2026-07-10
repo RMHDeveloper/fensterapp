@@ -820,17 +820,11 @@ export default function LeadsScreen() {
                       <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Current Stage</p>
                       <p className="text-sm font-bold text-slate-700">{activeTask?.title ?? 'In progress'}</p>
                     </div>
-                    {advanceReceived ? (
+                    {advanceReceived && (
                       <button
                         onClick={() => openConvertToProject(linkedProject.id)}
                         className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-emerald-700">
                         Convert to Project →
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => openLeadFlowUpdate(linkedProject.id)}
-                        className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl py-3.5 text-sm font-bold active:bg-blue-700">
-                        Update Status →
                       </button>
                     )}
                   </div>
