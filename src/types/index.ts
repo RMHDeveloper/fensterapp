@@ -388,6 +388,7 @@ export interface Task {
   transportCost?: number
   installationMistakeDetails?: string
   installationNextVisitDate?: string
+  installationNotCompletedVoiceNotes?: string[]
 
   // Dispatch → installation availability approval chain (Admin proposes, Site Engineer Lead approves/changes)
   proposedInstallationPerson?: string
@@ -396,6 +397,7 @@ export interface Task {
   availabilityStatus?: 'available' | 'not_available' | 'need_approval'
   installationApprovedBy?: string        // Site Engineer Lead's name
   installationPersonChangedFrom?: string // set only when Site Engineer Lead changed the proposed person
+  installationLocationPin?: LocationPin  // map pin entered by Admin when proposing the installation assignment
 
   // Reschedule approval flow
   requestedVisitDate?: string

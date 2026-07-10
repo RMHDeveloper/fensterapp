@@ -592,12 +592,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   // ── INSTALLATION UPDATE ───────────────────────────────────────────────────
   const [instNotCompNote,       setInstNotCompNote]       = useState('')
   const [instNotCompFiles,      setInstNotCompFiles]      = useState<string[]>([])
+  const [instNotCompVoiceIds,   setInstNotCompVoiceIds]   = useState<string[]>([])
   const [instNextVisitDate,     setInstNextVisitDate]     = useState('')
   const [instNotCompExtraNotes, setInstNotCompExtraNotes] = useState('')
   const [instMistakeNote,       setInstMistakeNote]       = useState('')
   const [instMistakePhotos,     setInstMistakePhotos]     = useState<string[]>([])
   const [instMistakeReviewAction, setInstMistakeReviewAction] = useState('')
   const [instCompletedPhotos,   setInstCompletedPhotos]   = useState<string[]>([])
+
+  // ── Installation location pin (entered by Admin when proposing assignment) ─
+  const [installLocPin, setInstallLocPin] = useState<LocationPin>({ latitude: '', longitude: '', mapLink: '' })
 
   // ── PRODUCTION ASSIGN extra sheets ────────────────────────────────────────
   const [extraSheets, setExtraSheets] = useState<string[][]>([])
@@ -716,6 +720,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setProposedInstPerson(task.proposedInstallationPerson ?? '')
     setProposedInstDate(task.proposedInstallationDate ?? todayStr)
     setAdminAvailNotes('')
+    setInstallLocPin(task.installationLocationPin ?? { latitude: '', longitude: '', mapLink: '' })
     setSiteLeadAction(''); setChangedInstPerson(''); setChangedInstDate(todayStr); setChangedInstNotes('')
     setInstPerson(task.installationPerson ?? '')
     setInstDate(task.installationDate ?? todayStr)
@@ -724,7 +729,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setInstCost(task.installationCost ? String(task.installationCost) : '')
     setMatCost(task.materialCost ? String(task.materialCost) : '')
     setTransCost(task.transportCost ? String(task.transportCost) : '')
-    setInstNotCompNote(''); setInstNotCompFiles([]); setInstNextVisitDate(todayStr); setInstNotCompExtraNotes('')
+    setInstNotCompNote(''); setInstNotCompFiles([]); setInstNotCompVoiceIds([]); setInstNextVisitDate(todayStr); setInstNotCompExtraNotes('')
     setInstMistakeNote(''); setInstMistakePhotos([])
     setInstCompletedPhotos([])
     setExtraSheets([])
@@ -1492,6 +1497,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   function submitAdminAvailabilityCheck() {
     if (!proposedInstPerson) { setError('Select a proposed installation person.'); return }
     if (!proposedInstDate)   { setError('Select proposed installation date.'); return }
+    const hasPin = (installLocPin.latitude && installLocPin.longitude) || installLocPin.mapLink.trim()
+    if (!hasPin) { setError('Pin the installation location before continuing.'); return }
     save({
       flowStage: 'site_lead_approval', flowStatus: 'pending', status: 'pending',
       title: 'Approve Installation Availability',
@@ -1499,6 +1506,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       proposedInstallationDate: proposedInstDate,
       adminAvailabilityNotes: adminAvailNotes || undefined,
       availabilityStatus: 'need_approval',
+      installationLocationPin: installLocPin,
     }, `Admin requested Site Engineer Lead approval for installation assignment — proposed ${proposedInstPerson} on ${proposedInstDate}`)
   }
 
@@ -1612,6 +1620,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         flowStatus: 'not_completed', status: 'overdue',
         installationMistakeDetails: instNotCompNote,
         installationNextVisitDate: instNextVisitDate,
+        installationNotCompletedVoiceNotes: instNotCompVoiceIds.length ? instNotCompVoiceIds : undefined,
         note: instNotCompExtraNotes || undefined,
       }, `Installation not completed. Next visit scheduled on ${instNextVisitDate}.`, instNotCompFiles)
     } else {
@@ -2023,10 +2032,23 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   items.push(`${i.label}: ${i.available ? '✓ Available' : i.ordered ? '⏳ Ordered' : '✗ N/A'}`)
                 })
               const hasDocs = !!(task.jobSheet || task.glassSheet || task.specialNoteInstallation?.length)
-              if (items.length === 0 && !hasDocs) return null
+              const pin = task.installationLocationPin
+              const hasPin = !!(pin && (pin.mapLink?.trim() || (pin.latitude && pin.longitude)))
+              if (items.length === 0 && !hasDocs && !hasPin) return null
               return (
                 <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 space-y-2.5">
                   <p className="text-[10px] font-bold text-purple-500 uppercase tracking-wider">Production Availability Check</p>
+                  {hasPin && (
+                    <div className="bg-white border border-purple-200 rounded-lg px-3 py-2.5 space-y-1">
+                      <p className="text-[10px] font-bold text-purple-500 uppercase">Installation Location</p>
+                      {pin!.label && <p className="text-xs text-purple-800">{pin!.label}</p>}
+                      <a href={pin!.mapLink || `https://maps.google.com/?q=${pin!.latitude},${pin!.longitude}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs font-semibold text-purple-600 underline">
+                        <MapPin size={11} /> Open in Google Maps
+                      </a>
+                    </div>
+                  )}
                   {task.jobSheet && <MediaPreviewList files={[task.jobSheet]} title="Job Sheet" />}
                   {task.glassSheet && <MediaPreviewList files={[task.glassSheet]} title="Glass Sheet" />}
                   {task.specialNoteInstallation && task.specialNoteInstallation.length > 0 && (
@@ -4284,6 +4306,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <label className={lbl}>Proposed Installation Date {req}</label>
                 <input type="date" value={proposedInstDate} onChange={e => setProposedInstDate(e.target.value)} className={inp} />
               </div>
+              <LocationPinField value={installLocPin} onChange={setInstallLocPin} />
               <div>
                 <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
                 <textarea rows={2} value={adminAvailNotes} onChange={e => setAdminAvailNotes(e.target.value)}
@@ -4603,6 +4626,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                     noteValue={instNotCompNote} onNoteChange={setInstNotCompNote}
                     files={instNotCompFiles} onFilesChange={setInstNotCompFiles}
                     placeholder="Why couldn't the installation be completed?" />
+                  <VoiceRecorder label="Voice Note (optional)"
+                    savedIds={instNotCompVoiceIds}
+                    onAdd={id => setInstNotCompVoiceIds(prev => [...prev, id])}
+                    onRemove={id => setInstNotCompVoiceIds(prev => prev.filter(x => x !== id))}
+                    onReplace={(oldId, url) => setInstNotCompVoiceIds(prev => prev.map(x => x === oldId ? url : x))}
+                    helperText="Record a voice note explaining why installation wasn't completed" />
                   <div>
                     <label className={lbl}>Next Visit Date {req}</label>
                     <input type="date" value={instNextVisitDate} onChange={e => setInstNextVisitDate(e.target.value)} className={inp} />
@@ -4690,6 +4719,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 )}
                 {task.installationPerson && (
                   <p className="text-xs text-red-400">Reported by installer: {task.installationPerson}</p>
+                )}
+                {flowStatus === 'not_completed' && task.installationNotCompletedVoiceNotes && task.installationNotCompletedVoiceNotes.length > 0 && (
+                  <MediaPreviewList files={task.installationNotCompletedVoiceNotes} title="Voice Note from Installer" voiceStore={voicePreviewStore} />
                 )}
               </div>
 
