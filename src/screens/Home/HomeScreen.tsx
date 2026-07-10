@@ -344,17 +344,16 @@ export default function HomeScreen() {
           {stats.map((s, i) => {
             const Icon = s.icon
             return (
-              <button
+              <div
                 key={i}
-                onClick={() => s.link && navigate(s.link)}
-                className="bg-white rounded-xl p-2.5 text-center border border-slate-100 shadow-sm active:scale-95 active:bg-slate-50 transition-all duration-100"
+                className="bg-white rounded-xl p-2.5 text-center border border-slate-100 shadow-sm"
               >
                 <div className={`w-7 h-7 ${s.iconBg} rounded-lg flex items-center justify-center mx-auto mb-1.5`}>
                   <Icon size={14} className={s.iconColor} strokeWidth={2.2} aria-hidden="true" />
                 </div>
                 <p className="text-xl font-extrabold text-slate-800 leading-none">{s.value}</p>
                 <p className="text-[9px] font-semibold text-slate-400 mt-1 leading-tight">{s.label}</p>
-              </button>
+              </div>
             )
           })}
         </div>

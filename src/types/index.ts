@@ -214,6 +214,8 @@ export interface AvailabilityCheckItem {
   available: boolean
   ordered?: boolean
   notAvailableReason?: string
+  dueDate?: string
+  overdue?: boolean
 }
 
 // ─── Production Manager checklist ───────────────────────────────────────────────
@@ -306,6 +308,8 @@ export interface Task {
   // Production checklists
   productionChecklist?: ProductionCheckItem[]
   availabilityChecklist?: AvailabilityCheckItem[]
+  materialStatusOverdue?: boolean
+  materialStatusNote?: string
 
   // Workflow fields
   taskKind?: 'work' | 'followup'

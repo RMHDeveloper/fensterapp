@@ -12,7 +12,7 @@ import { VoiceRecorder } from '../../components/forms/VoiceRecorder'
 import { LocationPinField } from '../../components/forms/LocationPinField'
 import { TimePickerField } from '../../components/forms/TimePickerField'
 import { NoteWithFilesField } from '../../components/forms/NoteWithFilesField'
-import type { Task, Project, LocationPin, StatusHistoryItem, FlowStage, CostBreakdown, ProjectStage } from '../../types'
+import type { Task, Project, LocationPin, StatusHistoryItem, FlowStage, CostBreakdown, ProjectStage, AvailabilityCheckItem } from '../../types'
 import { PROJECT_STAGE_LABEL, PROJECT_STAGE_PROGRESS } from '../../types'
 import { filePreviewStore, voicePreviewStore, isImageFileName, resolveFileUrl } from '../../utils/sessionStore'
 import { MediaPreviewList } from '../../components/media/MediaPreviewList'
@@ -443,18 +443,18 @@ function CustomerDetailsCard({ task, project }: { task: Task; project?: Project 
 }
 
 type AvailStatus = 'available' | 'not_available' | 'order'
-type AvailItem = { id: string; label: string; status: AvailStatus; reason: string }
+type AvailItem = { id: string; label: string; status: AvailStatus; reason: string; dueDate?: string }
 const DEFAULT_AVAIL: AvailItem[] = [
-  { id: 'profile',  label: 'Profile',  status: 'available', reason: '' },
-  { id: 'glass',    label: 'Glass',    status: 'available', reason: '' },
-  { id: 'hardware', label: 'Hardware', status: 'available', reason: '' },
+  { id: 'profile',  label: 'Profile',  status: 'available', reason: '', dueDate: '' },
+  { id: 'glass',    label: 'Glass',    status: 'available', reason: '', dueDate: '' },
+  { id: 'hardware', label: 'Hardware', status: 'available', reason: '', dueDate: '' },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const { user, can }                        = useAuth()
-  const { updateTask: ctxUpdateTask, updateProject, tasks, projects, leads } = useAppData()
+  const { updateTask: ctxUpdateTask, updateProject, tasks, projects, leads, updateLeadStatus } = useAppData()
   const navigate                             = useNavigate()
   const role                                 = user?.role ?? 'lead_manager'
   const todayStr                             = new Date().toISOString().slice(0, 10)
@@ -556,6 +556,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [advNote,          setAdvNote]          = useState('')
   const [advPayScreenshot, setAdvPayScreenshot] = useState<string[]>([])
   const [finalPayScreenshot, setFinalPayScreenshot] = useState<string[]>([])
+  // Advance received -> Convert to Project, chained into the same step so LM
+  // doesn't have to go find this project again on the Leads screen afterward.
+  const [showAdvanceConvert, setShowAdvanceConvert] = useState(false)
+  const [convProjectName,   setConvProjectName]   = useState('')
+  const [convDueDate,       setConvDueDate]       = useState('')
+  const [convNotes,         setConvNotes]         = useState('')
 
   // ── PRODUCTION WORK ───────────────────────────────────────────────────────
   const [overdueNote,    setOverdueNote]    = useState('')
@@ -645,6 +651,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     { id: 'glazing',    label: 'Glazing',         done: false },
   ])
 
+  // ── Production Manager: editable material status (from Admin) ─────────────
+  const [pmMaterialChecklist, setPmMaterialChecklist] = useState<AvailabilityCheckItem[]>([])
+
   // ── Ready to Pack checklist ────────────────────────────────────────────────
   const DEFAULT_PACK_CHECKLIST = [
     { id: 'profiles',  label: 'All profile pieces cut and ready', done: false },
@@ -697,6 +706,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setAdvPayScreenshot(task.advancePaymentScreenshot ?? [])
     setAdvBalAmt(task.balanceAmount ? String(task.balanceAmount) : '')
     setAdvNote('')
+    setShowAdvanceConvert(false)
+    setConvProjectName(task.projectName ?? '')
+    setConvDueDate('')
+    setConvNotes('')
     setOverdueNote(task.productionOverdueReason ?? '')
     setOverdueFiles([]); setOverdueNewDate(task.productionNewDate ?? todayStr)
     setLmNewDate(todayStr); setLmNote('')
@@ -743,9 +756,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             id: i.id, label: i.label,
             status: (i.ordered ? 'order' : i.available ? 'available' : 'not_available') as AvailStatus,
             reason: i.notAvailableReason ?? '',
+            dueDate: i.dueDate ?? '',
           }))
         : DEFAULT_AVAIL.map(d => ({ ...d }))
     )
+    setPmMaterialChecklist(task.availabilityChecklist?.length ? task.availabilityChecklist.map(i => ({ ...i })) : [])
     // Phase 9 — restore from task state if available, else use defaults
     setProdChecklist(
       task.productionChecklist?.length
@@ -1296,12 +1311,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     for (const item of notAvailMandatory) {
       if (!item.reason.trim()) { setError(`Enter reason for ${item.label} not available.`); return }
     }
+    for (const item of orderedMandatory) {
+      if (!item.dueDate) { setError(`Select expected due date for ${item.label}.`); return }
+    }
 
     const savedChecklist = availChecklist.map(i => ({
       id: i.id, label: i.label,
       available: i.status === 'available',
       ordered: i.status === 'order',
       notAvailableReason: i.reason || undefined,
+      dueDate: i.dueDate || undefined,
     }))
 
     if (notAvailMandatory.length > 0) {
@@ -1368,18 +1387,34 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     }, `Restock availability requested by ${by}${restockDate ? ` — expected ${restockDate}` : ''}`)
   }
 
-  function submitAdvancePayment() {
+  function openAdvanceConvert() {
     if (!sel) return
     if (sel === 'pending') {
       save({ flowStatus: 'pending', status: 'pending' }, 'Advance payment pending'); return
     }
     if (!advPaidAmt) { setError('Enter paid amount.'); return }
     if (!advDueDate) { setError('Enter due date.'); return }
+    setError('')
+    setShowAdvanceConvert(true)
+  }
+
+  function submitAdvanceAndConvert() {
+    if (!convProjectName.trim()) { setError('Project name is required.'); return }
+    if (!convDueDate)            { setError('Due date is required.'); return }
     const paid    = Number(advPaidAmt)
     const total   = task.quotationAmount ?? 0
     const balance = advBalAmt ? Number(advBalAmt) : Math.max(0, total - paid)
-    // Advance received — stays in Lead workflow (project.pendingConversion untouched)
-    // until the LM explicitly clicks "Convert to Project" on the Leads screen.
+    if (task.projectId) {
+      const proj = projects.find(p => p.id === task.projectId)
+      updateProject(task.projectId, {
+        pendingConversion: false,
+        name: convProjectName.trim(),
+        dueDate: convDueDate,
+        currentStage: 'production_admin_check',
+        ...(convNotes.trim() ? { description: proj?.description ? `${proj.description}\n\nConversion notes: ${convNotes.trim()}` : convNotes.trim() } : {}),
+      })
+      if (proj?.leadId) updateLeadStatus(proj.leadId, 'converted')
+    }
     save({
       flowStage: 'production_assign', flowStatus: 'ready', status: 'pending',
       title: 'Upload Job Sheet to Admin',
@@ -1388,7 +1423,42 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       dueDate: advDueDate,
       paymentNote: advNote || undefined,
       advancePaymentScreenshot: advPayScreenshot.length > 0 ? advPayScreenshot : undefined,
-    }, `Advance ₹${paid.toLocaleString('en-IN')} received — due ${advDueDate}`, advPayScreenshot)
+    }, `Advance ₹${paid.toLocaleString('en-IN')} received — converted to project`, advPayScreenshot)
+  }
+
+  function AdvanceConvertBlock() {
+    if (!sel) return null
+    if (!showAdvanceConvert) {
+      return (
+        <button type="button" onClick={openAdvanceConvert}
+          className="w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 bg-emerald-600">
+          {`✓ ${sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Convert to Project`}
+        </button>
+      )
+    }
+    return (
+      <div className="space-y-3 bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+        <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Convert to Project</p>
+        <div>
+          <label className={lbl}>Project Name {req}</label>
+          <input type="text" value={convProjectName} onChange={e => setConvProjectName(e.target.value)}
+            placeholder="e.g. Rajesh Kumar — Living Room Windows" className={inp} />
+        </div>
+        <div>
+          <label className={lbl}>Project Due Date {req}</label>
+          <input type="date" value={convDueDate} onChange={e => setConvDueDate(e.target.value)} className={inp} />
+        </div>
+        <div>
+          <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
+          <textarea rows={2} value={convNotes} onChange={e => setConvNotes(e.target.value)}
+            placeholder="Any additional notes…" className={`${inp} resize-none`} />
+        </div>
+        <button type="button" onClick={submitAdvanceAndConvert}
+          className="w-full py-4 rounded-2xl bg-emerald-700 text-white text-sm font-extrabold active:opacity-90">
+          ✓ Convert to Project
+        </button>
+      </div>
+    )
   }
 
   function submitProductionWork() {
@@ -1398,6 +1468,18 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       productionChecklist: prodChecklist,
       productionOverdueReason: undefined, productionNewDate: undefined,
     }, `Ready to Dispatch by ${user?.name ?? 'Production Manager'}`)
+  }
+
+  function submitMaterialStatusUpdate() {
+    const overdueItems = pmMaterialChecklist.filter(i => i.overdue)
+    const hasOverdue = overdueItems.length > 0
+    save({
+      availabilityChecklist: pmMaterialChecklist,
+      materialStatusOverdue: hasOverdue,
+      materialStatusNote: hasOverdue ? `Overdue: ${overdueItems.map(i => i.label).join(', ')}` : undefined,
+    }, hasOverdue
+      ? `Production Manager flagged material overdue — sent to Admin: ${overdueItems.map(i => i.label).join(', ')}`
+      : 'Production Manager updated material status')
   }
 
   function submitAssignToDispatch() {
@@ -1696,12 +1778,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     for (const item of notAvailMandatory) {
       if (!item.reason.trim()) { setError(`Enter reason for ${item.label} not available.`); return }
     }
+    for (const item of orderedMandatory) {
+      if (!item.dueDate) { setError(`Select expected due date for ${item.label}.`); return }
+    }
 
     const savedChecklist = availChecklist.map(i => ({
       id: i.id, label: i.label,
       available: i.status === 'available',
       ordered: i.status === 'order',
       notAvailableReason: i.reason || undefined,
+      dueDate: i.dueDate || undefined,
     }))
 
     if (notAvailMandatory.length > 0) {
@@ -3240,12 +3326,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           <MultiFileUploadField label="Payment Screenshot" accept=".jpg,.jpeg,.png,.webp,.pdf" files={advPayScreenshot} onChange={setAdvPayScreenshot} helperText="Optional — upload payment proof" />
                         </div>
                       )}
-                      {sel && (
-                        <button type="button" onClick={submitAdvancePayment}
-                          className="w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 bg-emerald-600">
-                          {`✓ ${sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production`}
-                        </button>
-                      )}
+                      <AdvanceConvertBlock />
                     </>
                   )}
                 </>
@@ -3396,7 +3477,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                             N/A
                           </button>
                           <button type="button"
-                            onClick={() => { const n=[...availChecklist]; n[idx]={...item,status:'order',reason:''}; setAvailChecklist(n) }}
+                            onClick={() => { const n=[...availChecklist]; n[idx]={...item,status:'order',reason:'',dueDate:''}; setAvailChecklist(n) }}
                             className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${item.status === 'order' ? 'bg-amber-500 text-white' : 'bg-white text-amber-600 border border-amber-300'}`}>
                             Ordered
                           </button>
@@ -3407,6 +3488,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           onChange={e => { const n=[...availChecklist]; n[idx]={...item,reason:e.target.value}; setAvailChecklist(n) }}
                           placeholder={isOptional ? 'Reason (optional)' : 'Reason — required'}
                           className="w-full text-xs bg-white border border-red-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-400" />
+                      )}
+                      {item.status === 'order' && (
+                        <div>
+                          <label className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1 block">Expected Due Date {!isOptional && <span className="text-red-500">*</span>}</label>
+                          <input type="date" value={item.dueDate ?? ''}
+                            onChange={e => { const n=[...availChecklist]; n[idx]={...item,dueDate:e.target.value}; setAvailChecklist(n) }}
+                            className="w-full text-xs bg-white border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400" />
+                        </div>
                       )}
                     </div>
                   )
@@ -3508,7 +3597,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                             N/A
                           </button>
                           <button type="button"
-                            onClick={() => { const n=[...availChecklist]; n[idx]={...item,status:'order',reason:''}; setAvailChecklist(n) }}
+                            onClick={() => { const n=[...availChecklist]; n[idx]={...item,status:'order',reason:'',dueDate:''}; setAvailChecklist(n) }}
                             className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${item.status === 'order' ? 'bg-amber-500 text-white' : 'bg-white text-amber-600 border border-amber-300'}`}>
                             Ordered
                           </button>
@@ -3519,6 +3608,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           onChange={e => { const n=[...availChecklist]; n[idx]={...item,reason:e.target.value}; setAvailChecklist(n) }}
                           placeholder={isOptional ? 'Reason (optional)' : 'Reason — required'}
                           className="w-full text-xs bg-white border border-red-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-400" />
+                      )}
+                      {item.status === 'order' && (
+                        <div>
+                          <label className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1 block">Expected Due Date {!isOptional && <span className="text-red-500">*</span>}</label>
+                          <input type="date" value={item.dueDate ?? ''}
+                            onChange={e => { const n=[...availChecklist]; n[idx]={...item,dueDate:e.target.value}; setAvailChecklist(n) }}
+                            className="w-full text-xs bg-white border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400" />
+                        </div>
                       )}
                     </div>
                   )
@@ -3675,12 +3772,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 </div>
               )}
 
-              {sel && (
-                <button type="button" onClick={submitAdvancePayment}
-                  className="w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 bg-emerald-600">
-                  {`✓ ${sel === 'advance_paid' ? 'Advance Paid' : sel === 'partial_paid' ? 'Part Paid' : 'Full Paid'} — Start Production`}
-                </button>
-              )}
+              <AdvanceConvertBlock />
             </>
           )}
 
@@ -3752,25 +3844,45 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 </button>
               )}
 
-              {/* Material status from Admin check — shown at bottom */}
-              {task.availabilityChecklist && task.availabilityChecklist.length > 0 && (
-                <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Material Status (from Admin)</p>
-                  <div className="flex flex-wrap gap-2">
-                    {task.availabilityChecklist.map(item => {
-                      const statusColor = item.available
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : item.ordered
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : 'bg-red-50 text-red-700 border-red-200'
-                      const statusLabel = item.available ? 'Available' : item.ordered ? 'Ordered' : 'N/A'
-                      return (
-                        <span key={item.id} className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border ${statusColor}`}>
-                          {item.label}: {statusLabel}
-                        </span>
-                      )
-                    })}
-                  </div>
+              {/* Material status from Admin check — editable by Production Manager */}
+              {pmMaterialChecklist.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 space-y-2">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Material Status (from Admin)</p>
+                  {pmMaterialChecklist.map((item, idx) => {
+                    const base = item.available ? 'available' : item.ordered ? 'ordered' : 'not_available'
+                    const current = item.overdue ? 'overdue' : base
+                    const statusColor = current === 'overdue' ? 'border-red-300 text-red-700 bg-red-50'
+                      : current === 'available' ? 'border-emerald-300 text-emerald-700 bg-emerald-50'
+                      : current === 'ordered' ? 'border-amber-300 text-amber-700 bg-amber-50'
+                      : 'border-red-300 text-red-700 bg-red-50'
+                    return (
+                      <div key={item.id} className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-slate-700">{item.label}</span>
+                        <select value={current}
+                          onChange={e => {
+                            const v = e.target.value
+                            const n = [...pmMaterialChecklist]
+                            if (v === 'overdue') n[idx] = { ...item, overdue: true }
+                            else if (v === 'available') n[idx] = { ...item, available: true, ordered: false, overdue: false }
+                            else n[idx] = { ...item, available: base === 'available', ordered: base === 'ordered', overdue: false }
+                            setPmMaterialChecklist(n)
+                          }}
+                          className={`text-[11px] font-bold px-2 py-1.5 rounded-lg border focus:outline-none ${statusColor}`}>
+                          {base === 'not_available' && <option value="not_available">N/A</option>}
+                          {base === 'ordered' && <option value="ordered">Ordered</option>}
+                          {base === 'available' && <option value="available">Available</option>}
+                          {base !== 'available' && <option value="available">{base === 'ordered' ? 'Received' : 'Available'}</option>}
+                          <option value="overdue">Overdue</option>
+                        </select>
+                      </div>
+                    )
+                  })}
+                  {JSON.stringify(pmMaterialChecklist) !== JSON.stringify(task.availabilityChecklist ?? []) && (
+                    <button type="button" onClick={submitMaterialStatusUpdate}
+                      className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-xs font-extrabold active:opacity-90">
+                      {pmMaterialChecklist.some(i => i.overdue) ? 'Send Overdue Status to Admin' : 'Save Material Status'}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -3805,9 +3917,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
           {/* 9b. PRODUCTION WORK — LM / other roles waiting / overdue update */}
           {displayStage === 'production_work' && role !== 'production_manager' && role !== 'owner' && flowStatus !== 'overdue' && flowStatus !== 'ready_to_pack' && !demoOverride && (
-            <WaitingView icon={Package} color="bg-blue-50 border border-blue-200 text-blue-700"
-              title="Production Work In Progress"
-              sub={task.productionNewDate ? `Updated deadline: ${task.productionNewDate}` : 'Production Manager is working on it'} />
+            <>
+              <WaitingView icon={Package} color="bg-blue-50 border border-blue-200 text-blue-700"
+                title="Production Work In Progress"
+                sub={task.productionNewDate ? `Updated deadline: ${task.productionNewDate}` : 'Production Manager is working on it'} />
+              {task.materialStatusOverdue && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+                  <p className="text-xs font-bold text-red-700">⚠ Material Overdue</p>
+                  <p className="text-xs text-red-600 mt-0.5">{task.materialStatusNote ?? 'Production Manager reported a material issue — sent to Admin.'}</p>
+                </div>
+              )}
+            </>
           )}
 
           {/* CONTROL: Production Work — owner sees Take Control, LM sees Override */}
@@ -4152,7 +4272,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             <>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Check Installation Availability</p>
               <div>
-                <label className={lbl}>Proposed Installation Incharge / Person {req}</label>
+                <label className={lbl}>Proposed Installation Technician / Person {req}</label>
                 <select value={proposedInstPerson} onChange={e => setProposedInstPerson(e.target.value)} className={inp}>
                   <option value="">Select installation person…</option>
                   {installerOptions.map(name => (
@@ -4290,7 +4410,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {displayStage === 'installation_assign' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && (
             <WaitingView icon={Wrench} color="bg-rose-50 border border-rose-200 text-rose-700"
               title="Ready to Dispatch"
-              sub="Installation Incharge will assign the installer and schedule the date" />
+              sub="Installation Technician will assign the installer and schedule the date" />
           )}
 
           {/* CONTROL: Installation Assign — owner sees Take Control, others see Override */}
@@ -4298,16 +4418,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             <>
               <WaitingView icon={Wrench} color="bg-rose-50 border border-rose-200 text-rose-700"
                 title="Ready to Dispatch"
-                sub="Installation Incharge will assign the installer and schedule the date" />
-              <DemoControlCard waitingFor="Installation Incharge" description="Installation Incharge assigns the installer and date."
+                sub="Installation Technician will assign the installer and schedule the date" />
+              <DemoControlCard waitingFor="Installation Technician" description="Installation Technician assigns the installer and date."
                 onOverride={() => setDemoOverride(true)} variant="owner" />
             </>
           )}
 
           {displayStage === 'installation_assign' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && canDemoOverride && (
             <DemoControlCard
-              waitingFor="Installation Incharge"
-              description="Installation Incharge assigns the installer and date. For demo, do it yourself."
+              waitingFor="Installation Technician"
+              description="Installation Technician assigns the installer and date. For demo, do it yourself."
               onOverride={() => setDemoOverride(true)}
             />
           )}
@@ -4318,7 +4438,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                    <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Installation Incharge</p>
+                    <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Installation Technician</p>
                   </div>
                   <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
                 </div>
@@ -4419,15 +4539,15 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <WaitingView icon={Wrench} color="bg-rose-50 border border-rose-200 text-rose-700"
                 title={`Installation ${flowStatus === 'not_completed' ? 'Not Completed' : 'In Progress'}`}
                 sub={task.installationPerson ? `Installer: ${task.installationPerson}${task.installationDate ? ` · ${task.installationDate}` : ''}` : 'Waiting for installation incharge to update'} />
-              <DemoControlCard waitingFor="Installation Incharge" description="Installation Incharge needs to report the installation result."
+              <DemoControlCard waitingFor="Installation Technician" description="Installation Technician needs to report the installation result."
                 onOverride={() => setDemoOverride(true)} variant="owner" />
             </>
           )}
 
           {displayStage === 'installation_update' && flowStatus !== 'mistake' && flowStatus !== 'not_completed' && role !== 'technician' && role !== 'installation_incharge' && role !== 'owner' && !demoOverride && canDemoOverride && (
             <DemoControlCard
-              waitingFor="Installation Incharge"
-              description="Installation Incharge needs to report installation result. For demo, update it yourself."
+              waitingFor="Installation Technician"
+              description="Installation Technician needs to report installation result. For demo, update it yourself."
               onOverride={() => setDemoOverride(true)}
             />
           )}
@@ -4437,7 +4557,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Installation Incharge</p>
+                  <p className="text-xs font-semibold text-amber-700">Override Active — Acting as Installation Technician</p>
                 </div>
                 <button type="button" onClick={() => setDemoOverride(false)} className="text-xs text-slate-400 underline">Cancel</button>
               </div>

@@ -29,7 +29,7 @@ const SEND_TO_ROLES = [
   { value: 'site_engineer',      label: 'Site Engineer'      },
   { value: 'production_manager', label: 'Production Manager' },
   { value: 'production_admin',   label: 'Admin'   },
-  { value: 'technician',         label: 'Technician'         },
+  { value: 'technician',         label: 'Installation Technician' },
 ]
 
 const inp = 'w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-red-400'

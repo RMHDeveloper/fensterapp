@@ -8,6 +8,7 @@ export interface TimelineItem {
   date?: string
   description?: string
   status: TimelineItemStatus
+  content?: React.ReactNode
 }
 
 interface Props {
@@ -44,6 +45,7 @@ export function Timeline({ items }: Props) {
             {item.description && (
               <p className="text-xs text-slate-500 mt-1">{item.description}</p>
             )}
+            {item.content}
           </div>
         </div>
       ))}

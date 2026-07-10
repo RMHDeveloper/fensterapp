@@ -115,7 +115,7 @@ const STAGE_HANDLER_ROLE: Record<string, string> = {
   production_assign: 'Sales Team', production_check: 'Admin',
   advance_payment: 'Sales Team', production_work: 'Production Manager',
   dispatch_assign: 'Sales Team', admin_availability_check: 'Admin', site_lead_approval: 'Site Engineer Lead',
-  installation_assign: 'Sales Team', installation_update: 'Technician',
+  installation_assign: 'Sales Team', installation_update: 'Installation Technician',
   final_payment: 'Sales Team', final_completion: 'Sales Team', completed: '—',
 }
 
@@ -232,6 +232,27 @@ function buildProjectTimeline(currentStage?: string, createdAt?: string): Timeli
     })
 }
 
+function ProductionStepsChart({ checklist }: { checklist: { id: string; label: string; done: boolean }[] }) {
+  const doneCt = checklist.filter(s => s.done).length
+  return (
+    <div className="mt-2 space-y-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Production Steps</p>
+        <p className="text-[10px] font-bold text-slate-500">{doneCt}/{checklist.length}</p>
+      </div>
+      {checklist.map(step => (
+        <div key={step.id} className="flex items-center gap-2">
+          <span className={`text-xs font-semibold w-24 flex-shrink-0 truncate ${step.done ? 'text-emerald-700' : 'text-slate-500'}`}>{step.label}</span>
+          <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all duration-300 ${step.done ? 'bg-emerald-500 w-full' : 'bg-slate-300 w-0'}`} />
+          </div>
+          {step.done && <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function ProjectDetailScreen() {
   const { id = 'p1' } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -246,7 +267,12 @@ export default function ProjectDetailScreen() {
   const project  = projects.find(p => p.id === id)
   const tasks    = allTasks.filter(t => t.projectId === id)
   const payment  = payments.find(p => p.projectId === id)
-  const timeline = buildProjectTimeline(project?.currentStage, project?.createdAt)
+  const mainFlowTask = tasks.find(t => t.flowStage)
+  const timeline = buildProjectTimeline(project?.currentStage, project?.createdAt).map(item =>
+    item.id === 't9' && mainFlowTask?.productionChecklist?.length
+      ? { ...item, content: <ProductionStepsChart checklist={mainFlowTask.productionChecklist} /> }
+      : item
+  )
 
   // Installation Details accordion — Admin, MD/ED, LO, Site Engineer Lead always;
   // Installation Incharge/Technician only when they're the assigned installer

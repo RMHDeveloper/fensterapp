@@ -109,18 +109,20 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   site_engineer_lead:   'Site Engineer Lead',
   production_admin:     'Admin',
   production_manager:   'Production Manager',
-  technician:           'Technician',
-  installation_incharge:'Technician',
+  technician:           'Installation Technician',
+  installation_incharge:'Installation Technician',
   viewer:               'Viewer',
   production_team:      'Admin',
 }
 
 // Resolves the label to show for a user's role — prefers their stored displayRole
-// (e.g. "Managing Director (MD)"), but renders the production_admin role's legacy
-// "Production Incharge" displayRole value as "Admin" everywhere in the UI. The
-// stored displayRole data and DISPLAY_ROLE_TO_INTERNAL mapping are untouched.
+// (e.g. "Managing Director (MD)"), but renders legacy displayRole values that
+// predate the role cleanup ("Production Incharge", "Installation Incharge") as
+// their current equivalents everywhere in the UI. The stored displayRole data and
+// DISPLAY_ROLE_TO_INTERNAL mapping are untouched.
 export function getRoleDisplayLabel(role: UserRole, displayRole?: string): string {
-  if (displayRole === 'Production Incharge') return 'Admin'
+  if (displayRole === 'Production Incharge')   return 'Admin'
+  if (displayRole === 'Installation Incharge') return 'Installation Technician'
   return displayRole ?? ROLE_LABELS[role]
 }
 
