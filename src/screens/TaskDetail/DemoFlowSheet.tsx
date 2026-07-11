@@ -606,6 +606,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [instMistakeNote,       setInstMistakeNote]       = useState('')
   const [instMistakePhotos,     setInstMistakePhotos]     = useState<string[]>([])
   const [instMistakeReviewAction, setInstMistakeReviewAction] = useState('')
+  const [overdueDisapproveNote, setOverdueDisapproveNote] = useState('')
   const [instCompletedPhotos,   setInstCompletedPhotos]   = useState<string[]>([])
 
   // ── Installation location pin (entered by Admin when proposing assignment) ─
@@ -739,6 +740,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setTransCost(task.transportCost ? String(task.transportCost) : '')
     setInstNotCompNote(''); setInstNotCompFiles([]); setInstNotCompVoiceIds([]); setInstNextVisitDate(todayStr); setInstNotCompExtraNotes('')
     setInstMistakeNote(''); setInstMistakePhotos([])
+    setInstMistakeReviewAction(''); setOverdueDisapproveNote('')
     setInstCompletedPhotos([])
     setExtraSheets([])
     setOwnerNavStage(null)
@@ -1695,7 +1697,17 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   function submitInstallationMistakeReview() {
     if (!instMistakeReviewAction) return
-    if (instMistakeReviewAction === 'send_back_prod_admin') {
+    if (instMistakeReviewAction === 'approve_overdue' || instMistakeReviewAction === 'disapprove_overdue') {
+      const approved = instMistakeReviewAction === 'approve_overdue'
+      const note = overdueDisapproveNote.trim()
+      save({
+        flowStatus: 'assigned', status: 'in_progress',
+        title: 'Update Installation Status',
+        note: !approved && note ? note : undefined,
+      }, approved
+        ? `Lead Owner approved the overdue reason — sent back to ${task.installationPerson ?? 'installation technician'} to continue`
+        : `Lead Owner disapproved the overdue reason — sent back to ${task.installationPerson ?? 'installation technician'} to continue${note ? `: ${note}` : ''}`)
+    } else if (instMistakeReviewAction === 'send_back_prod_admin') {
       save({
         flowStage: 'production_check', flowStatus: 'waiting', status: 'pending',
         title: 'Check Material Availability',
@@ -1710,11 +1722,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         flowStage: 'site_lead_approval', flowStatus: 'pending', status: 'pending',
         title: 'Approve Installation Availability',
       }, 'Installation mistake — sent to Site Engineer Lead to reassign the installation team')
-    } else if (instMistakeReviewAction === 'mark_resolved') {
-      save({
-        flowStage: 'final_payment', flowStatus: 'pending', status: 'pending',
-        title: 'Collect Final Payment',
-      }, 'Installation mistake resolved — collecting final payment')
     }
   }
 
@@ -4844,18 +4851,34 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Review Action</p>
 
-              <Opt value="send_back_prod_admin"    label="Send Back to Production Admin"    sub="Material or profile issue — recheck availability"   accent="border-amber-200"  sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
-              <Opt value="send_back_prod_manager"  label="Send Back to Production Manager"  sub="Rework required — send back to production"           accent="border-orange-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
-              <Opt value="reassign_installation"   label="Reassign Installation"            sub="Send to Site Engineer Lead to pick a new installer"  accent="border-blue-200"   sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
-              <Opt value="mark_resolved"           label="Mark Resolved"                    sub="Issue is resolved — proceed to final payment"        accent="border-emerald-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
+              {flowStatus === 'not_completed' ? (
+                <>
+                  <Opt value="approve_overdue"    label="Approve"    sub="Accept the reason — send back to technician to continue"   accent="border-emerald-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
+                  <Opt value="disapprove_overdue" label="Disapprove" sub="Reason not accepted — send back to technician with a note" accent="border-red-200"     sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
+                  {instMistakeReviewAction === 'disapprove_overdue' && (
+                    <div>
+                      <label className={lbl}>Note for Technician <span className="text-slate-300 font-normal">(optional)</span></label>
+                      <textarea rows={2} value={overdueDisapproveNote} onChange={e => setOverdueDisapproveNote(e.target.value)}
+                        placeholder="Why isn't this reason accepted…" className={`${inp} resize-none`} />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Opt value="send_back_prod_admin"    label="Send Back to Production Admin"    sub="Material or profile issue — recheck availability"   accent="border-amber-200"  sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
+                  <Opt value="send_back_prod_manager"  label="Send Back to Production Manager"  sub="Rework required — send back to production"           accent="border-orange-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
+                  <Opt value="reassign_installation"   label="Reassign Installation"            sub="Send to Site Engineer Lead to pick a new installer"  accent="border-blue-200"   sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
+                </>
+              )}
 
               {instMistakeReviewAction && (
                 <button type="button" onClick={submitInstallationMistakeReview}
-                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${instMistakeReviewAction === 'mark_resolved' ? 'bg-emerald-600' : instMistakeReviewAction === 'reassign_installation' ? 'bg-blue-600' : 'bg-orange-600'}`}>
-                  {instMistakeReviewAction === 'send_back_prod_admin' ? 'Send to Production Admin' :
+                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${instMistakeReviewAction === 'approve_overdue' ? 'bg-emerald-600' : instMistakeReviewAction === 'disapprove_overdue' ? 'bg-red-600' : instMistakeReviewAction === 'reassign_installation' ? 'bg-blue-600' : 'bg-orange-600'}`}>
+                  {instMistakeReviewAction === 'approve_overdue' ? '✓ Approve — Send Back to Technician' :
+                   instMistakeReviewAction === 'disapprove_overdue' ? 'Disapprove — Send Back to Technician' :
+                   instMistakeReviewAction === 'send_back_prod_admin' ? 'Send to Production Admin' :
                    instMistakeReviewAction === 'send_back_prod_manager' ? 'Send to Production Manager' :
-                   instMistakeReviewAction === 'reassign_installation' ? 'Send to Site Engineer Lead' :
-                   '✓ Mark Resolved — Proceed to Payment'}
+                   'Send to Site Engineer Lead'}
                 </button>
               )}
             </>
