@@ -33,10 +33,11 @@ const ROLE_PATHS: Record<UserRole, string[]> = {
   viewer:               ['/home', '/projects', '/settings'],
 }
 
-function getNavPaths(user: { role: UserRole; displayRole?: string }): string[] {
-  const base = ROLE_PATHS[user.role] ?? ['/home', '/settings']
+function getNavPaths(user: { role: UserRole; roles?: UserRole[]; displayRole?: string }): string[] {
+  const roles = user.roles ?? [user.role]
+  const base  = [...new Set(roles.flatMap(r => ROLE_PATHS[r] ?? ['/home', '/settings']))]
   // Admin (owner role with Admin displayRole): remove today/tasks
-  if (user.role === 'owner' && user.displayRole?.toLowerCase().includes('admin')) {
+  if (roles.includes('owner') && user.displayRole?.toLowerCase().includes('admin')) {
     return base.filter(p => p !== '/tasks')
   }
   return base
@@ -48,14 +49,14 @@ export function NavigationBar() {
   const { user }     = useAuth()
 
   const allowed = user ? getNavPaths(user) : ['/home', '/settings']
-  const role    = user?.role ?? 'lead_manager'
-  const isDateRole = role === 'site_engineer' || role === 'technician' || role === 'installation_incharge'
+  const roles   = user?.roles ?? [user?.role ?? 'lead_manager']
+  const isDateRole = roles.some(r => r === 'site_engineer' || r === 'technician' || r === 'installation_incharge')
   const items   = allowed
     .map(path => {
       const item = ALL_ITEMS.find(i => i.path === path)
       if (!item) return null
       if (path === '/tasks') {
-        const label = role === 'site_engineer_lead' ? 'Approvals' : isDateRole ? 'Today' : 'Pending'
+        const label = roles.includes('site_engineer_lead') ? 'Approvals' : isDateRole ? 'Today' : 'Pending'
         return { ...item, label }
       }
       return item

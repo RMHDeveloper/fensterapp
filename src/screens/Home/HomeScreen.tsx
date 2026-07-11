@@ -42,13 +42,14 @@ const PROD_STAGES     = new Set(['production_manager_work','ready_to_dispatch'])
 const INSTALL_STAGES  = new Set(['installation_assigned','installation','installation_in_progress'])
 
 // Total tasks (any status) currently in this user's queue — flow tasks owned by
-// their role, plus regular tasks assigned to them (or unassigned, role-wide).
-function isMineTask(t: Task, role: UserRole, userName: string | undefined): boolean {
-  if (role === 'owner') return true
+// any of their roles, plus regular tasks assigned to them (or unassigned, role-wide).
+function isMineTask(t: Task, roles: UserRole[], userName: string | undefined): boolean {
+  if (roles.includes('owner')) return true
   if (t.flowStage) {
-    if (getRoleForStage(t.flowStage) !== role) return false
-    if (role === 'site_engineer') return t.assignedTo === userName || t.siteEngineerName === userName
-    if (role === 'technician' || role === 'installation_incharge') return t.assignedTo === userName || t.assignee === userName
+    const stageRole = getRoleForStage(t.flowStage)
+    if (!roles.includes(stageRole)) return false
+    if (stageRole === 'site_engineer') return t.assignedTo === userName || t.siteEngineerName === userName
+    if (stageRole === 'technician' || stageRole === 'installation_incharge') return t.assignedTo === userName || t.assignee === userName
     return true
   }
   const assignee = t.assignedTo || t.assignee
@@ -62,7 +63,8 @@ export default function HomeScreen() {
   const [flowTaskId, setFlowTaskId] = useState<string | null>(null)
   const flowTask = flowTaskId ? (tasks.find(t => t.id === flowTaskId) ?? null) : null
 
-  const role = user?.role ?? 'viewer'
+  const role  = user?.role ?? 'viewer'
+  const roles = user?.roles ?? [role]
 
   // LO project ownership — matches OwnerDashboardScreen's loStats matching,
   // since ownerId alone is often unset; fall back to ownerName / lead assignee.
@@ -75,7 +77,7 @@ export default function HomeScreen() {
   const todayTasks = tasks.filter(t => {
     if (t.flowStage) return false
     if (!(t.dueDate === 'Today' || t.status === 'overdue' || t.status === 'in_progress')) return false
-    if (role !== 'owner') {
+    if (!roles.includes('owner')) {
       const assignee = t.assignedTo || t.assignee
       if (assignee && assignee !== user?.name) return false
     }
@@ -87,29 +89,28 @@ export default function HomeScreen() {
   const pendingTasks    = todayTasks.filter(t => t.status === 'pending' || t.status === 'overdue').length
   const doneCount       = tasks.filter(t => {
     if (t.status !== 'completed') return false
-    if (role !== 'owner') {
+    if (!roles.includes('owner')) {
       const assignee = t.assignedTo || t.assignee
       if (assignee && assignee !== user?.name) return false
     }
     return true
   }).length
 
-  // Role-filtered active project counts
+  // Role-filtered active project counts — union across every role this user holds
   const activeProjects = projects.filter(p => p.status === 'active')
   const roleProjects = (() => {
-    if (role === 'owner') return activeProjects
-    if (role === 'lead_manager') return activeProjects.filter(isMyProject)
-    if (role === 'site_engineer') return activeProjects.filter(p =>
-      tasks.some(t => t.projectId === p.id && (t.assignedTo === user?.name || t.siteEngineerName === user?.name))
-    )
-    if (role === 'production_admin') return activeProjects.filter(p =>
-      PRE_PROD_STAGES.has(p.currentStage ?? '') || PROD_STAGES.has(p.currentStage ?? '')
-    )
-    if (role === 'production_manager') return activeProjects.filter(p => PROD_STAGES.has(p.currentStage ?? ''))
-    if (role === 'technician' || role === 'installation_incharge') return activeProjects.filter(p =>
-      INSTALL_STAGES.has(p.currentStage ?? '') || p.currentStage === 'ready_to_dispatch'
-    )
-    return activeProjects
+    if (roles.includes('owner')) return activeProjects
+    const matchers: Partial<Record<UserRole, (p: typeof activeProjects[number]) => boolean>> = {
+      lead_manager: p => isMyProject(p),
+      site_engineer: p => tasks.some(t => t.projectId === p.id && (t.assignedTo === user?.name || t.siteEngineerName === user?.name)),
+      production_admin: p => PRE_PROD_STAGES.has(p.currentStage ?? '') || PROD_STAGES.has(p.currentStage ?? ''),
+      production_manager: p => PROD_STAGES.has(p.currentStage ?? ''),
+      technician: p => INSTALL_STAGES.has(p.currentStage ?? '') || p.currentStage === 'ready_to_dispatch',
+      installation_incharge: p => INSTALL_STAGES.has(p.currentStage ?? '') || p.currentStage === 'ready_to_dispatch',
+    }
+    const active = roles.map(r => matchers[r]).filter((fn): fn is NonNullable<typeof fn> => !!fn)
+    if (active.length === 0) return activeProjects
+    return activeProjects.filter(p => active.some(fn => fn(p)))
   })()
 
   // LO: rejected quotations count (MD rejected the quotation)
@@ -132,17 +133,20 @@ export default function HomeScreen() {
     t.assignedTo === user?.name || t.assignedTo === user?.id ||
     t.assignee   === user?.name || t.assignee   === user?.id ||
     t.siteEngineerName === user?.name
+  const FT_MATCHERS: Partial<Record<UserRole, (t: Task) => boolean>> = {
+    site_engineer:      t => t.flowStage === 'site_visit' && isAssignedToFTMe(t),
+    owner:              t => t.flowStage === 'owner_approval' || t.flowStage === 'reschedule_review' || (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested'),
+    production_admin:   t => t.flowStage === 'production_check' || t.flowStage === 'admin_availability_check',
+    production_manager: t => t.flowStage === 'production_work',
+    production_team:    t => t.flowStage === 'production_check' || t.flowStage === 'production_work',
+    site_engineer_lead: t => t.flowStage === 'site_lead_approval',
+    technician:            t => (t.flowStage === 'installation_assign' || t.flowStage === 'installation_update') && isAssignedToFTMe(t),
+    installation_incharge: t => (t.flowStage === 'installation_assign' || t.flowStage === 'installation_update') && isAssignedToFTMe(t),
+    lead_manager:        t => myProjectIds.has(t.projectId),
+  }
   const activeFTs = tasks.filter(t => {
     if (t.flowStage == null || t.flowStage === 'completed') return false
-    if (role === 'site_engineer') return t.flowStage === 'site_visit' && isAssignedToFTMe(t)
-    if (role === 'owner') return t.flowStage === 'owner_approval' || t.flowStage === 'reschedule_review' || (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
-    if (role === 'production_admin') return t.flowStage === 'production_check' || t.flowStage === 'admin_availability_check'
-    if (role === 'production_manager') return t.flowStage === 'production_work'
-    if (role === 'production_team') return t.flowStage === 'production_check' || t.flowStage === 'production_work'
-    if (role === 'site_engineer_lead') return t.flowStage === 'site_lead_approval'
-    if (role === 'technician' || role === 'installation_incharge') return (t.flowStage === 'installation_assign' || t.flowStage === 'installation_update') && isAssignedToFTMe(t)
-    if (role === 'lead_manager') return myProjectIds.has(t.projectId)
-    return false
+    return roles.some(r => FT_MATCHERS[r]?.(t) ?? false)
   })
 
   // LO: pending flow tasks (any active flow stage in their projects)
@@ -181,7 +185,7 @@ export default function HomeScreen() {
   const siteLeadApprovalCount = tasks.filter(t => t.flowStage === 'site_lead_approval').length
 
   // Total tasks (any status) assigned to this user, across regular + flow-stage tasks
-  const myTaskCount = tasks.filter(t => isMineTask(t, role, user?.name)).length
+  const myTaskCount = tasks.filter(t => isMineTask(t, roles, user?.name)).length
 
   // Compact 4-stat rows per role
   const STATS: Record<UserRole, StatItem[]> = {

@@ -9,8 +9,9 @@ import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { Snackbar } from '../../components/feedback/Snackbar'
 import { AppHeader } from '../../components/layout/AppHeader'
 import { FilterChips } from '../../components/forms/FilterChips'
-import type { Task } from '../../types'
+import type { Task, UserRole } from '../../types'
 import { isDateFuture, isTaskForToday } from '../../utils/taskFilters'
+import { getRoleForStage } from '../../utils/workflow'
 
 type SortBy = 'status' | 'priority' | 'date'
 
@@ -63,7 +64,9 @@ export default function TodayTasksScreen() {
   const [snack, setSnack]                 = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
   const [sortBy, setSortBy]               = useState<SortBy>('status')
 
-  const role = user?.role ?? 'lead_manager'
+  const role  = user?.role ?? 'lead_manager'
+  const roles = user?.roles ?? [role]
+  const isOwner = roles.includes('owner')
 
   // Projects owned by this lead_manager (by ID)
   const myProjectIds = new Set(projects.filter(p => p.ownerId === user?.id).map(p => p.id))
@@ -77,51 +80,37 @@ export default function TodayTasksScreen() {
   // All tasks with a flowStage
   const flowTasks = tasks.filter(t => t.flowStage != null)
 
-  // Filter active flow tasks by role — with per-user scoping
+  // Matches a flow task against one held role — union across all held roles below
+  // so a multi-role account sees every role's pending work without switching.
+  const FT_MATCHERS: Partial<Record<UserRole, (t: Task) => boolean>> = {
+    site_engineer: t => t.flowStage === 'site_visit' && !isDateFuture(t.visitDate) && isAssignedToMe(t),
+    owner: t =>
+      t.flowStage === 'owner_approval' ||
+      t.flowStage === 'installation_assign' ||
+      t.flowStage === 'reschedule_review' ||
+      t.flowStage === 'dispatch_assign' ||
+      t.flowStage === 'admin_availability_check' ||
+      t.flowStage === 'site_lead_approval' ||
+      (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested'),
+    production_admin:   t => t.flowStage === 'production_check' || t.flowStage === 'installation_assign' || t.flowStage === 'admin_availability_check',
+    production_manager: t => t.flowStage === 'production_work',
+    production_team:    t => t.flowStage === 'production_check' || t.flowStage === 'production_work',
+    site_engineer_lead: t => t.flowStage === 'site_lead_approval',
+    technician:            t => (t.flowStage === 'installation_assign' || t.flowStage === 'installation_update') && isAssignedToMe(t),
+    installation_incharge: t => (t.flowStage === 'installation_assign' || t.flowStage === 'installation_update') && isAssignedToMe(t),
+    lead_manager: t => !(t.flowStage === 'reschedule_review' && (t.flowStatus === 'approved' || t.flowStatus === 'rejected')) && myProjectIds.has(t.projectId),
+  }
+
+  // Filter active flow tasks — with per-user scoping, unioned across every held role
   const activeFTs = flowTasks.filter(t => {
     if (t.flowStage === 'completed') return false
-
-    if (role === 'site_engineer') {
-      if (t.flowStage !== 'site_visit') return false
-      if (isDateFuture(t.visitDate)) return false
-      return isAssignedToMe(t)
-    }
-    if (role === 'owner') {
-      return t.flowStage === 'owner_approval' ||
-        t.flowStage === 'installation_assign' ||
-        t.flowStage === 'reschedule_review' ||
-        t.flowStage === 'dispatch_assign' ||
-        t.flowStage === 'admin_availability_check' ||
-        t.flowStage === 'site_lead_approval' ||
-        (t.flowStage === 'site_visit' && t.flowStatus === 'reschedule_requested')
-    }
-    if (role === 'production_admin') {
-      return t.flowStage === 'production_check' || t.flowStage === 'installation_assign' || t.flowStage === 'admin_availability_check'
-    }
-    if (role === 'production_manager') {
-      return t.flowStage === 'production_work'
-    }
-    if (role === 'production_team') {
-      return t.flowStage === 'production_check' || t.flowStage === 'production_work'
-    }
-    if (role === 'site_engineer_lead') {
-      return t.flowStage === 'site_lead_approval'
-    }
-    if (role === 'technician' || role === 'installation_incharge') {
-      if (t.flowStage !== 'installation_assign' && t.flowStage !== 'installation_update') return false
-      return isAssignedToMe(t)
-    }
-    if (role === 'lead_manager') {
-      if (t.flowStage === 'reschedule_review' && (t.flowStatus === 'approved' || t.flowStatus === 'rejected')) return false
-      return myProjectIds.has(t.projectId)
-    }
-    return false
+    return roles.some(r => FT_MATCHERS[r]?.(t) ?? false)
   })
 
   // Completed flow tasks — owner sees all, LM sees only their projects'
-  const completedFTs = role === 'owner'
+  const completedFTs = isOwner
     ? flowTasks.filter(t => t.flowStage === 'completed')
-    : role === 'lead_manager'
+    : roles.includes('lead_manager')
     ? flowTasks.filter(t => t.flowStage === 'completed' && myProjectIds.has(t.projectId))
     : []
 
@@ -129,9 +118,9 @@ export default function TodayTasksScreen() {
   const regular = sortRegular(
     tasks.filter(t => {
       if (t.flowStage) return false
-      if (role === 'viewer') return false
+      if (roles.every(r => r === 'viewer')) return false
       if (t.status !== 'overdue' && t.status !== 'in_progress' && !isTaskForToday(t)) return false
-      if (role === 'owner') return true
+      if (isOwner) return true
       const hasAssignee = t.assignedTo || t.assignee
       return !hasAssignee || isAssignedToMe(t)
     }),
@@ -162,7 +151,8 @@ export default function TodayTasksScreen() {
         {activeFTs.length > 0 && (
           <div>
             <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">
-              {role === 'owner' ? 'Pending Approvals' :
+              {roles.length > 1 ? 'Your Pending Tasks' :
+               role === 'owner' ? 'Pending Approvals' :
                role === 'site_engineer' ? 'My Site Visits' :
                role === 'site_engineer_lead' ? 'Installation Availability Approvals' :
                role === 'production_admin' ? 'Production Checks' :
@@ -171,7 +161,7 @@ export default function TodayTasksScreen() {
                'Active Projects'}
             </p>
             {activeFTs.map(t => (
-              <FlowTaskCard key={t.id} task={t} role={role} onClick={() => setFlowTaskId(t.id)} />
+              <FlowTaskCard key={t.id} task={t} role={t.flowStage ? (getRoleForStage(t.flowStage)) : role} onClick={() => setFlowTaskId(t.id)} />
             ))}
           </div>
         )}
@@ -235,7 +225,8 @@ export default function TodayTasksScreen() {
             </div>
             <h2 className="text-lg font-extrabold text-slate-700 mb-2">All Clear!</h2>
             <p className="text-sm text-slate-400 mb-5">
-              {role === 'owner' ? 'No quotations pending your approval.' :
+              {roles.length > 1 ? 'No pending tasks right now.' :
+               role === 'owner' ? 'No quotations pending your approval.' :
                role === 'site_engineer' ? 'No site visits assigned to you.' :
                role === 'site_engineer_lead' ? 'No installation availability approvals pending.' :
                role === 'production_admin' ? 'No production checks at the moment.' :

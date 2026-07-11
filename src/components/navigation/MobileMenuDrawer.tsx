@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { LogOut, X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { getRoleDisplayLabel } from '../../data/permissions'
+import { hasRole } from '../../utils/permissions'
 import { getMainItems, NAV_SECTIONS } from './navItems'
 
 interface Props {
@@ -25,7 +26,7 @@ export function MobileMenuDrawer({ isOpen, onClose }: Props) {
 
   if (!isOpen) return null
 
-  const isOwner  = user?.role === 'owner'
+  const isOwner  = hasRole(user, 'owner')
   const sections = [{ label: 'Main', items: getMainItems(isOwner) }, ...NAV_SECTIONS]
 
   function go(path: string) {

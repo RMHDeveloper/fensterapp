@@ -4,7 +4,7 @@ import {
   Home, CalendarCheck, FolderOpen, Layers, Wallet,
   BarChart2, Settings, Users, MapPin, FileText,
   Wrench, AlertTriangle, CheckSquare, File,
-  LayoutDashboard, ClipboardCheck, Circle,
+  LayoutDashboard, ClipboardCheck, Circle, UserCheck,
 } from 'lucide-react'
 import type { Permission } from '../../types'
 
@@ -40,6 +40,7 @@ export const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
       { icon: Layers,         label: 'Production',   path: '/production',   permission: 'view_production'  },
       { icon: CheckSquare,    label: 'Delivery QC',  path: '/delivery-qc',  permission: 'view_delivery_qc' },
       { icon: ClipboardCheck, label: 'Approvals',    path: '/approvals',    permission: 'approve_work'     },
+      { icon: UserCheck,      label: 'Installation Approvals', path: '/installation-approvals', permission: 'approve_installation' },
       { icon: AlertTriangle,  label: 'Problems',     path: '/mistakes',     permission: 'view_mistakes'    },
       { icon: Wallet,         label: 'Payments',     path: '/payments',     permission: 'view_payments'    },
       { icon: Wrench,         label: 'Installation', path: '/installation', permission: 'view_installation'},

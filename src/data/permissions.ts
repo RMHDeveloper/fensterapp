@@ -14,7 +14,7 @@ const OWNER_PERMS: Permission[] = [
   'view_reports','view_settings',
   'manage_users','approve_work','delete_data',
   'view_installation','update_installation',
-  'view_profit',
+  'view_profit','approve_installation',
 ]
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -47,7 +47,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   // the regular Site Engineer's site-visit/measurement work
   site_engineer_lead: [
     'view_home','view_today','view_projects',
-    'view_installation','update_installation',
+    'view_installation','update_installation','approve_installation',
     'view_files','upload_files',
     'view_settings',
   ],
@@ -169,5 +169,6 @@ export const SCREEN_PERMISSIONS: Record<string, Permission> = {
   reports:         'view_reports',
   settings:        'view_settings',
   approvals:       'approve_work',
+  'installation-approvals': 'approve_installation',
   'settings/users':'manage_users',
 }

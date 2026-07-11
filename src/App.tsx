@@ -10,6 +10,7 @@ import { NavigationBar }            from './components/navigation/NavigationBar'
 import { ProtectedRoute }           from './components/layout/ProtectedRoute'
 import { ErrorBoundary }            from './components/layout/ErrorBoundary'
 import { useAuth }                  from './context/AuthContext'
+import { hasRole }                  from './utils/permissions'
 import LoginScreen                  from './screens/Login/LoginScreen'
 import HomeScreen                   from './screens/Home/HomeScreen'
 import TodayTasksScreen             from './screens/TodayTasks/TodayTasksScreen'
@@ -30,21 +31,22 @@ import ReportsScreen                from './screens/Reports/ReportsScreen'
 import SettingsScreen               from './screens/Settings/SettingsScreen'
 import UserManagementScreen         from './screens/Settings/UserManagementScreen'
 import ApprovalsScreen              from './screens/Approvals/ApprovalsScreen'
+import InstallationApprovalsScreen  from './screens/InstallationApprovals/InstallationApprovalsScreen'
 import OwnerDashboardScreen         from './screens/Dashboard/OwnerDashboardScreen'
 import LeaveApplicationScreen       from './screens/LeaveApplication/LeaveApplicationScreen'
 
 // Home route — owners (MD/ED) land on the Dashboard, everyone else on Home
 function HomeRoute() {
   const { user } = useAuth()
-  return user?.role === 'owner' ? <Navigate to="/dashboard" replace /> : <HomeScreen />
+  return hasRole(user, 'owner') ? <Navigate to="/dashboard" replace /> : <HomeScreen />
 }
 
 // Leave Application — full management for Admin/MD (owner role, not ED); technicians
 // get self-service access to apply for their own leave (gated inside the screen itself)
 function LeaveApplicationRoute() {
   const { user } = useAuth()
-  const canManage = user?.role === 'owner' && (user.displayRole?.includes('MD') || user.displayRole?.includes('Admin'))
-  const canApply  = user?.role === 'technician' || user?.role === 'installation_incharge'
+  const canManage = hasRole(user, 'owner') && (user?.displayRole?.includes('MD') || user?.displayRole?.includes('Admin'))
+  const canApply  = hasRole(user, 'technician') || hasRole(user, 'installation_incharge')
   return (canManage || canApply) ? <LeaveApplicationScreen /> : <Navigate to="/home" replace />
 }
 
@@ -81,6 +83,7 @@ function AppShell() {
             <Route path="/settings"       element={<ProtectedRoute screenPath="settings">     <SettingsScreen />        </ProtectedRoute>} />
             <Route path="/settings/users" element={<ProtectedRoute screenPath="settings">   <UserManagementScreen /> </ProtectedRoute>} />
             <Route path="/approvals"    element={<ProtectedRoute screenPath="approvals">    <ApprovalsScreen />    </ProtectedRoute>} />
+            <Route path="/installation-approvals" element={<ProtectedRoute screenPath="installation-approvals"> <InstallationApprovalsScreen /> </ProtectedRoute>} />
             <Route path="/leave-applications" element={<ProtectedRoute screenPath="home">   <LeaveApplicationRoute /></ProtectedRoute>} />
 
             <Route path="*"             element={<Navigate to="/home" replace />} />

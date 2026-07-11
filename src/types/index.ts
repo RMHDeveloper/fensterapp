@@ -46,6 +46,7 @@ export type Permission =
   | 'view_installation'
   | 'update_installation'
   | 'view_profit'
+  | 'approve_installation'
 
 export interface AuthUser {
   id: string

@@ -2,6 +2,7 @@ import { LogOut } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { getRoleDisplayLabel } from '../../data/permissions'
+import { hasRole } from '../../utils/permissions'
 import { getMainItems, NAV_SECTIONS } from './navItems'
 
 export function SidebarNavigation() {
@@ -9,7 +10,7 @@ export function SidebarNavigation() {
   const { pathname, search } = useLocation()
   const fullPath = pathname + search
   const { user, can, logout } = useAuth()
-  const isOwner = user?.role === 'owner'
+  const isOwner = hasRole(user, 'owner')
   const sections = [{ label: 'Main', items: getMainItems(isOwner) }, ...NAV_SECTIONS]
 
   function handleLogout() {

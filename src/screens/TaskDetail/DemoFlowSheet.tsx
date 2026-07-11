@@ -12,7 +12,7 @@ import { VoiceRecorder } from '../../components/forms/VoiceRecorder'
 import { LocationPinField } from '../../components/forms/LocationPinField'
 import { TimePickerField } from '../../components/forms/TimePickerField'
 import { NoteWithFilesField } from '../../components/forms/NoteWithFilesField'
-import type { Task, Project, LocationPin, StatusHistoryItem, FlowStage, CostBreakdown, ProjectStage, AvailabilityCheckItem } from '../../types'
+import type { Task, Project, LocationPin, StatusHistoryItem, FlowStage, CostBreakdown, ProjectStage, AvailabilityCheckItem, UserRole } from '../../types'
 import { PROJECT_STAGE_LABEL, PROJECT_STAGE_PROGRESS } from '../../types'
 import { filePreviewStore, voicePreviewStore, isImageFileName, resolveFileUrl } from '../../utils/sessionStore'
 import { MediaPreviewList } from '../../components/media/MediaPreviewList'
@@ -21,6 +21,7 @@ import { Dialog } from '../../components/feedback/Dialog'
 import { recordUploadedFile, getQuotationVersions, subscribeToProjectFiles, type FileRow } from '../../services/fileService'
 import { getFileUrl, getDisplayFileName } from '../../utils/fileStorage'
 import { getAppSettings } from '../../utils/appSettings'
+import { getRoleForStage } from '../../utils/workflow'
 
 function recordQuotationVersion(task: Task, fileName: string, uploadedBy: string, uploadedByRole: string) {
   const url = fileName.startsWith('http') ? fileName : (getFileUrl(fileName) ?? fileName)
@@ -456,7 +457,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const { user, can }                        = useAuth()
   const { updateTask: ctxUpdateTask, updateProject, tasks, projects, leads, updateLeadStatus } = useAppData()
   const navigate                             = useNavigate()
-  const role                                 = user?.role ?? 'lead_manager'
+  // Multi-role accounts hold several roles at once (no more manual "switch role").
+  // For THIS task, act as whichever held role actually owns its current stage —
+  // e.g. someone who's both Site Engineer and Site Engineer Lead gets full
+  // Site Engineer Lead controls the moment they open a site_lead_approval task,
+  // no switching required. Falls back to the account's primary role otherwise.
+  const heldRoles: UserRole[] = user?.roles ?? (user?.role ? [user.role] : [])
+  const stageRole             = task.flowStage ? getRoleForStage(task.flowStage) : null
+  const role: UserRole        = (stageRole && heldRoles.includes(stageRole)) ? stageRole : (user?.role ?? 'lead_manager')
   const todayStr                             = new Date().toISOString().slice(0, 10)
   const project                              = projects.find(p => p.id === task.projectId)
   const leadOwnerName                        = project?.leadId ? leads.find(l => l.id === project.leadId)?.assignee ?? project.ownerName : project?.ownerName
