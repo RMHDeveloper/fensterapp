@@ -501,7 +501,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   }
 
   // ── SITE ASSIGN ─────────────────────────────────────────────────────────────
-  const [engineerName,   setEngineerName]   = useState('Kavya M')
+  const [engineerName,   setEngineerName]   = useState('')
   const [visitDate,      setVisitDate]      = useState('')
   const [visitTime,      setVisitTime]      = useState('')
   const [assignNote,     setAssignNote]     = useState('')
@@ -682,7 +682,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   useEffect(() => {
     if (!isOpen) return
     setSel(''); setError(''); setLmReschedNote(''); setLmNewVisitDate(task.visitDate ?? todayStr); setLmNewVisitTime(task.visitTime ?? ''); setDemoOverride(false); setShowEditCost(false)
-    setEngineerName(task.siteEngineerName ?? 'Kavya M')
+    setEngineerName(task.siteEngineerName ?? '')
     setVisitDate(task.visitDate ?? todayStr); setVisitTime(task.visitTime ?? '')
     setAssignNote(''); setAssignLocation(task.location ?? '')
     setAssignMapLink(task.locationPin?.mapLink ?? '')
@@ -998,6 +998,13 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       flowStage: 'site_visit', flowStatus: 'pending', status: 'pending',
       title: 'Visit Customer Site',
       siteEngineerName: engineerName,
+      // Explicitly overwrite assignedTo/assignee too — otherwise a stale
+      // value carried over from the lead (e.g. the Lead Manager's own name)
+      // takes priority over siteEngineerName in SiteVisitScreen's filter,
+      // making the visit always show up for whoever that old value was
+      // instead of the engineer actually picked here.
+      assignedTo: engineerName,
+      assignee: engineerName,
       visitDate: visitDate || undefined,
       visitTime: visitTime || undefined,
       note: assignNote || undefined,
@@ -2157,6 +2164,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               <div>
                 <label className={lbl}>Site Engineer {req}</label>
                 <select value={engineerName} onChange={e => setEngineerName(e.target.value)} className={inp}>
+                  <option value="">— Select site engineer —</option>
                   {engineerOptions.map(name => (
                     <option key={name} value={name}>{name}</option>
                   ))}
@@ -2194,9 +2202,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   placeholder="Any instructions for the engineer…" className={`${inp} resize-none`} />
               </div>
 
-              <button type="button" onClick={submitSiteAssign}
-                className="w-full py-4 rounded-2xl bg-cyan-600 text-white text-sm font-extrabold active:opacity-90">
-                Assign {engineerName} →
+              <button type="button" onClick={submitSiteAssign} disabled={!engineerName}
+                className="w-full py-4 rounded-2xl bg-cyan-600 text-white text-sm font-extrabold active:opacity-90 disabled:opacity-40">
+                {engineerName ? `Assign ${engineerName} →` : 'Select a site engineer'}
               </button>
             </>
           )}
