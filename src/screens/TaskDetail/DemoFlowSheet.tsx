@@ -1149,7 +1149,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       costBreakdown: breakdown,
       previousQuotationFile: undefined,
     }, `Quotation ₹${quotAmount.toLocaleString('en-IN')} sent for owner approval`, quotFiles)
-    recordQuotationVersion(task, latestQuot, user?.name ?? 'Sales Team', role)
+    // Record every file uploaded in this batch as its own version — not just
+    // the last one — so MD/ED see all docs sent together, not just one.
+    quotFiles.forEach(f => recordQuotationVersion(task, f, user?.name ?? 'Sales Team', role))
   }
 
   function submitOwnerApproval() {
@@ -1208,7 +1210,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       ownerRejectionReason: undefined,
       previousQuotationFile: undefined,
     }, `Revised quotation ₹${quotAmount.toLocaleString('en-IN')} resent for owner approval`, quotFiles)
-    recordQuotationVersion(task, latestQuot, user?.name ?? 'Sales Team', role)
+    // Record every file uploaded in this batch as its own version — not just
+    // the last one — so MD/ED see all docs sent together, not just one.
+    quotFiles.forEach(f => recordQuotationVersion(task, f, user?.name ?? 'Sales Team', role))
   }
 
   function submitSendToClient() {
@@ -1274,7 +1278,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       clientRejectionReason: undefined,
       previousQuotationFile: undefined,
     }, `Revised quotation ₹${quotAmount.toLocaleString('en-IN')} sent for owner approval after client rejection`, quotFiles)
-    recordQuotationVersion(task, latestQuot, user?.name ?? 'Sales Team', role)
+    // Record every file uploaded in this batch as its own version — not just
+    // the last one — so MD/ED see all docs sent together, not just one.
+    quotFiles.forEach(f => recordQuotationVersion(task, f, user?.name ?? 'Sales Team', role))
   }
 
   function submitEditCostBreakdown() {
@@ -1346,24 +1352,16 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       return
     }
 
-    // Ordered mandatory items aren't confirmed available yet — don't unlock
-    // Assign to Production Manager until they're actually in stock.
-    if (orderedMandatory.length > 0) {
-      const orderedLabel = orderedMandatory.map(i => i.label).join(', ')
-      save({
-        flowStatus: 'not_available', status: 'overdue',
-        notAvailableReason: `On order: ${orderedLabel}`,
-        availabilityChecklist: savedChecklist,
-      }, `Materials on order: ${orderedLabel}`, [])
-      return
-    }
-
+    // Ordered items (including Profile) no longer block Assign to Production
+    // Manager — PM tracks and updates their status via the material status
+    // dropdown once the task reaches production_work.
     const optionalNote = (id: string, label: string) => {
       const item = availChecklist.find(i => i.id === id)
       return item?.status === 'not_available' ? ` (${label} noted as not available)` : item?.status === 'order' ? ` (${label} being ordered)` : ''
     }
     const glassNote = optionalNote('glass', 'Glass')
     const hardwareNote = optionalNote('hardware', 'Hardware')
+    const orderedNote = orderedMandatory.length > 0 ? ` — on order: ${orderedMandatory.map(i => i.label).join(', ')}` : ''
     save({
       flowStage: 'production_work', flowStatus: 'ready', status: 'pending',
       title: 'Start Production Work',
@@ -1371,7 +1369,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       availabilityChecklist: savedChecklist,
       assignee: pmAssignee || undefined,
       dueDate: 'Today',
-    }, `Materials checked${glassNote}${hardwareNote} — assigned to ${pmAssignee || 'Production Manager'}`)
+    }, `Materials checked${glassNote}${hardwareNote}${orderedNote} — assigned to ${pmAssignee || 'Production Manager'}`)
   }
 
   function submitNotAvailLmAction() {
@@ -1406,7 +1404,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       save({ flowStatus: 'pending', status: 'pending' }, 'Advance payment pending'); return
     }
     if (!advPaidAmt) { setError('Enter paid amount.'); return }
-    if (!advDueDate) { setError('Enter due date.'); return }
+    if (sel !== 'full_paid' && !advDueDate) { setError('Enter due date.'); return }
     setError('')
     setShowAdvanceConvert(true)
   }
@@ -1433,7 +1431,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       title: 'Upload Job Sheet to Admin',
       advancePaymentType: sel,
       paidAmount: paid, balanceAmount: balance,
-      dueDate: advDueDate,
+      dueDate: advDueDate || undefined,
       paymentNote: advNote || undefined,
       advancePaymentScreenshot: advPayScreenshot.length > 0 ? advPayScreenshot : undefined,
     }, `Advance ₹${paid.toLocaleString('en-IN')} received — converted to project`, advPayScreenshot)
@@ -1493,6 +1491,44 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     }, hasOverdue
       ? `Production Manager flagged material overdue — sent to Admin: ${overdueItems.map(i => i.label).join(', ')}`
       : 'Production Manager updated material status')
+  }
+
+  // Shared by the standalone "Material Status" card and the Report Overdue
+  // form — same editable Profile/Glass/Hardware dropdowns either way.
+  function MaterialStatusDropdowns() {
+    return (
+      <>
+        {pmMaterialChecklist.map((item, idx) => {
+          const base = item.available ? 'available' : item.ordered ? 'ordered' : 'not_available'
+          const current = item.overdue ? 'overdue' : base
+          const statusColor = current === 'overdue' ? 'border-red-300 text-red-700 bg-red-50'
+            : current === 'available' ? 'border-emerald-300 text-emerald-700 bg-emerald-50'
+            : current === 'ordered' ? 'border-amber-300 text-amber-700 bg-amber-50'
+            : 'border-red-300 text-red-700 bg-red-50'
+          return (
+            <div key={item.id} className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-slate-700">{item.label}</span>
+              <select value={current}
+                onChange={e => {
+                  const v = e.target.value
+                  const n = [...pmMaterialChecklist]
+                  if (v === 'overdue') n[idx] = { ...item, overdue: true }
+                  else if (v === 'available') n[idx] = { ...item, available: true, ordered: false, overdue: false }
+                  else n[idx] = { ...item, available: base === 'available', ordered: base === 'ordered', overdue: false }
+                  setPmMaterialChecklist(n)
+                }}
+                className={`text-[11px] font-bold px-2 py-1.5 rounded-lg border focus:outline-none ${statusColor}`}>
+                {base === 'not_available' && <option value="not_available">N/A</option>}
+                {base === 'ordered' && <option value="ordered">Ordered</option>}
+                {base === 'available' && <option value="available">Available</option>}
+                {base !== 'available' && <option value="available">{base === 'ordered' ? 'Received' : 'Available'}</option>}
+                <option value="overdue">Overdue</option>
+              </select>
+            </div>
+          )
+        })}
+      </>
+    )
   }
 
   function submitAssignToDispatch() {
@@ -1597,8 +1633,15 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   function submitProductionWorkOverdue() {
     if (!overdueNote.trim()) { setError('Add reason for overdue.'); return }
     if (!overdueNewDate)     { setError('Enter new expected date.'); return }
-    save({ flowStatus: 'overdue', status: 'overdue', productionOverdueReason: overdueNote, productionNewDate: overdueNewDate },
-      `Production overdue: ${overdueNote}`, overdueFiles)
+    const overdueItems = pmMaterialChecklist.filter(i => i.overdue)
+    const hasMaterialOverdue = overdueItems.length > 0
+    save({
+      flowStatus: 'overdue', status: 'overdue',
+      productionOverdueReason: overdueNote, productionNewDate: overdueNewDate,
+      availabilityChecklist: pmMaterialChecklist.length > 0 ? pmMaterialChecklist : undefined,
+      materialStatusOverdue: hasMaterialOverdue,
+      materialStatusNote: hasMaterialOverdue ? `Overdue: ${overdueItems.map(i => i.label).join(', ')}` : undefined,
+    }, `Production overdue: ${overdueNote}${hasMaterialOverdue ? ` — material overdue: ${overdueItems.map(i => i.label).join(', ')}` : ''}`, overdueFiles)
   }
 
   function submitLmOverdueUpdate() {
@@ -1652,12 +1695,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
   function submitInstallationMistakeReview() {
     if (!instMistakeReviewAction) return
-    if (instMistakeReviewAction === 'send_back_technician') {
-      save({
-        flowStatus: 'assigned', status: 'in_progress',
-        title: 'Update Installation Status',
-      }, `Lead Owner reviewed and sent back to ${task.installationPerson ?? 'installation technician'} to complete the task`)
-    } else if (instMistakeReviewAction === 'send_back_prod_admin') {
+    if (instMistakeReviewAction === 'send_back_prod_admin') {
       save({
         flowStage: 'production_check', flowStatus: 'waiting', status: 'pending',
         title: 'Check Material Availability',
@@ -1696,6 +1734,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     if (task.projectId) {
       updateProject(task.projectId, {
         status: 'completed', isCompleted: true,
+        currentStage: 'completed', stage: PROJECT_STAGE_LABEL.completed,
         completedAt: new Date().toISOString(),
         actualCompletedDate: new Date().toISOString(),
         workflowStatus: 'Finished', paymentStatus: 'Full Paid', progress: 100,
@@ -1990,27 +2029,43 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   items.push(`${i.label}: ${i.available ? '✓ Available' : i.ordered ? '⏳ Ordered' : '✗ N/A'}`)
                 })
               const hasDocs = !!(task.jobSheet || task.glassSheet || task.cuttingSheet || task.additionalDocs?.length || task.specialNoteProduction?.length)
-              if (items.length === 0 && !hasDocs) return null
+              // Sent back due to an installation mistake/overdue — the most recent
+              // "sent back" status-history entry means this is why it's here again.
+              const sentBackEntry = [...(task.statusHistory ?? [])].reverse()
+                .find(h => h.stage === 'installation_update' && (h.note?.includes('sent back') || h.note?.includes('rework')))
+              const showInstallationIssue = !!sentBackEntry && !!task.installationMistakeDetails
+              if (items.length === 0 && !hasDocs && !showInstallationIssue) return null
               return (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2.5">
-                  <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Production Documents from LO / Admin</p>
-                  {task.jobSheet && <MediaPreviewList files={[task.jobSheet]} title="Job Sheet" />}
-                  {task.glassSheet && <MediaPreviewList files={[task.glassSheet]} title="Glass Sheet" />}
-                  {task.cuttingSheet && <MediaPreviewList files={[task.cuttingSheet]} title="Cutting Sheet" />}
-                  {task.additionalDocs && task.additionalDocs.length > 0 && (
-                    <MediaPreviewList files={task.additionalDocs} title="Additional Docs" />
-                  )}
-                  {task.specialNoteProduction && task.specialNoteProduction.length > 0 && (
-                    <MediaPreviewList files={task.specialNoteProduction} title="Voice Note to Production" voiceStore={voicePreviewStore} />
-                  )}
-                  {uploadMeta && <p className="text-[10px] text-amber-500">{uploadMeta}</p>}
-                  {items.map((item, i) => (
-                    <div key={i} className="flex items-start gap-2">
-                      <span className="text-amber-300 text-xs mt-0.5">·</span>
-                      <p className="text-xs text-amber-800">{item}</p>
+                <>
+                  {showInstallationIssue && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 space-y-2">
+                      <p className="text-[10px] font-bold text-red-500 uppercase tracking-wider">Sent Back — Installation Issue</p>
+                      <p className="text-sm text-red-700">{task.installationMistakeDetails}</p>
+                      {task.installationNotCompletedVoiceNotes && task.installationNotCompletedVoiceNotes.length > 0 && (
+                        <MediaPreviewList files={task.installationNotCompletedVoiceNotes} title="Voice Note from Installer" voiceStore={voicePreviewStore} />
+                      )}
                     </div>
-                  ))}
-                </div>
+                  )}
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2.5">
+                    <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Production Documents from LO / Admin</p>
+                    {task.jobSheet && <MediaPreviewList files={[task.jobSheet]} title="Job Sheet" />}
+                    {task.glassSheet && <MediaPreviewList files={[task.glassSheet]} title="Glass Sheet" />}
+                    {task.cuttingSheet && <MediaPreviewList files={[task.cuttingSheet]} title="Cutting Sheet" />}
+                    {task.additionalDocs && task.additionalDocs.length > 0 && (
+                      <MediaPreviewList files={task.additionalDocs} title="Additional Docs" />
+                    )}
+                    {task.specialNoteProduction && task.specialNoteProduction.length > 0 && (
+                      <MediaPreviewList files={task.specialNoteProduction} title="Voice Note to Production" voiceStore={voicePreviewStore} />
+                    )}
+                    {uploadMeta && <p className="text-[10px] text-amber-500">{uploadMeta}</p>}
+                    {items.map((item, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className="text-amber-300 text-xs mt-0.5">·</span>
+                        <p className="text-xs text-amber-800">{item}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )
             }
 
@@ -2902,6 +2957,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <p className="text-xs font-bold text-red-600 uppercase">MD/ED Rejected</p>
                 <p className="text-sm text-red-700">{task.ownerRejectionReason}</p>
               </div>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Previously Sent</p>
+              <QuotationVersionsPanel task={task} />
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Resend Quotation for Approval</p>
 
               <div>
@@ -3056,6 +3113,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
                   {clientRejAction === 'resend' && (
                     <div className="space-y-4 bg-indigo-50 border border-indigo-200 rounded-2xl p-4">
+                      <p className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">Previously Sent</p>
+                      <QuotationVersionsPanel task={task} />
+
                       <p className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">Revised Quotation Details</p>
 
                       <div>
@@ -3553,7 +3613,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               {(() => {
                 const mandatory = availChecklist.filter(i => i.id !== 'glass' && i.id !== 'hardware')
-                const allMandOk = mandatory.every(i => i.status === 'available')
+                const allMandOk = mandatory.every(i => i.status !== 'not_available')
                 return allMandOk ? (
                   <>
                     {productionManagerOptions.length > 0 && (
@@ -3817,10 +3877,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       placeholder="Auto-calculated from quotation total"
                       className={`${inp} ${advBalAmt ? 'bg-amber-50 border-amber-200' : ''}`} />
                   </div>
-                  <div>
-                    <label className={lbl}>Due Date {req}</label>
-                    <input type="date" value={advDueDate} onChange={e => setAdvDueDate(e.target.value)} className={inp} />
-                  </div>
+                  {sel !== 'full_paid' && (
+                    <div>
+                      <label className={lbl}>Due Date {req}</label>
+                      <input type="date" value={advDueDate} onChange={e => setAdvDueDate(e.target.value)} className={inp} />
+                    </div>
+                  )}
                   <div>
                     <label className={lbl}>Payment Note <span className="text-slate-300 font-normal">(optional)</span></label>
                     <textarea rows={2} value={advNote} onChange={e => setAdvNote(e.target.value)}
@@ -3906,35 +3968,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               {pmMaterialChecklist.length > 0 && (
                 <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 space-y-2">
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Material Status (from Admin)</p>
-                  {pmMaterialChecklist.map((item, idx) => {
-                    const base = item.available ? 'available' : item.ordered ? 'ordered' : 'not_available'
-                    const current = item.overdue ? 'overdue' : base
-                    const statusColor = current === 'overdue' ? 'border-red-300 text-red-700 bg-red-50'
-                      : current === 'available' ? 'border-emerald-300 text-emerald-700 bg-emerald-50'
-                      : current === 'ordered' ? 'border-amber-300 text-amber-700 bg-amber-50'
-                      : 'border-red-300 text-red-700 bg-red-50'
-                    return (
-                      <div key={item.id} className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-slate-700">{item.label}</span>
-                        <select value={current}
-                          onChange={e => {
-                            const v = e.target.value
-                            const n = [...pmMaterialChecklist]
-                            if (v === 'overdue') n[idx] = { ...item, overdue: true }
-                            else if (v === 'available') n[idx] = { ...item, available: true, ordered: false, overdue: false }
-                            else n[idx] = { ...item, available: base === 'available', ordered: base === 'ordered', overdue: false }
-                            setPmMaterialChecklist(n)
-                          }}
-                          className={`text-[11px] font-bold px-2 py-1.5 rounded-lg border focus:outline-none ${statusColor}`}>
-                          {base === 'not_available' && <option value="not_available">N/A</option>}
-                          {base === 'ordered' && <option value="ordered">Ordered</option>}
-                          {base === 'available' && <option value="available">Available</option>}
-                          {base !== 'available' && <option value="available">{base === 'ordered' ? 'Received' : 'Available'}</option>}
-                          <option value="overdue">Overdue</option>
-                        </select>
-                      </div>
-                    )
-                  })}
+                  <MaterialStatusDropdowns />
                   {JSON.stringify(pmMaterialChecklist) !== JSON.stringify(task.availabilityChecklist ?? []) && (
                     <button type="button" onClick={submitMaterialStatusUpdate}
                       className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-xs font-extrabold active:opacity-90">
@@ -3958,6 +3992,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       <label className={lbl}>New Expected Date {req}</label>
                       <input type="date" value={overdueNewDate} onChange={e => setOverdueNewDate(e.target.value)} className={inp} />
                     </div>
+                    {pmMaterialChecklist.length > 0 && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 space-y-2">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Update Material Status</p>
+                        <MaterialStatusDropdowns />
+                      </div>
+                    )}
                     <button type="button" onClick={submitProductionWorkOverdue}
                       className="w-full py-4 rounded-2xl bg-red-600 text-white text-sm font-extrabold active:opacity-90">
                       Submit Overdue Report
@@ -4106,6 +4146,25 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                   <p className="text-xs text-red-500 font-semibold">PM requested new date: {task.productionNewDate}</p>
                 )}
               </div>
+              {task.materialStatusOverdue && task.availabilityChecklist && task.availabilityChecklist.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-4 space-y-2">
+                  <p className="text-xs font-bold text-red-600 uppercase">Material Status</p>
+                  <div className="flex flex-wrap gap-2">
+                    {task.availabilityChecklist.map(item => {
+                      const label = item.overdue ? 'Overdue' : item.available ? 'Available' : item.ordered ? 'Ordered' : 'N/A'
+                      const cls = item.overdue ? 'bg-red-100 text-red-700 border-red-300'
+                        : item.available ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : item.ordered ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : 'bg-red-50 text-red-700 border-red-200'
+                      return (
+                        <span key={item.id} className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border ${cls}`}>
+                          {item.label}: {label}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Approve or Disapprove</p>
               <Opt value="approve_overdue"    label="Approve New Date" sub="Accept PM's new expected date and continue production" accent="border-emerald-200" sel={sel} onPick={pick} />
               <Opt value="disapprove_overdue" label="Disapprove"       sub="Reject the delay — send back to PM with reason"       accent="border-red-200"     sel={sel} onPick={pick} />
@@ -4674,9 +4733,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Installation Result</p>
 
-              <Opt value="completed"     label="Completed"     sub="Installation done successfully"         accent="border-emerald-200" sel={sel} onPick={pick} />
-              <Opt value="not_completed" label="Not Completed" sub="Could not finish — rescheduling needed" accent="border-orange-200"  sel={sel} onPick={pick} />
-              <Opt value="mistake"       label="Mistake"       sub="An issue occurred during installation"  accent="border-red-200"     sel={sel} onPick={pick} />
+              <Opt value="completed"     label="Completed" sub="Installation done successfully"           accent="border-emerald-200" sel={sel} onPick={pick} />
+              <Opt value="mistake"       label="Mistake"   sub="An issue occurred during installation"    accent="border-red-200"     sel={sel} onPick={pick} />
+              <Opt value="not_completed" label="Overdue"   sub="Could not finish — rescheduling needed"   accent="border-orange-200"  sel={sel} onPick={pick} />
 
               {sel === 'not_completed' && (
                 <div className="space-y-3">
@@ -4735,7 +4794,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <button type="button" onClick={submitInstallationUpdate}
                   disabled={sel === 'completed' && instCompletedPhotos.length === 0}
                   className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 disabled:opacity-40 ${sel === 'completed' ? 'bg-emerald-600' : sel === 'mistake' ? 'bg-red-600' : 'bg-orange-500'}`}>
-                  {sel === 'completed' ? '✓ Installation Completed — Collect Payment' : sel === 'mistake' ? 'Save Mistake' : 'Mark Not Completed'}
+                  {sel === 'completed' ? '✓ Installation Completed — Collect Payment' : sel === 'mistake' ? 'Save Mistake' : 'Mark Overdue'}
                 </button>
               )}
             </>
@@ -4746,14 +4805,14 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           ════════════════════════════════════════════════════════════════ */}
           {displayStage === 'installation_update' && (flowStatus === 'mistake' || flowStatus === 'not_completed') && role !== 'lead_manager' && role !== 'owner' && !demoOverride && (
             <WaitingView icon={Wrench} color="bg-red-50 border border-red-200 text-red-700"
-              title={flowStatus === 'not_completed' ? 'Installation Not Completed' : 'Installation Mistake Reported'}
+              title={flowStatus === 'not_completed' ? 'Installation Overdue' : 'Installation Mistake Reported'}
               sub="Waiting for Sales Team to review and decide next steps" />
           )}
 
           {displayStage === 'installation_update' && (flowStatus === 'mistake' || flowStatus === 'not_completed') && role === 'owner' && !demoOverride && (
             <>
               <WaitingView icon={Wrench} color="bg-red-50 border border-red-200 text-red-700"
-                title={flowStatus === 'not_completed' ? 'Installation Not Completed' : 'Installation Mistake Reported'}
+                title={flowStatus === 'not_completed' ? 'Installation Overdue' : 'Installation Mistake Reported'}
                 sub="Sales Team needs to review and decide next steps" />
               <DemoControlCard waitingFor="Sales Team (LO)" description="Sales Team reviews the installation issue and decides next steps."
                 onOverride={() => setDemoOverride(true)} variant="owner" />
@@ -4764,7 +4823,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
             <>
               <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-4 space-y-2">
                 <p className="text-xs font-bold text-red-600 uppercase">
-                  {flowStatus === 'not_completed' ? 'Installation Not Completed' : 'Installation Mistake Reported'}
+                  {flowStatus === 'not_completed' ? 'Installation Overdue' : 'Installation Mistake Reported'}
                 </p>
                 {task.installationMistakeDetails && (
                   <p className="text-sm text-red-700">{task.installationMistakeDetails}</p>
@@ -4785,7 +4844,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Review Action</p>
 
-              <Opt value="send_back_technician"    label="Send Back to Technician"          sub="No blocker — retry the same installation"            accent="border-teal-200"   sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
               <Opt value="send_back_prod_admin"    label="Send Back to Production Admin"    sub="Material or profile issue — recheck availability"   accent="border-amber-200"  sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
               <Opt value="send_back_prod_manager"  label="Send Back to Production Manager"  sub="Rework required — send back to production"           accent="border-orange-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
               <Opt value="reassign_installation"   label="Reassign Installation"            sub="Send to Site Engineer Lead to pick a new installer"  accent="border-blue-200"   sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
@@ -4793,9 +4851,8 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
 
               {instMistakeReviewAction && (
                 <button type="button" onClick={submitInstallationMistakeReview}
-                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${instMistakeReviewAction === 'mark_resolved' ? 'bg-emerald-600' : instMistakeReviewAction === 'reassign_installation' ? 'bg-blue-600' : instMistakeReviewAction === 'send_back_technician' ? 'bg-teal-600' : 'bg-orange-600'}`}>
-                  {instMistakeReviewAction === 'send_back_technician' ? 'Send Back to Technician' :
-                   instMistakeReviewAction === 'send_back_prod_admin' ? 'Send to Production Admin' :
+                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${instMistakeReviewAction === 'mark_resolved' ? 'bg-emerald-600' : instMistakeReviewAction === 'reassign_installation' ? 'bg-blue-600' : 'bg-orange-600'}`}>
+                  {instMistakeReviewAction === 'send_back_prod_admin' ? 'Send to Production Admin' :
                    instMistakeReviewAction === 'send_back_prod_manager' ? 'Send to Production Manager' :
                    instMistakeReviewAction === 'reassign_installation' ? 'Send to Site Engineer Lead' :
                    '✓ Mark Resolved — Proceed to Payment'}

@@ -203,25 +203,6 @@ export default function SettingsScreen() {
             <Pencil size={15} className="text-slate-500" />
           </button>
         </div>
-
-        {/* Roles this account holds — all shown at once, no switching needed;
-            each role's screens/tasks already surface together in the menu. */}
-        {user && user.roles && user.roles.length > 1 && (
-          <div className="mt-3 pt-3 border-t border-slate-100">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Your Roles</p>
-            <div className="flex flex-wrap gap-1.5">
-              {user.roles.map(r => (
-                <span
-                  key={r}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-green-50 text-green-700"
-                >
-                  <span>{ROLE_ICONS[r]}</span>
-                  {ROLE_LABELS[r]}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="px-4 pt-4 space-y-4">
