@@ -1728,10 +1728,19 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         productionChecklist: prodChecklist.map(i => ({ ...i, done: false })),
       }, 'Installation mistake — sent back to Production Manager for rework')
     } else if (instMistakeReviewAction === 'reassign_installation') {
+      if (!changedInstPerson) { setError('Select an installation technician.'); return }
+      if (!changedInstDate)   { setError('Select installation date.'); return }
+      const oldPerson = task.installationPerson ?? 'Unassigned'
       save({
-        flowStage: 'site_lead_approval', flowStatus: 'pending', status: 'pending',
-        title: 'Approve Installation Availability',
-      }, 'Installation mistake — sent to Site Engineer Lead to reassign the installation team')
+        flowStage: 'installation_update', flowStatus: 'assigned', status: 'in_progress',
+        title: 'Update Installation Status',
+        installationPerson: changedInstPerson,
+        installationDate: changedInstDate,
+        installationPersonChangedFrom: oldPerson,
+        note: changedInstNotes || undefined,
+        assignedTo: changedInstPerson,
+        assignee: changedInstPerson,
+      }, `Installation reassigned from ${oldPerson} to ${changedInstPerson}`)
     }
   }
 
@@ -4878,18 +4887,41 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 <>
                   <Opt value="send_back_prod_admin"    label="Send Back to Production Admin"    sub="Material or profile issue — recheck availability"   accent="border-amber-200"  sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
                   <Opt value="send_back_prod_manager"  label="Send Back to Production Manager"  sub="Rework required — send back to production"           accent="border-orange-200" sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
-                  <Opt value="reassign_installation"   label="Reassign Installation"            sub="Send to Site Engineer Lead to pick a new installer"  accent="border-blue-200"   sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
+                  <Opt value="reassign_installation"   label="Reassign Installation"            sub="Pick a different installation technician"            accent="border-blue-200"   sel={instMistakeReviewAction} onPick={setInstMistakeReviewAction} />
+                  {instMistakeReviewAction === 'reassign_installation' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className={lbl}>Installation Technician {req}</label>
+                        <select value={changedInstPerson} onChange={e => setChangedInstPerson(e.target.value)} className={inp}>
+                          <option value="">Select installation person…</option>
+                          {installerOptions.map(name => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={lbl}>Installation Date {req}</label>
+                        <input type="date" value={changedInstDate} onChange={e => setChangedInstDate(e.target.value)} className={inp} />
+                      </div>
+                      <div>
+                        <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
+                        <textarea rows={2} value={changedInstNotes} onChange={e => setChangedInstNotes(e.target.value)}
+                          placeholder="Instructions for the new installer…" className={`${inp} resize-none`} />
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
               {instMistakeReviewAction && (
                 <button type="button" onClick={submitInstallationMistakeReview}
-                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 ${instMistakeReviewAction === 'approve_overdue' ? 'bg-emerald-600' : instMistakeReviewAction === 'disapprove_overdue' ? 'bg-red-600' : instMistakeReviewAction === 'reassign_installation' ? 'bg-blue-600' : 'bg-orange-600'}`}>
+                  disabled={instMistakeReviewAction === 'reassign_installation' && (!changedInstPerson || !changedInstDate)}
+                  className={`w-full py-4 rounded-2xl text-white text-sm font-extrabold active:opacity-90 disabled:opacity-40 ${instMistakeReviewAction === 'approve_overdue' ? 'bg-emerald-600' : instMistakeReviewAction === 'disapprove_overdue' ? 'bg-red-600' : instMistakeReviewAction === 'reassign_installation' ? 'bg-blue-600' : 'bg-orange-600'}`}>
                   {instMistakeReviewAction === 'approve_overdue' ? '✓ Approve — Send Back to Technician' :
                    instMistakeReviewAction === 'disapprove_overdue' ? 'Disapprove — Send Back to Technician' :
                    instMistakeReviewAction === 'send_back_prod_admin' ? 'Send to Production Admin' :
                    instMistakeReviewAction === 'send_back_prod_manager' ? 'Send to Production Manager' :
-                   'Send to Site Engineer Lead'}
+                   `Reassign${changedInstPerson ? ` to ${changedInstPerson}` : ''} →`}
                 </button>
               )}
             </>
