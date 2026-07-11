@@ -1720,10 +1720,13 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         title: 'Check Material Availability',
       }, 'Installation mistake — sent back to Admin for material check')
     } else if (instMistakeReviewAction === 'send_back_prod_manager') {
+      // Reset the checklist so PM actually redoes the affected steps instead
+      // of seeing everything pre-checked from the original production run.
       save({
         flowStage: 'production_work', flowStatus: 'pending', status: 'in_progress',
         title: 'Production Work',
-      }, 'Installation mistake — sent back to Admin for rework')
+        productionChecklist: prodChecklist.map(i => ({ ...i, done: false })),
+      }, 'Installation mistake — sent back to Production Manager for rework')
     } else if (instMistakeReviewAction === 'reassign_installation') {
       save({
         flowStage: 'site_lead_approval', flowStatus: 'pending', status: 'pending',
