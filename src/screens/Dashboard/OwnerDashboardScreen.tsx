@@ -28,6 +28,9 @@ const LO_STAGE_LABEL: Record<LOStage, string> = {
 const LO_STAGE_COLOR: Record<LOStage, string> = {
   negotiation: 'text-violet-600', production: 'text-amber-600', done: 'text-emerald-600',
 }
+const LO_STAGE_BAR: Record<LOStage, string> = {
+  negotiation: 'bg-violet-500', production: 'bg-amber-500', done: 'bg-emerald-500',
+}
 
 interface LORow {
   id: string
@@ -515,51 +518,72 @@ export default function OwnerDashboardScreen() {
               View Full Report <ChevronRight size={12} />
             </button>
           </div>
+
+          {/* Legend — shared across every LO's mini bar chart below */}
+          {loStats.length > 0 && (
+            <div className="flex items-center gap-4 mb-3 px-1">
+              {(['negotiation', 'production', 'done'] as LOStage[]).map(key => (
+                <div key={key} className="flex items-center gap-1.5">
+                  <span className={`w-2.5 h-2.5 rounded-sm ${LO_STAGE_BAR[key]}`} />
+                  <span className="text-[10px] font-semibold text-slate-500">{LO_STAGE_LABEL[key]}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="space-y-3">
             {loStats.length === 0 && (
               <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-center">
                 <p className="text-sm text-slate-400">No Lead Owners found</p>
               </div>
             )}
-            {loStats.map(({ lo, totalLeads, negotiation, production, done }) => (
-              <button key={lo.id}
-                onClick={() => { setSelectedLO(lo.id); setSelectedLOStage('negotiation') }}
-                className="w-full bg-white rounded-2xl border border-slate-200 p-4 text-left active:bg-slate-50 shadow-sm">
+            {loStats.map(({ lo, totalLeads, negotiation, production, done }) => {
+              const bars = [
+                { key: 'negotiation' as LOStage, label: 'Negotiation', amt: negotiation.amt, count: negotiation.count, unit: 'Leads'    },
+                { key: 'production'  as LOStage, label: 'Production',  amt: production.amt,  count: production.count,  unit: 'Projects' },
+                { key: 'done'        as LOStage, label: 'Done',        amt: done.amt,         count: done.count,       unit: 'Projects' },
+              ]
+              const maxAmt = Math.max(1, ...bars.map(b => b.amt))
+              return (
+                <button key={lo.id}
+                  onClick={() => { setSelectedLO(lo.id); setSelectedLOStage('negotiation') }}
+                  className="w-full bg-white rounded-2xl border border-slate-200 p-4 text-left active:bg-slate-50 shadow-sm">
 
-                {/* Header row */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 bg-teal-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                      <span className="text-white text-sm font-extrabold">
-                        {lo.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-                      </span>
+                  {/* Header row */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 bg-teal-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-sm font-extrabold">
+                          {lo.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-extrabold text-slate-800">{lo.fullName}</p>
+                        <p className="text-[11px] text-slate-400">{totalLeads} total lead{totalLeads !== 1 ? 's' : ''}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-extrabold text-slate-800">{lo.fullName}</p>
-                      <p className="text-[11px] text-slate-400">{totalLeads} total lead{totalLeads !== 1 ? 's' : ''}</p>
-                    </div>
+                    <ChevronDown size={14} className="text-slate-300" />
                   </div>
-                  <ChevronDown size={14} className="text-slate-300" />
-                </div>
 
-                {/* Amount big, count small in brackets */}
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { key: 'negotiation' as LOStage, label: 'Negotiation', amt: negotiation.amt, count: negotiation.count, unit: 'Leads',    color: LO_STAGE_COLOR.negotiation },
-                    { key: 'production'  as LOStage, label: 'Production',  amt: production.amt,  count: production.count,  unit: 'Projects', color: LO_STAGE_COLOR.production  },
-                    { key: 'done'        as LOStage, label: 'Done',        amt: done.amt,         count: done.count,         unit: 'Projects', color: LO_STAGE_COLOR.done        },
-                  ].map(({ key, label, amt, count, unit, color }) => (
-                    <div key={key}
-                      onClick={e => { e.stopPropagation(); setSelectedLO(lo.id); setSelectedLOStage(key) }}
-                      className="bg-slate-50 rounded-xl p-2.5 text-center">
-                      <p className="text-[10px] text-slate-400 font-semibold mb-1">{label}</p>
-                      <p className={`text-sm font-extrabold ${color} leading-tight break-all`}>{formatINR(amt)}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">({count} {unit})</p>
-                    </div>
-                  ))}
-                </div>
-              </button>
-            ))}
+                  {/* Mini bar chart — Negotiation / Production / Done, scaled to this LO's own max */}
+                  <div className="flex items-end gap-3 px-1">
+                    {bars.map(({ key, label, amt, count, unit }) => (
+                      <div key={key}
+                        onClick={e => { e.stopPropagation(); setSelectedLO(lo.id); setSelectedLOStage(key) }}
+                        className="flex-1 flex flex-col items-center gap-1">
+                        <p className={`text-[10px] font-extrabold ${LO_STAGE_COLOR[key]} leading-tight`}>{formatINR(amt)}</p>
+                        <div className="w-full flex flex-col justify-end" style={{ height: '48px' }}>
+                          <div className={`w-full rounded-t-md ${LO_STAGE_BAR[key]}`}
+                            style={{ height: `${amt > 0 ? Math.max((amt / maxAmt) * 48, 6) : 2}px` }} />
+                        </div>
+                        <p className="text-[9px] text-slate-500 font-semibold mt-0.5">{label}</p>
+                        <p className="text-[9px] text-slate-400">({count} {unit})</p>
+                      </div>
+                    ))}
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </div>
 
