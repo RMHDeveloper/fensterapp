@@ -102,10 +102,20 @@ export default function TodayTasksScreen() {
   }
 
   // Filter active flow tasks — with per-user scoping, unioned across every held role
-  const activeFTs = flowTasks.filter(t => {
+  const activeFTsRaw = flowTasks.filter(t => {
     if (t.flowStage === 'completed') return false
     return roles.some(r => FT_MATCHERS[r]?.(t) ?? false)
   })
+  // Guard against duplicate flow tasks on the same project — show only the
+  // most recently created one instead of confusing duplicate cards.
+  const activeFTs = Array.from(
+    activeFTsRaw.reduce((map, t) => {
+      const key = t.projectId ?? t.id
+      const existing = map.get(key)
+      if (!existing || (t.createdAt ?? '') >= (existing.createdAt ?? '')) map.set(key, t)
+      return map
+    }, new Map<string, Task>()).values()
+  )
 
   // Completed flow tasks — owner sees all, LM sees only their projects'
   const completedFTs = isOwner

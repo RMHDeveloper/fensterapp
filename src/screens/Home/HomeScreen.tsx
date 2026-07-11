@@ -144,10 +144,22 @@ export default function HomeScreen() {
     installation_incharge: t => (t.flowStage === 'installation_assign' || t.flowStage === 'installation_update') && isAssignedToFTMe(t),
     lead_manager:        t => myProjectIds.has(t.projectId),
   }
-  const activeFTs = tasks.filter(t => {
+  const activeFTsRaw = tasks.filter(t => {
     if (t.flowStage == null || t.flowStage === 'completed') return false
     return roles.some(r => FT_MATCHERS[r]?.(t) ?? false)
   })
+  // Guard against duplicate flow tasks on the same project (should never
+  // happen — one evolving task drives each project — but if stray extra
+  // tasks exist, only show the most recently created one per project
+  // instead of confusing duplicate cards).
+  const activeFTs = Array.from(
+    activeFTsRaw.reduce((map, t) => {
+      const key = t.projectId ?? t.id
+      const existing = map.get(key)
+      if (!existing || (t.createdAt ?? '') >= (existing.createdAt ?? '')) map.set(key, t)
+      return map
+    }, new Map<string, Task>()).values()
+  )
 
   // LO: pending flow tasks (any active flow stage in their projects)
   const loPendingFlow = role === 'lead_manager'

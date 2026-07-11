@@ -26,17 +26,28 @@ const LEAD_SOURCE_ORDER: { value: LeadSource; label: string }[] = [
   { value: 'other',             label: 'Other'             },
 ]
 
-const BAR_DATA = [
-  { month: 'Jan', value: 42 },
-  { month: 'Feb', value: 58 },
-  { month: 'Mar', value: 51 },
-  { month: 'Apr', value: 73 },
-  { month: 'May', value: 65 },
-  { month: 'Jun', value: 89 },
-]
-
 export default function ReportsScreen() {
   const { payments, leads, projects, tasks } = useAppData()
+
+  // Real revenue collected per month, for the 6 months ending this month —
+  // was previously a hardcoded Jan-Jun sample that never matched the actual date.
+  const BAR_DATA = useMemo(() => {
+    const now = new Date()
+    const months = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+      return { key: `${d.getFullYear()}-${d.getMonth()}`, month: d.toLocaleString('en-IN', { month: 'short' }), value: 0 }
+    })
+    const byKey = new Map(months.map(m => [m.key, m]))
+    payments.forEach(p => {
+      p.history.forEach(h => {
+        const d = new Date(h.date)
+        if (isNaN(d.getTime())) return
+        const m = byKey.get(`${d.getFullYear()}-${d.getMonth()}`)
+        if (m) m.value += h.amount
+      })
+    })
+    return months.map(m => ({ month: m.month, value: Math.round(m.value / 1000) }))
+  }, [payments])
   const [dateFilter, setDateFilter] = useState<DateFilter>('month')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo,   setCustomTo]   = useState('')
@@ -60,7 +71,7 @@ export default function ReportsScreen() {
   const openMistakes      = MISTAKES.filter(m => m.status !== 'resolved').length
   const wonLeads          = filteredLeads.filter(isLeadConverted).length
 
-  const maxBar = Math.max(...BAR_DATA.map(b => b.value))
+  const maxBar = Math.max(1, ...BAR_DATA.map(b => b.value))
 
   const kpiCards = [
     { label: 'Revenue Collected', value: `₹${(totalRevenue / 100000).toFixed(1)}L`, sub: 'In selected period', icon: IndianRupee, color: 'bg-emerald-50 text-emerald-700', trend: 'up' },

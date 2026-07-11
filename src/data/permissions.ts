@@ -31,7 +31,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'view_payments','update_payments',
     'view_orders',
     'view_files','upload_files',
-    'view_reports','view_settings',
+    'view_settings',
     'view_installation','update_installation',
   ],
 
