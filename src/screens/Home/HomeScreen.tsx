@@ -40,6 +40,14 @@ interface QuickItem {
 const PRE_PROD_STAGES = new Set(['production_sheet_preparation','production_admin_check','waiting_material_availability'])
 const PROD_STAGES     = new Set(['production_manager_work','ready_to_dispatch'])
 const INSTALL_STAGES  = new Set(['installation_assigned','installation','installation_in_progress'])
+// Matches SiteVisitScreen's own "is this visit done" definition — a site visit
+// counts as done once the project has moved past it, not just when any task
+// happens to carry status 'completed' (that conflated with completed *projects*).
+const STAGES_PAST_SITE_VISIT = new Set([
+  'site_review','reschedule_review','owner_approval','send_to_client','advance_payment',
+  'production_assign','production_check','production_work','installation_assign',
+  'installation_update','final_payment','final_completion','completed',
+])
 
 // Total tasks (any status) currently in this user's queue — flow tasks owned by
 // any of their roles, plus regular tasks assigned to them (or unassigned, role-wide).
@@ -183,6 +191,14 @@ export default function HomeScreen() {
     t.flowStage === 'site_visit' &&
     (t.assignedTo === user?.name || t.siteEngineerName === user?.name)
   ).length
+  // Site engineer: visits they've actually completed (project moved past
+  // site_visit) — not "any completed task", which was counting unrelated
+  // finished tasks and made Done look inflated next to Projects' Complete tab.
+  const myVisitsDone = tasks.filter(t => {
+    if (t.assignedTo !== user?.name && t.siteEngineerName !== user?.name) return false
+    if (!t.flowStage) return false
+    return t.status === 'completed' || STAGES_PAST_SITE_VISIT.has(t.flowStage)
+  }).length
 
   // Production admin: tasks pending check
   const toCheckCount = tasks.filter(t => t.flowStage === 'production_check').length
@@ -217,7 +233,7 @@ export default function HomeScreen() {
       { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: myTaskCount,           label: 'Tasks',   link: '/tasks'       },
       { icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-100',  value: myVisits,              label: 'Visits',  link: '/site-visits' },
       { icon: Clock,         iconColor: 'text-red-600',     iconBg: 'bg-red-100',     value: pendingTasks,          label: 'Pending', link: '/tasks'       },
-      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: doneCount,             label: 'Done',    link: '/tasks'       },
+      { icon: CheckCircle2,  iconColor: 'text-emerald-600', iconBg: 'bg-emerald-100', value: myVisitsDone,          label: 'Done',    link: '/site-visits' },
     ],
     site_engineer_lead: [
       { icon: CalendarCheck, iconColor: 'text-blue-600',    iconBg: 'bg-blue-100',    value: myTaskCount,           label: 'Tasks',     link: '/tasks' },
