@@ -20,3 +20,9 @@ export async function upsertLead(lead: Lead): Promise<void> {
   }, { onConflict: 'id' })
   if (error) console.error('[Fenster] lead sync error:', error.message)
 }
+
+export async function deleteLead(id: string): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase.from(TABLE).delete().eq('id', id)
+  if (error) console.error('[Fenster] lead delete error:', error.message)
+}

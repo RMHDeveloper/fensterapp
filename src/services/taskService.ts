@@ -23,6 +23,12 @@ export async function upsertTask(task: Task): Promise<void> {
   if (error) console.error('[Fenster] task sync error:', error.message)
 }
 
+export async function deleteTasksByProject(projectId: string): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase.from(TABLE).delete().eq('project_id', projectId)
+  if (error) console.error('[Fenster] tasks delete error:', error.message)
+}
+
 export async function upsertTasks(tasks: Task[]): Promise<void> {
   if (!supabase || tasks.length === 0) return
   const rows = tasks.map(task => ({

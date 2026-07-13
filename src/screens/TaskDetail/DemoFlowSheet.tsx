@@ -1249,6 +1249,11 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
         flowStatus: 'dropped', status: 'overdue',
         title: 'Project Dropped',
       }, 'Project dropped after client rejection')
+      if (project?.leadId) {
+        updateLeadStatus(project.leadId, 'lost', {
+          lostReason: task.clientRejectionReason || 'Dropped after client rejection',
+        })
+      }
     }
     // 'resend' case handled via submitResendUpdatedQuotation below
   }

@@ -47,6 +47,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   // the regular Site Engineer's site-visit/measurement work
   site_engineer_lead: [
     'view_home','view_today','view_projects',
+    'view_leads','create_lead',
     'view_installation','update_installation','approve_installation',
     'view_files','upload_files',
     'view_settings',

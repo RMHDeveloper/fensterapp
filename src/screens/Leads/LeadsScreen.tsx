@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, UserPlus, HardHat, Phone, Pencil, FileDown, FileUp, Upload } from 'lucide-react'
+import { Plus, UserPlus, HardHat, Phone, Pencil, FileDown, FileUp, Upload, Ban, Trash2 } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
@@ -13,11 +13,11 @@ import { Snackbar } from '../../components/feedback/Snackbar'
 import { AppHeader } from '../../components/layout/AppHeader'
 import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { loadManagedUsers } from '../../utils/userStorage'
-import { getLeadFlowBucket, isAdvanceReceived, flowReached, isLeadConverted } from '../../utils/stageHelpers'
+import { getLeadFlowBucket, isAdvanceReceived, flowReached, isLeadConverted, isCompletedProject } from '../../utils/stageHelpers'
 import type { Lead, LeadStatus, LeadSource, LeadInterest, Task } from '../../types'
 
-type Filter = 'active' | 'contact' | 'measurement' | 'quotation' | 'negotiation' | 'won' | 'lost'
-const FILTER_VALUES = new Set<string>(['active', 'contact', 'measurement', 'quotation', 'negotiation', 'won', 'lost'])
+type Filter = 'active' | 'contact' | 'measurement' | 'quotation' | 'negotiation' | 'won' | 'lost' | 'dropped'
+const FILTER_VALUES = new Set<string>(['active', 'contact', 'measurement', 'quotation', 'negotiation', 'won', 'lost', 'dropped'])
 
 const CHIPS: { value: Filter; label: string }[] = [
   { value: 'active',      label: 'Active'      },
@@ -27,6 +27,7 @@ const CHIPS: { value: Filter; label: string }[] = [
   { value: 'negotiation', label: 'Negotiation' },
   { value: 'won',         label: 'Won'         },
   { value: 'lost',        label: 'Lost'        },
+  { value: 'dropped',     label: 'Dropped'     },
 ]
 
 // Negotiation view status lines — Quotation / MD Approval / Client Approval / Advance Payment
@@ -135,7 +136,7 @@ function InterestBadge({ interest }: { interest?: LeadInterest }) {
 }
 
 export default function LeadsScreen() {
-  const { leads, projects, tasks, updateLeadStatus, updateLead, addProject, addTask, updateTask, updateProject, addLead } = useAppData()
+  const { leads, projects, tasks, updateLeadStatus, updateLead, deleteLead, addProject, addTask, updateTask, updateProject, addLead } = useAppData()
   const { user } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -143,6 +144,7 @@ export default function LeadsScreen() {
   const isNegotiationView = pathname === '/leads/negotiation'
 
   const isMdEd = user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED')
+  const isMD   = user?.displayRole?.includes('MD') ?? false
   const isLO   = user?.role === 'lead_manager'
   const canEditLead  = isMdEd || isLO
   const canExport    = user?.role === 'owner' || user?.role === 'lead_manager' || user?.role === 'production_admin'
@@ -171,6 +173,7 @@ export default function LeadsScreen() {
   const [convertNotes, setConvertNotes] = useState('')
   const [convertError, setConvertError] = useState('')
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   // Once the project + "Assign Site Engineer" task exist, open the real flow popup for it
   useEffect(() => {
@@ -254,7 +257,9 @@ export default function LeadsScreen() {
     } else if (filter === 'won') {
       matchFilter = converted
     } else if (filter === 'lost') {
-      matchFilter = l.status === 'lost'
+      matchFilter = l.status === 'lost' && !projects.some(p => p.leadId === l.id)
+    } else if (filter === 'dropped') {
+      matchFilter = l.status === 'lost' && projects.some(p => p.leadId === l.id)
     }
     return matchFilter && matchSearch
   })
@@ -270,9 +275,7 @@ export default function LeadsScreen() {
     }
 
     if (status === 'lost') {
-      setPendingLostId(selected.id)
-      setLostReason('')
-      setShowLostDialog(true)
+      openDropDialog(selected.id)
       return
     }
 
@@ -302,13 +305,27 @@ export default function LeadsScreen() {
     setSnack({ open: true, msg: 'Lead contacted — follow-up scheduled!', type: 'success' })
   }
 
+  async function confirmDeleteLead() {
+    if (!selected) return
+    await deleteLead(selected.id)
+    setSelected(null)
+    setShowDeleteDialog(false)
+    setSnack({ open: true, msg: 'Lead deleted.', type: 'success' })
+  }
+
+  function openDropDialog(leadId: string) {
+    setPendingLostId(leadId)
+    setLostReason('')
+    setShowLostDialog(true)
+  }
+
   function confirmLost() {
-    if (!pendingLostId) return
-    updateLeadStatus(pendingLostId, 'lost', { lostReason: lostReason.trim() || undefined })
+    if (!pendingLostId || !lostReason.trim()) return
+    updateLeadStatus(pendingLostId, 'lost', { lostReason: lostReason.trim() })
     setSelected(null)
     setShowLostDialog(false)
     setPendingLostId(null)
-    setSnack({ open: true, msg: 'Lead moved to Lost.', type: 'success' })
+    setSnack({ open: true, msg: 'Project dropped.', type: 'success' })
   }
 
   function handleAddLead() {
@@ -650,11 +667,15 @@ export default function LeadsScreen() {
                       {stageLabel}
                     </span>
                   )
-                })() : <StatusBadge status={lead.status} size="xs" />}
+                })() : (
+                  <StatusBadge
+                    status={lead.status === 'lost' && projects.some(p => p.leadId === lead.id) ? 'dropped' : lead.status}
+                    size="xs" />
+                )}
               </div>
               {lead.status === 'lost' && lead.lostReason && (
                 <p className="mt-2 text-[11px] text-red-500 border-t border-slate-100 pt-2">
-                  Lost reason: {lead.lostReason}
+                  {projects.some(p => p.leadId === lead.id) ? 'Dropped reason' : 'Lost reason'}: {lead.lostReason}
                 </p>
               )}
               {(isNegotiationView || filter === 'negotiation') && linkedProject && (() => {
@@ -720,7 +741,7 @@ export default function LeadsScreen() {
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 flex-wrap">
-                <StatusBadge status={selected.status} size="md" />
+                <StatusBadge status={selected.status === 'lost' && hasActiveProject ? 'dropped' : selected.status} size="md" />
                 <InterestBadge interest={selected.interest} />
               </div>
               {canEditLead && (
@@ -750,7 +771,7 @@ export default function LeadsScreen() {
                   ? [{ label: 'Follow-up', value: `📅 ${selected.followUpDate}` }]
                   : []),
                 ...(selected.lostReason
-                  ? [{ label: 'Lost Reason', value: selected.lostReason }]
+                  ? [{ label: hasActiveProject ? 'Dropped Reason' : 'Lost Reason', value: selected.lostReason }]
                   : []),
                 ...(selected.notes ? [{ label: 'Notes', value: selected.notes }] : []),
               ].map(({ label, value }) => (
@@ -843,6 +864,28 @@ export default function LeadsScreen() {
                 </button>
               )
             })()}
+
+            {/* Drop Project — available at every stage until the lead is already
+                lost or its linked project is fully completed */}
+            {selected.status !== 'lost' && !(selectedLinkedProject && isCompletedProject(selectedLinkedProject)) && (
+              <PermissionGate permission="edit_lead">
+                <button onClick={() => openDropDialog(selected.id)}
+                  className="w-full flex items-center justify-center gap-2 border-2 border-red-200 bg-red-50 text-red-600 rounded-xl py-3 text-sm font-bold active:bg-red-100">
+                  <Ban size={16} /> Drop Project
+                </button>
+              </PermissionGate>
+            )}
+
+            {/* Delete Lead — MD only, permanently removes the lead and any linked
+                project/tasks/payments */}
+            {isMD && (
+              <PermissionGate permission="delete_data">
+                <button onClick={() => setShowDeleteDialog(true)}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-red-400 active:text-red-600">
+                  <Trash2 size={13} /> Delete Lead Permanently
+                </button>
+              </PermissionGate>
+            )}
           </div>
           )
         })()}
@@ -868,17 +911,19 @@ export default function LeadsScreen() {
         </div>
       </Dialog>
 
-      {/* ── Lost Reason Dialog ── */}
+      {/* ── Drop Project Dialog ── */}
       <Dialog
         isOpen={showLostDialog}
         onClose={() => { setShowLostDialog(false); setPendingLostId(null) }}
-        title="Why was this lead lost?"
+        title="Drop Project"
+        message="This moves it to Lost. Please provide a reason."
         variant="danger"
-        confirmLabel="Move to Lost"
+        confirmLabel="Drop Project"
         cancelLabel="Cancel"
+        confirmDisabled={!lostReason.trim()}
         onConfirm={confirmLost}>
         <div className="mt-1">
-          <label className="text-xs text-slate-500 mb-1.5 block">Reason <span className="text-slate-300">(optional)</span></label>
+          <label className="text-xs text-slate-500 mb-1.5 block">Reason <span className="text-red-400">(required)</span></label>
           <textarea
             rows={3}
             value={lostReason}
@@ -887,6 +932,18 @@ export default function LeadsScreen() {
             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-red-300 resize-none"
           />
         </div>
+      </Dialog>
+
+      {/* ── Delete Lead Dialog (MD only) ── */}
+      <Dialog
+        isOpen={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        title="Delete Lead Permanently"
+        message="This permanently deletes this lead and, if it has a linked project, that project along with its tasks and payment records. This cannot be undone."
+        variant="danger"
+        confirmLabel="Delete Permanently"
+        cancelLabel="Cancel"
+        onConfirm={confirmDeleteLead}>
       </Dialog>
 
       {/* ── Edit Lead Sheet ── */}

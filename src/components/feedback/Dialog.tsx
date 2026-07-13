@@ -11,6 +11,7 @@ interface Props {
   variant?: Variant
   confirmLabel?: string
   cancelLabel?: string
+  confirmDisabled?: boolean
   onConfirm?: () => void
   children?: React.ReactNode
 }
@@ -22,7 +23,7 @@ const VARIANT_CONFIG: Record<Variant, { icon: React.ReactNode; iconBg: string; c
   info:    { icon: <Info size={22} className="text-blue-500" />, iconBg: 'bg-blue-50',  confirmBtn: 'bg-blue-600 active:bg-blue-700'   },
 }
 
-export function Dialog({ isOpen, onClose, title, message, variant = 'default', confirmLabel = 'Confirm', cancelLabel = 'Cancel', onConfirm, children }: Props) {
+export function Dialog({ isOpen, onClose, title, message, variant = 'default', confirmLabel = 'Confirm', cancelLabel = 'Cancel', confirmDisabled = false, onConfirm, children }: Props) {
   if (!isOpen) return null
   const cfg = VARIANT_CONFIG[variant]
 
@@ -52,7 +53,10 @@ export function Dialog({ isOpen, onClose, title, message, variant = 'default', c
             {cancelLabel}
           </button>
           {onConfirm && (
-            <button onClick={() => { onConfirm(); onClose() }} className={`flex-1 text-white rounded-xl py-3 text-sm font-semibold ${cfg.confirmBtn}`}>
+            <button
+              onClick={() => { onConfirm(); onClose() }}
+              disabled={confirmDisabled}
+              className={`flex-1 text-white rounded-xl py-3 text-sm font-semibold ${cfg.confirmBtn} ${confirmDisabled ? 'opacity-40 pointer-events-none' : ''}`}>
               {confirmLabel}
             </button>
           )}

@@ -21,3 +21,9 @@ export async function upsertPayment(payment: Payment): Promise<void> {
   }, { onConflict: 'id' })
   if (error) console.error('[Fenster] payment sync error:', error.message)
 }
+
+export async function deletePaymentsByProject(projectId: string): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase.from(TABLE).delete().eq('project_id', projectId)
+  if (error) console.error('[Fenster] payments delete error:', error.message)
+}

@@ -11,10 +11,10 @@ import {
   onLabourAssigned,
 } from '../utils/workflow'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
-import { getAllProjects, upsertProject } from '../services/projectService'
-import { getAllTasks, upsertTask } from '../services/taskService'
-import { getAllLeads, upsertLead } from '../services/leadService'
-import { getAllPayments, upsertPayment } from '../services/paymentService'
+import { getAllProjects, upsertProject, deleteProject } from '../services/projectService'
+import { getAllTasks, upsertTask, deleteTasksByProject } from '../services/taskService'
+import { getAllLeads, upsertLead, deleteLead as deleteLeadRecord } from '../services/leadService'
+import { getAllPayments, upsertPayment, deletePaymentsByProject } from '../services/paymentService'
 import { getAllMistakes, upsertMistake } from '../services/mistakeService'
 import { getAllProduction, upsertProduction } from '../services/productionService'
 import { runMigrations } from '../utils/migrate'
@@ -36,6 +36,7 @@ interface AppDataContextValue {
   addLead:               (lead: Omit<Lead, 'id'>) => void
   updateLeadStatus:      (leadId: string, status: LeadStatus, extra?: { followUpDate?: string; lostReason?: string }) => void
   updateLead:            (leadId: string, updates: Partial<Lead>) => void
+  deleteLead:            (leadId: string) => Promise<void>
   updatePaymentAmount:   (paymentId: string, amount: number, method: string) => void
   addTask:               (task: Omit<Task, 'id'>) => void
   addProject:            (project: Omit<Project, 'id'>) => string
@@ -95,9 +96,26 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         return updated
       })
 
+      // Auto-heal: a project can get marked 'dropped' (client rejected the quotation,
+      // MD/LO chose Drop Project) without the linked lead ever moving to Lost — leaves
+      // it stuck showing as Active. Correct any lead still stuck in that state.
+      const healedLeads = sbLeads.map(l => {
+        if (l.status === 'lost') return l
+        const proj = backfilledProjects.find(p => p.leadId === l.id)
+        if (!proj) return l
+        const droppedTask = sbTasks.find(t => t.projectId === proj.id && t.flowStatus === 'dropped')
+        if (!droppedTask) return l
+        const updated: Lead = {
+          ...l, status: 'lost',
+          lostReason: droppedTask.clientRejectionReason || l.lostReason || 'Dropped after client rejection',
+        }
+        upsertLead(updated)
+        return updated
+      })
+
       setProjects(backfilledProjects)
       setTasks(sbTasks)
-      setLeads(sbLeads)
+      setLeads(healedLeads)
       setPayments(sbPayments)
       setMistakes(sbMistakes)
       setProduction(sbProduction)
@@ -285,6 +303,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     }))
   }
 
+  async function deleteLead(leadId: string): Promise<void> {
+    const linkedProjectIds = projectsRef.current.filter(p => p.leadId === leadId).map(p => p.id)
+    await Promise.all(linkedProjectIds.flatMap(projectId => [
+      deleteProject(projectId),
+      deleteTasksByProject(projectId),
+      deletePaymentsByProject(projectId),
+    ]))
+    await deleteLeadRecord(leadId)
+    setLeads(prev => prev.filter(l => l.id !== leadId))
+    setProjects(prev => prev.filter(p => !linkedProjectIds.includes(p.id)))
+    setTasks(prev => prev.filter(t => !linkedProjectIds.includes(t.projectId)))
+    setPayments(prev => prev.filter(p => !linkedProjectIds.includes(p.projectId)))
+  }
+
   function updatePaymentAmount(paymentId: string, amount: number, method: string) {
     setPayments(prev => prev.map(p => {
       if (p.id !== paymentId) return p
@@ -400,7 +432,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       tasks, production, leads, payments, projects, mistakes,
       isSyncing, isSupabaseReady,
       updateTaskStatus, updateTask, updateProductionStage, updateProject,
-      addLead, updateLeadStatus, updateLead,
+      addLead, updateLeadStatus, updateLead, deleteLead,
       updatePaymentAmount, addTask, addProject, addMistake, updateMistake, resetAllData,
       refetchAll,
       completeWorkflowStep,
