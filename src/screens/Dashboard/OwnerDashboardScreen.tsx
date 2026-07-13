@@ -298,7 +298,7 @@ function EditTargetsModal({ targets, onClose, onSaved }: { targets: DashboardTar
 export default function OwnerDashboardScreen() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { projects: allProjects, tasks, leads, mistakes } = useAppData()
+  const { projects: allProjects, tasks, leads, mistakes, isSupabaseReady } = useAppData()
   // Not yet converted from their lead — stay off the MD dashboard until the LM converts them
   const projects = allProjects.filter(p => !p.pendingConversion)
 
@@ -405,6 +405,15 @@ export default function OwnerDashboardScreen() {
     if (customFrom || customTo) return `${customFrom || '…'} to ${customTo || '…'}`
     return 'Select date range'
   }, [dateFilter, from, to, customFrom, customTo])
+
+  if (!isSupabaseReady) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] pb-24 flex items-center justify-center">
+        <AppHeader />
+        <p className="text-sm text-slate-400 font-semibold">Loading dashboard…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-24">

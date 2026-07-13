@@ -12,11 +12,11 @@ import { BottomSheet } from '../../components/feedback/BottomSheet'
 import { Snackbar } from '../../components/feedback/Snackbar'
 import { createProjectFromForm, createSiteAssignTask } from '../../utils/workflow'
 import { loadManagedUsers } from '../../utils/userStorage'
-import { normalizeRole, isCompletedProject, isConvertedProject, getProjectFilterStage, type ProjectFilterStage } from '../../utils/stageHelpers'
+import { normalizeRole, isCompletedProject, isCancelledProject, isConvertedProject, getProjectFilterStage, type ProjectFilterStage } from '../../utils/stageHelpers'
 import type { Project, Task } from '../../types'
 
-type Filter = 'active' | 'pre_production' | 'production' | 'ready_to_dispatch' | 'installation' | 'collection' | 'completed'
-const FILTER_VALUES = new Set<string>(['active', 'pre_production', 'production', 'ready_to_dispatch', 'installation', 'collection', 'completed'])
+type Filter = 'active' | 'pre_production' | 'production' | 'ready_to_dispatch' | 'installation' | 'collection' | 'completed' | 'dropped'
+const FILTER_VALUES = new Set<string>(['active', 'pre_production', 'production', 'ready_to_dispatch', 'installation', 'collection', 'completed', 'dropped'])
 type Bucket = ProjectFilterStage
 
 function getChipsForRole(rawRole?: string): { value: Filter; label: string }[] {
@@ -51,13 +51,15 @@ function getChipsForRole(rawRole?: string): { value: Filter; label: string }[] {
     { value: 'installation',      label: 'Installation'      },
     { value: 'collection',        label: 'Collection'        },
     { value: 'completed',         label: 'Complete'          },
+    { value: 'dropped',           label: 'Dropped'           },
   ]
 }
 
 function matchesFilter(p: Project, filter: Filter, bucket: Bucket): boolean {
-  if (filter === 'active')    return !isCompletedProject(p)
+  if (filter === 'active')    return !isCompletedProject(p) && !isCancelledProject(p)
   if (filter === 'completed') return isCompletedProject(p)
-  if (isCompletedProject(p)) return false
+  if (filter === 'dropped')   return isCancelledProject(p)
+  if (isCompletedProject(p) || isCancelledProject(p)) return false
   return bucket === filter
 }
 

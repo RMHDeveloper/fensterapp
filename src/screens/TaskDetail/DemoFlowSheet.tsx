@@ -560,7 +560,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   // ── ADVANCE PAYMENT ───────────────────────────────────────────────────────
   const [advPaidAmt,       setAdvPaidAmt]       = useState('')
   const [advBalAmt,        setAdvBalAmt]        = useState('')
-  const [advDueDate,       setAdvDueDate]       = useState('')
   const [advNote,          setAdvNote]          = useState('')
   const [advPayScreenshot, setAdvPayScreenshot] = useState<string[]>([])
   const [finalPayScreenshot, setFinalPayScreenshot] = useState<string[]>([])
@@ -605,6 +604,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
   const [instNotCompExtraNotes, setInstNotCompExtraNotes] = useState('')
   const [instMistakeNote,       setInstMistakeNote]       = useState('')
   const [instMistakePhotos,     setInstMistakePhotos]     = useState<string[]>([])
+  const [instMistakeVoiceIds,   setInstMistakeVoiceIds]   = useState<string[]>([])
   const [instMistakeReviewAction, setInstMistakeReviewAction] = useState('')
   const [overdueDisapproveNote, setOverdueDisapproveNote] = useState('')
   const [instCompletedPhotos,   setInstCompletedPhotos]   = useState<string[]>([])
@@ -721,7 +721,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setAdvNote('')
     setShowAdvanceConvert(false)
     setConvProjectName(task.projectName ?? '')
-    setConvDueDate('')
+    setConvDueDate(todayStr)
     setConvNotes('')
     setOverdueNote(task.productionOverdueReason ?? '')
     setOverdueFiles([]); setOverdueNewDate(task.productionNewDate ?? todayStr)
@@ -739,7 +739,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setMatCost(task.materialCost ? String(task.materialCost) : '')
     setTransCost(task.transportCost ? String(task.transportCost) : '')
     setInstNotCompNote(''); setInstNotCompFiles([]); setInstNotCompVoiceIds([]); setInstNextVisitDate(todayStr); setInstNotCompExtraNotes('')
-    setInstMistakeNote(''); setInstMistakePhotos([])
+    setInstMistakeNote(''); setInstMistakePhotos([]); setInstMistakeVoiceIds([])
     setInstMistakeReviewAction(''); setOverdueDisapproveNote('')
     setInstCompletedPhotos([])
     setExtraSheets([])
@@ -1418,7 +1418,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       save({ flowStatus: 'pending', status: 'pending' }, 'Advance payment pending'); return
     }
     if (!advPaidAmt) { setError('Enter paid amount.'); return }
-    if (sel !== 'full_paid' && !advDueDate) { setError('Enter due date.'); return }
     setError('')
     setShowAdvanceConvert(true)
   }
@@ -1445,7 +1444,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       title: 'Upload Job Sheet to Admin',
       advancePaymentType: sel,
       paidAmount: paid, balanceAmount: balance,
-      dueDate: advDueDate || undefined,
       paymentNote: advNote || undefined,
       advancePaymentScreenshot: advPayScreenshot.length > 0 ? advPayScreenshot : undefined,
     }, `Advance ₹${paid.toLocaleString('en-IN')} received — converted to project`, advPayScreenshot)
@@ -1702,7 +1700,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       save({
         flowStatus: 'mistake', status: 'overdue',
         installationMistakeDetails: instMistakeNote,
-        specialNoteInstallation: voiceNoteInstallationIds.length ? voiceNoteInstallationIds : undefined,
+        installationMistakeVoiceNotes: instMistakeVoiceIds.length ? instMistakeVoiceIds : undefined,
       }, `Mistake: ${instMistakeNote}`, [])
     }
   }
@@ -3447,10 +3445,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                               className={`${inp} ${advBalAmt ? 'bg-amber-50 border-amber-200' : ''}`} />
                           </div>
                           <div>
-                            <label className={lbl}>Due Date {req}</label>
-                            <input type="date" value={advDueDate} onChange={e => setAdvDueDate(e.target.value)} className={inp} />
-                          </div>
-                          <div>
                             <label className={lbl}>Payment Note <span className="text-slate-300 font-normal">(optional)</span></label>
                             <textarea rows={2} value={advNote} onChange={e => setAdvNote(e.target.value)}
                               placeholder="Payment method, reference number…" className={`${inp} resize-none`} />
@@ -3458,7 +3452,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                           <MultiFileUploadField label="Payment Screenshot" accept=".jpg,.jpeg,.png,.webp,.pdf" files={advPayScreenshot} onChange={setAdvPayScreenshot} helperText="Optional — upload payment proof" />
                         </div>
                       )}
-                      <AdvanceConvertBlock />
+                      {AdvanceConvertBlock()}
                     </>
                   )}
                 </>
@@ -3909,12 +3903,6 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       placeholder="Auto-calculated from quotation total"
                       className={`${inp} ${advBalAmt ? 'bg-amber-50 border-amber-200' : ''}`} />
                   </div>
-                  {sel !== 'full_paid' && (
-                    <div>
-                      <label className={lbl}>Due Date {req}</label>
-                      <input type="date" value={advDueDate} onChange={e => setAdvDueDate(e.target.value)} className={inp} />
-                    </div>
-                  )}
                   <div>
                     <label className={lbl}>Payment Note <span className="text-slate-300 font-normal">(optional)</span></label>
                     <textarea rows={2} value={advNote} onChange={e => setAdvNote(e.target.value)}
@@ -3924,7 +3912,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 </div>
               )}
 
-              <AdvanceConvertBlock />
+              {AdvanceConvertBlock()}
             </>
           )}
 
@@ -4000,7 +3988,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
               {pmMaterialChecklist.length > 0 && (
                 <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 space-y-2">
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Material Status (from Admin)</p>
-                  <MaterialStatusDropdowns />
+                  {MaterialStatusDropdowns()}
                   {JSON.stringify(pmMaterialChecklist) !== JSON.stringify(task.availabilityChecklist ?? []) && (
                     <button type="button" onClick={submitMaterialStatusUpdate}
                       className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-xs font-extrabold active:opacity-90">
@@ -4027,7 +4015,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                     {pmMaterialChecklist.length > 0 && (
                       <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 space-y-2">
                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Update Material Status</p>
-                        <MaterialStatusDropdowns />
+                        {MaterialStatusDropdowns()}
                       </div>
                     )}
                     <button type="button" onClick={submitProductionWorkOverdue}
@@ -4403,6 +4391,12 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       <input type="date" value={proposedInstDate} onChange={e => setProposedInstDate(e.target.value)} className={inp} />
                     </div>
                     <LocationPinField value={installLocPin} onChange={setInstallLocPin} />
+                    <div>
+                      <label className={lbl}>Google Map Link <span className="text-slate-300 font-normal">(optional)</span></label>
+                      <input type="url" inputMode="url" value={installLocPin.mapLink}
+                        onChange={e => setInstallLocPin(prev => ({ ...prev, mapLink: e.target.value }))}
+                        placeholder="Paste Google Maps link…" className={inp} />
+                    </div>
                     <div>
                       <label className={lbl}>Notes <span className="text-slate-300 font-normal">(optional)</span></label>
                       <textarea rows={2} value={adminAvailNotes} onChange={e => setAdminAvailNotes(e.target.value)}
@@ -4802,10 +4796,10 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                       className={`${inp} resize-none`} />
                   </div>
                   <VoiceRecorder label="Voice Note (optional)"
-                    savedIds={voiceNoteInstallationIds}
-                    onAdd={id => setVoiceNoteInstallationIds(prev => [...prev, id])}
-                    onRemove={id => setVoiceNoteInstallationIds(prev => prev.filter(x => x !== id))}
-                    onReplace={(oldId, url) => setVoiceNoteInstallationIds(prev => prev.map(x => x === oldId ? url : x))}
+                    savedIds={instMistakeVoiceIds}
+                    onAdd={id => setInstMistakeVoiceIds(prev => [...prev, id])}
+                    onRemove={id => setInstMistakeVoiceIds(prev => prev.filter(x => x !== id))}
+                    onReplace={(oldId, url) => setInstMistakeVoiceIds(prev => prev.map(x => x === oldId ? url : x))}
                     helperText="Record a voice note about the mistake" />
                 </div>
               )}
@@ -4871,6 +4865,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 )}
                 {flowStatus === 'not_completed' && task.installationNotCompletedVoiceNotes && task.installationNotCompletedVoiceNotes.length > 0 && (
                   <MediaPreviewList files={task.installationNotCompletedVoiceNotes} title="Voice Note from Installer" voiceStore={voicePreviewStore} />
+                )}
+                {flowStatus === 'mistake' && task.installationMistakeVoiceNotes && task.installationMistakeVoiceNotes.length > 0 && (
+                  <MediaPreviewList files={task.installationMistakeVoiceNotes} title="Voice Note from Installer" voiceStore={voicePreviewStore} />
                 )}
               </div>
 

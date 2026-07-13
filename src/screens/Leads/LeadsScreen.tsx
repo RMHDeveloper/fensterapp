@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Plus, UserPlus, HardHat, Phone, Pencil, FileDown, FileUp, Upload, Ban, Trash2 } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
@@ -213,7 +213,6 @@ export default function LeadsScreen() {
   const [newPhone,    setNewPhone]    = useState('')
   const [newEmail,    setNewEmail]    = useState('')
   const [newCity,     setNewCity]     = useState('')
-  const [newReq,      setNewReq]      = useState('')
   const [newNotes,    setNewNotes]    = useState('')
   const [newSource,   setNewSource]   = useState<LeadSource>('cold_call')
   const [newInterest, setNewInterest] = useState<LeadInterest>('medium')
@@ -338,7 +337,6 @@ export default function LeadsScreen() {
       email:       newEmail.trim() || undefined,
       city:        newCity.trim(),
       location:    newCity.trim(),
-      requirement: newReq.trim()   || undefined,
       notes:       newNotes.trim() || undefined,
       source:      newSource,
       interest:    newInterest,
@@ -349,7 +347,7 @@ export default function LeadsScreen() {
       createdAt:   new Date().toISOString().slice(0, 10),
     })
     setNewName(''); setNewPhone(''); setNewEmail(''); setNewCity('')
-    setNewReq(''); setNewNotes(''); setNewAssignee('')
+    setNewNotes(''); setNewAssignee('')
     setNewSource('cold_call'); setNewInterest('medium')
     setShowNew(false)
     setSnack({ open: true, msg: 'Lead created successfully!', type: 'success' })
@@ -391,11 +389,32 @@ export default function LeadsScreen() {
     setSnack({ open: true, msg: 'Lead updated!', type: 'success' })
   }
 
+  // Guards against a fast double-tap firing this twice before the re-render
+  // that hides the button (React state updates aren't visible mid-click, so
+  // hasActiveProject alone can't catch a second click in the same tick).
+  const assigningSiteEngineerRef = useRef(false)
+
   // Qualified lead → create the project behind the scenes, then jump straight into
   // the real "Assign Site Engineer" flow popup (same one used later on the project page)
   function handleAssignSiteEngineer() {
     if (!selected) return
+    if (assigningSiteEngineerRef.current) return
+    assigningSiteEngineerRef.current = true
     const lead = selected
+
+    // A project (and its site-assign task) may already exist for this lead —
+    // e.g. from a previous click that succeeded but the button hadn't
+    // re-rendered away yet. Reopen that one instead of creating another.
+    const existingProject = projects.find(p => p.leadId === lead.id)
+    if (existingProject) {
+      const existingTask = tasks.find(t => t.projectId === existingProject.id && t.flowStage && t.flowStage !== 'completed')
+      setSelected(null)
+      if (existingTask) setAssignFlowTaskId(existingTask.id)
+      else setPendingAssignProjectId(existingProject.id)
+      assigningSiteEngineerRef.current = false
+      return
+    }
+
     const name = `${lead.name} Project`
 
     const assigneeUser = loadManagedUsers().find(u => u.fullName === lead.assignee)
@@ -447,6 +466,7 @@ export default function LeadsScreen() {
 
     setSelected(null)
     setPendingAssignProjectId(projectId)
+    assigningSiteEngineerRef.current = false
   }
 
   // Every stage update (site visit, quotation, approval, advance payment…) is driven
@@ -1101,11 +1121,6 @@ export default function LeadsScreen() {
             <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Location / Address *</label>
             <input type="text" value={newCity} onChange={e => setNewCity(e.target.value)} placeholder="e.g. Anna Nagar, Chennai"
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Requirement <span className="text-slate-300 font-normal">(optional)</span></label>
-            <textarea rows={2} value={newReq} onChange={e => setNewReq(e.target.value)} placeholder="Describe what the client needs…"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
           </div>
           {/* Source */}
           <div>

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Calendar, MapPin, Phone, CheckCircle2, Star, Navigation, MessageCircle, Pencil, AlertTriangle, X, FolderX } from 'lucide-react'
+import { ArrowLeft, Calendar, MapPin, Phone, CheckCircle2, Star, Navigation, MessageCircle, Pencil, AlertTriangle, X, FolderX, Ban, Upload, FileText, Eye, Download } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
 import { StatusBadge } from '../../components/badges/StatusBadge'
@@ -8,11 +8,14 @@ import { ProgressCircle } from '../../components/cards/ProgressCircle'
 import { Timeline } from '../../components/layout/Timeline'
 import { Accordion } from '../../components/layout/Accordion'
 import { BottomSheet } from '../../components/feedback/BottomSheet'
+import { Dialog } from '../../components/feedback/Dialog'
 import { Snackbar } from '../../components/feedback/Snackbar'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { DemoFlowSheet } from '../TaskDetail/DemoFlowSheet'
 import { MediaPreviewList } from '../../components/media/MediaPreviewList'
 import { voicePreviewStore } from '../../utils/sessionStore'
+import { isCompletedProject, isCancelledProject } from '../../utils/stageHelpers'
+import { uploadProjectFile, getProjectFiles, subscribeToProjectFiles, type FileRow } from '../../services/fileService'
 import type { TimelineItem } from '../../components/layout/Timeline'
 import type { Task, TaskStatus, Project } from '../../types'
 
@@ -253,16 +256,88 @@ function ProductionStepsChart({ checklist }: { checklist: { id: string; label: s
   )
 }
 
+function fmtSheetDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+// Project-level sheet uploads (pdf/xls/xlsx/csv) — separate from the
+// task-driven job/glass/cutting sheets, for general project documents.
+function ProjectSheetsCard({ projectId, uploaderName, uploaderRole }: { projectId: string; uploaderName: string; uploaderRole: string }) {
+  const [sheets, setSheets]     = useState<FileRow[]>([])
+  const [uploading, setUploading] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getProjectFiles(projectId, 'project_sheet').then(rows => { if (!cancelled) setSheets(rows) })
+    const unsubscribe = subscribeToProjectFiles(projectId, () => {
+      getProjectFiles(projectId, 'project_sheet').then(rows => { if (!cancelled) setSheets(rows) })
+    })
+    return () => { cancelled = true; unsubscribe() }
+  }, [projectId])
+
+  async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    setUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        await uploadProjectFile({ projectId, category: 'project_sheet', file, uploadedBy: uploaderName, uploadedByRole: uploaderRole })
+      }
+      setSheets(await getProjectFiles(projectId, 'project_sheet'))
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Project Sheets</p>
+      <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading}
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-blue-300 text-blue-600 bg-blue-50 text-sm font-semibold active:opacity-70 disabled:opacity-50">
+        <Upload size={15} /> {uploading ? 'Uploading…' : 'Upload Sheet'}
+      </button>
+      <input ref={inputRef} type="file" multiple accept=".pdf,.xls,.xlsx,.csv" className="hidden" onChange={handleFiles} />
+      {sheets.length > 0 && (
+        <div className="space-y-1.5">
+          {sheets.map(row => (
+            <div key={row.id} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2.5">
+              <FileText size={16} className="text-blue-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-slate-700 truncate">{row.fileName}</p>
+                <p className="text-[10px] text-slate-400">{row.uploadedBy ?? '—'} · {fmtSheetDateTime(row.uploadedAt)}</p>
+              </div>
+              <a href={row.url} target="_blank" rel="noopener noreferrer"
+                className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 active:bg-blue-100">
+                <Eye size={12} className="text-blue-500" />
+              </a>
+              <a href={row.url} download={row.fileName} target="_blank" rel="noopener noreferrer"
+                className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 active:bg-emerald-100">
+                <Download size={12} className="text-emerald-600" />
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ProjectDetailScreen() {
   const { id = 'p1' } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { tasks: allTasks, payments, projects, mistakes: allMistakes, addTask, updateTask, updateProject } = useAppData()
+  const { tasks: allTasks, payments, projects, leads, updateLeadStatus, mistakes: allMistakes, addTask, updateTask, updateProject } = useAppData()
   const { user } = useAuth()
 
   // Payment visibility: MD/ED/Admin (all `owner` role) and LO (lead_manager) only
   const canSeePayments = user?.role === 'owner' || user?.role === 'lead_manager'
   // Profit is sensitive even among owner-role accounts — MD/ED only, not Admin, not LO, not anyone else
   const canSeeProfit = user?.role === 'owner' && !!(user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED'))
+  // Drop Project — MD only, not ED/Admin
+  const isTrueMD = user?.displayRole?.includes('MD') ?? false
 
   const project  = projects.find(p => p.id === id)
   const tasks    = allTasks.filter(t => t.projectId === id)
@@ -308,6 +383,8 @@ export default function ProjectDetailScreen() {
   const [editBalance,     setEditBalance]     = useState('')
   const [editExtraCharge, setEditExtraCharge] = useState('')
   const [editingNote, setEditingNote] = useState<{ taskId: string; index: number; text: string } | null>(null)
+  const [showDropDialog, setShowDropDialog] = useState(false)
+  const [dropReason, setDropReason] = useState('')
 
   const activeFlowTask = tasks.find(t => t.flowStage && t.flowStage !== 'completed')
 
@@ -338,6 +415,17 @@ export default function ProjectDetailScreen() {
       return
     }
     window.location.href = `tel:${project.clientPhone}`
+  }
+
+  function confirmDropProject() {
+    if (!project || !dropReason.trim()) return
+    updateProject(project.id, { status: 'cancelled', droppedReason: dropReason.trim() })
+    if (project.leadId) {
+      updateLeadStatus(project.leadId, 'lost', { lostReason: dropReason.trim() })
+    }
+    setShowDropDialog(false)
+    setDropReason('')
+    setSnack({ open: true, msg: 'Project dropped.', type: 'success' })
   }
 
   function buildReviewMessage() {
@@ -708,30 +796,35 @@ function handleSaveTask() {
       subtitle: projectFiles.total > 0
         ? `${projectFiles.total} file${projectFiles.total !== 1 ? 's' : ''}`
         : 'No files yet',
-      children: projectFiles.total === 0
-        ? <p className="text-sm text-slate-400 italic">No files attached yet.</p>
-        : (
-          <div className="space-y-4">
-            {projectFiles.quotationDocs.length > 0 && (
-              <MediaPreviewList files={projectFiles.quotationDocs} title="Quotation Files" uploadedAt={fileUploadTimes} />
-            )}
-            {projectFiles.sitePhotos.length > 0 && (
-              <MediaPreviewList files={projectFiles.sitePhotos} title="Site Photos" uploadedAt={fileUploadTimes} />
-            )}
-            {canSeePayments && projectFiles.paymentProofs.length > 0 && (
-              <MediaPreviewList files={projectFiles.paymentProofs} title="Payment Proofs" uploadedAt={fileUploadTimes} />
-            )}
-            {projectFiles.productionDocs.length > 0 && (
-              <MediaPreviewList files={projectFiles.productionDocs} title="Production Docs" uploadedAt={fileUploadTimes} />
-            )}
-            {projectFiles.installationPhotos.length > 0 && (
-              <MediaPreviewList files={projectFiles.installationPhotos} title="Installation Photos" uploadedAt={fileUploadTimes} />
-            )}
-            {projectFiles.voiceNotes.length > 0 && (
-              <MediaPreviewList files={projectFiles.voiceNotes} title="Voice Notes" voiceStore={voicePreviewStore} uploadedAt={fileUploadTimes} />
-            )}
-          </div>
-        ),
+      children: (
+        <div className="space-y-4">
+          <ProjectSheetsCard projectId={project.id} uploaderName={user?.name ?? 'Unknown'} uploaderRole={user?.role ?? 'lead_manager'} />
+          {projectFiles.total === 0 ? (
+            <p className="text-sm text-slate-400 italic">No other files attached yet.</p>
+          ) : (
+            <>
+              {projectFiles.quotationDocs.length > 0 && (
+                <MediaPreviewList files={projectFiles.quotationDocs} title="Quotation Files" uploadedAt={fileUploadTimes} />
+              )}
+              {projectFiles.sitePhotos.length > 0 && (
+                <MediaPreviewList files={projectFiles.sitePhotos} title="Site Photos" uploadedAt={fileUploadTimes} />
+              )}
+              {canSeePayments && projectFiles.paymentProofs.length > 0 && (
+                <MediaPreviewList files={projectFiles.paymentProofs} title="Payment Proofs" uploadedAt={fileUploadTimes} />
+              )}
+              {projectFiles.productionDocs.length > 0 && (
+                <MediaPreviewList files={projectFiles.productionDocs} title="Production Docs" uploadedAt={fileUploadTimes} />
+              )}
+              {projectFiles.installationPhotos.length > 0 && (
+                <MediaPreviewList files={projectFiles.installationPhotos} title="Installation Photos" uploadedAt={fileUploadTimes} />
+              )}
+              {projectFiles.voiceNotes.length > 0 && (
+                <MediaPreviewList files={projectFiles.voiceNotes} title="Voice Notes" voiceStore={voicePreviewStore} uploadedAt={fileUploadTimes} />
+              )}
+            </>
+          )}
+        </div>
+      ),
     },
     ...(project?.actualCosts ? [{
       id: 'budget',
@@ -855,7 +948,9 @@ function handleSaveTask() {
               })()}
             </div>
             <div className="flex items-center gap-2.5 mt-2 flex-wrap">
-              {project.status !== 'new' && <StatusBadge status={project.status} size="sm" />}
+              {project.status !== 'new' && (
+                <StatusBadge status={project.status === 'cancelled' ? 'dropped' : project.status} size="sm" />
+              )}
               {project.city && (
                 <span className="flex items-center gap-1 text-blue-200 text-xs">
                   <MapPin size={10} /> {project.city}
@@ -976,6 +1071,14 @@ function handleSaveTask() {
               Open in Google Maps
             </a>
           </div>
+        )}
+
+        {/* Drop Project — MD only, any stage, until already dropped or completed */}
+        {isTrueMD && !isCancelledProject(project) && !isCompletedProject(project) && (
+          <button onClick={() => setShowDropDialog(true)}
+            className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-red-200 bg-red-50 text-red-600 text-xs font-bold active:bg-red-100">
+            <Ban size={13} /> Drop Project
+          </button>
         )}
       </div>
 
@@ -1130,6 +1233,29 @@ function handleSaveTask() {
           </button>
         </div>
       </BottomSheet>
+
+      {/* Drop Project Dialog — MD only */}
+      <Dialog
+        isOpen={showDropDialog}
+        onClose={() => { setShowDropDialog(false); setDropReason('') }}
+        title="Drop Project"
+        message="This moves the project to Dropped. Please provide a reason."
+        variant="danger"
+        confirmLabel="Drop Project"
+        cancelLabel="Cancel"
+        confirmDisabled={!dropReason.trim()}
+        onConfirm={confirmDropProject}>
+        <div className="mt-1">
+          <label className="text-xs text-slate-500 mb-1.5 block">Reason <span className="text-red-400">(required)</span></label>
+          <textarea
+            rows={3}
+            value={dropReason}
+            onChange={e => setDropReason(e.target.value)}
+            placeholder="e.g. Client cancelled the order…"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-red-300 resize-none"
+          />
+        </div>
+      </Dialog>
 
       <Snackbar isOpen={snack.open} message={snack.msg} type={snack.type} onClose={() => setSnack(s => ({ ...s, open: false }))} />
     </div>

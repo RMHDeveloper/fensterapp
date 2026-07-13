@@ -36,6 +36,12 @@ export function isCompletedProject(project: Project): boolean {
   )
 }
 
+// MD dropped the project (Project Detail's "Drop Project" button) — a reversible
+// status flag, distinct from a normal completion.
+export function isCancelledProject(project: Project): boolean {
+  return project.status === 'cancelled'
+}
+
 // A project created from a lead stays hidden everywhere until the LM clicks
 // "Convert to Project" (pendingConversion flips to false). Projects created
 // directly (no leadId) are always considered converted.

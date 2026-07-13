@@ -27,7 +27,7 @@ const LEAD_SOURCE_ORDER: { value: LeadSource; label: string }[] = [
 ]
 
 export default function ReportsScreen() {
-  const { payments, leads, projects, tasks } = useAppData()
+  const { payments, leads, projects, tasks, isSupabaseReady } = useAppData()
 
   // Real revenue collected per month, for the 6 months ending this month —
   // was previously a hardcoded Jan-Jun sample that never matched the actual date.
@@ -106,6 +106,14 @@ export default function ReportsScreen() {
     }, 0)
     return { label, total, contacted, measurement, quotation, convertedCount, conversionPct, totalValue }
   }).filter(r => r.total > 0)
+
+  if (!isSupabaseReady) {
+    return (
+      <div className="min-h-screen bg-slate-50 pb-24 flex items-center justify-center">
+        <p className="text-sm text-slate-400 font-semibold">Loading dashboard…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">

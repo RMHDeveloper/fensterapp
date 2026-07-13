@@ -390,6 +390,7 @@ export interface Task {
   installationMistakeDetails?: string
   installationNextVisitDate?: string
   installationNotCompletedVoiceNotes?: string[]
+  installationMistakeVoiceNotes?: string[]
 
   // Dispatch → installation availability approval chain (Admin proposes, Site Engineer Lead approves/changes)
   proposedInstallationPerson?: string
@@ -444,6 +445,7 @@ export interface Project {
   budgetOptional?: string   // optional budget (may be empty)
   // Status
   status: ProjectStatus
+  droppedReason?: string    // required reason when MD drops the project (status: 'cancelled')
   currentStage?: ProjectStage   // typed lifecycle stage
   progress: number
   pendingTasks: number
