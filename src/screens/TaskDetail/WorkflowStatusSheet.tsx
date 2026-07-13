@@ -86,7 +86,9 @@ export function WorkflowStatusSheet({ isOpen, onClose, task, role, onComplete }:
         <div className="px-5 py-4 space-y-5 pb-8">
           {/* Task context */}
           <div className="bg-slate-50 rounded-2xl p-4">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{task.projectName}</p>
+            {task.projectName && (
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{task.projectName}</p>
+            )}
             <p className="text-sm font-bold text-slate-800">{task.title}</p>
             {task.workerName && (
               <p className="text-xs text-slate-500 mt-0.5">{task.workerRole}: {task.workerName}</p>
@@ -276,7 +278,7 @@ export function WorkflowStatusSheet({ isOpen, onClose, task, role, onComplete }:
                 <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wide mb-1">Product Required</p>
                 <p className="text-sm font-bold text-amber-800">{task.quotationProductType ?? 'Windows and Door'}</p>
                 {task.quotationQuantity && <p className="text-xs text-amber-600">Quantity: {task.quotationQuantity} units</p>}
-                <p className="text-xs text-amber-600 mt-1">Project: {task.projectName}</p>
+                {task.projectName && <p className="text-xs text-amber-600 mt-1">Project: {task.projectName}</p>}
               </div>
               <div className="space-y-3">
                 {[

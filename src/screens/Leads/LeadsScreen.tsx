@@ -449,7 +449,10 @@ export default function LeadsScreen() {
       dueDate:           'Today',
       assignee:          lead.assignee ?? '',
       projectId,
-      projectName:       name,
+      // Blank, not the auto-generated "<lead> Project" placeholder — nothing
+      // should display that placeholder anywhere. finishConvertToProject()
+      // backfills the real name onto this task once the LO actually converts.
+      projectName:       '',
       location:          lead.city,
       requiredProofType: 'none',
       proofUploads:      [],
@@ -507,6 +510,8 @@ export default function LeadsScreen() {
       currentStage: 'production_admin_check',
       ...(notes ? { description: proj?.description ? `${proj.description}\n\nConversion notes: ${notes}` : notes } : {}),
     })
+    const projTask = tasks.find(t => t.projectId === projectId)
+    if (projTask) updateTask(projTask.id, { projectName: convertProjectName.trim() })
     if (proj?.leadId) updateLeadStatus(proj.leadId, 'converted')
     setConvertingProjectId(null)
     setSelected(null)

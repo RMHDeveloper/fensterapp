@@ -130,18 +130,22 @@ export function TaskCard({ task, onClick, onAction, compact = false }: Props) {
         </h3>
 
         {/* Customer + Project */}
-        <div className="bg-slate-50 rounded-xl px-3 py-2.5 mb-3 space-y-1.5">
-          {task.customer && (
-            <div className="flex items-center gap-2">
-              <span className="text-[13px]">👤</span>
-              <span className="text-sm font-semibold text-slate-700">{task.customer}</span>
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <span className="text-[13px]">📁</span>
-            <span className="text-xs text-slate-500">{task.projectName}</span>
+        {(task.customer || task.projectName) && (
+          <div className="bg-slate-50 rounded-xl px-3 py-2.5 mb-3 space-y-1.5">
+            {task.customer && (
+              <div className="flex items-center gap-2">
+                <span className="text-[13px]">👤</span>
+                <span className="text-sm font-semibold text-slate-700">{task.customer}</span>
+              </div>
+            )}
+            {task.projectName && (
+              <div className="flex items-center gap-2">
+                <span className="text-[13px]">📁</span>
+                <span className="text-xs text-slate-500">{task.projectName}</span>
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Time + Location */}
         <div className="flex flex-wrap gap-3 mb-3.5">

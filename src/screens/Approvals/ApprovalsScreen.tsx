@@ -55,7 +55,9 @@ export default function ApprovalsScreen() {
             <button key={task.id} onClick={() => setFlowTaskId(task.id)}
               className="w-full text-left bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3 active:bg-slate-50">
               <div>
-                <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wide mb-1">{task.projectName}</p>
+                {task.projectName && (
+                  <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wide mb-1">{task.projectName}</p>
+                )}
                 <h3 className="text-sm font-extrabold text-slate-800">{task.clientName ?? task.title}</h3>
                 <p className="text-xs text-slate-400 mt-0.5">Lead Owner: {leadOwnerFor(task)}</p>
               </div>

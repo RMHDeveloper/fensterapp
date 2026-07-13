@@ -720,7 +720,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
     setAdvBalAmt(task.balanceAmount ? String(task.balanceAmount) : '')
     setAdvNote('')
     setShowAdvanceConvert(false)
-    setConvProjectName(task.projectName ?? '')
+    setConvProjectName(project?.name ?? '')
     setConvDueDate(todayStr)
     setConvNotes('')
     setOverdueNote(task.productionOverdueReason ?? '')
@@ -1446,6 +1446,9 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
       paidAmount: paid, balanceAmount: balance,
       paymentNote: advNote || undefined,
       advancePaymentScreenshot: advPayScreenshot.length > 0 ? advPayScreenshot : undefined,
+      // Backfill the real name onto the task — it was blank until now so the
+      // auto-generated placeholder never showed up anywhere pre-conversion.
+      projectName: convProjectName.trim(),
     }, `Advance ₹${paid.toLocaleString('en-IN')} received — converted to project`, advPayScreenshot)
   }
 

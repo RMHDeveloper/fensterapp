@@ -186,15 +186,17 @@ export default function TaskDetailScreen() {
               )}
             </div>
           )}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-violet-50 rounded-xl flex items-center justify-center flex-shrink-0">
-              <span className="text-lg" aria-hidden="true">📁</span>
+          {task.projectName && (
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-violet-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                <span className="text-lg" aria-hidden="true">📁</span>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Project</p>
+                <p className="text-sm font-semibold text-slate-700">{task.projectName}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Project</p>
-              <p className="text-sm font-semibold text-slate-700">{task.projectName}</p>
-            </div>
-          </div>
+          )}
           {task.dueTime && (
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">

@@ -127,7 +127,9 @@ export default function SiteVisitScreen() {
               className="w-full text-left bg-white rounded-2xl shadow-sm border border-slate-100 p-4 active:scale-[0.98] transition-transform">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
-                  <h3 className="text-sm font-bold text-slate-800 mb-0.5">{task.projectName}</h3>
+                  {task.projectName && (
+                    <h3 className="text-sm font-bold text-slate-800 mb-0.5">{task.projectName}</h3>
+                  )}
                   <p className="text-xs text-slate-500 mb-2">{task.clientName}</p>
                   {(task.location || task.locationPin?.mapLink) && (() => {
                     const readable = getVisitReadableLocation(task)
