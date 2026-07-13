@@ -431,6 +431,7 @@ export default function OwnerDashboardScreen() {
 
       {/* Date filter */}
       <div className="bg-white border-b border-slate-100 px-4 pt-3 pb-2 sticky top-14 z-20 space-y-2">
+        <h1 className="text-lg font-extrabold text-slate-800">Dashboard</h1>
         <div className="flex items-center justify-between gap-2">
           <div className="flex gap-2 overflow-x-auto scrollbar-hide flex-1">
             {DATE_FILTERS.map(f => (

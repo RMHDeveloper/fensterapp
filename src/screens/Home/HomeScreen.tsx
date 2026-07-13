@@ -352,6 +352,8 @@ export default function HomeScreen() {
 
       <div className="px-4 lg:px-6 pt-4 lg:pt-6 space-y-5 lg:max-w-3xl lg:mx-auto">
 
+        <h1 className="text-lg font-extrabold text-slate-800">Task</h1>
+
         {/* LO Pending box ─────────────────────────────────────────────────────── */}
         {role === 'lead_manager' && (
           <button

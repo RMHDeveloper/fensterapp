@@ -35,8 +35,8 @@ export default function ApprovalsScreen() {
 
       <div className="px-4 pt-4 space-y-3">
         <div>
-          <h2 className="text-base font-extrabold text-slate-800">Pending Quotation Approvals</h2>
-          <p className="text-xs text-slate-400 mt-0.5">{approvalTasks.length} waiting for your review</p>
+          <h2 className="text-base font-extrabold text-slate-800">Approvals</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{approvalTasks.length} quotation{approvalTasks.length !== 1 ? 's' : ''} waiting for your review</p>
         </div>
 
         {approvalTasks.length === 0 && (

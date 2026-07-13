@@ -85,7 +85,7 @@ export default function LeaveApplicationScreen() {
           <div className="flex items-center gap-2">
             <BackButton />
             <div>
-              <h1 className="text-base font-extrabold text-slate-800">Leave Application</h1>
+              <h1 className="text-base font-extrabold text-slate-800">Leave</h1>
               <p className="text-xs text-slate-500">{visibleLeaves.length} {isTechnician ? 'of your' : 'total'} application{visibleLeaves.length !== 1 ? 's' : ''}</p>
             </div>
           </div>

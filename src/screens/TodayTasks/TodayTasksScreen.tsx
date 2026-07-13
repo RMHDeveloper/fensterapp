@@ -67,6 +67,10 @@ export default function TodayTasksScreen() {
   const role  = user?.role ?? 'lead_manager'
   const roles = user?.roles ?? [role]
   const isOwner = roles.includes('owner')
+  // Matches the dynamic bottom-nav label for this same route (NavigationBar.tsx)
+  // so the page heading agrees with whatever the user tapped to get here.
+  const isDateRole = roles.some(r => r === 'site_engineer' || r === 'technician' || r === 'installation_incharge')
+  const pageTitle = roles.includes('site_engineer_lead') ? 'Approvals' : isDateRole ? 'Today' : 'Pending'
 
   // Projects owned by this lead_manager (by ID)
   const myProjectIds = new Set(projects.filter(p => p.ownerId === user?.id).map(p => p.id))
@@ -153,6 +157,8 @@ export default function TodayTasksScreen() {
     <div className="min-h-screen bg-[#f8f9fa] pb-28">
       <AppHeader />
       <div className="px-4 pt-4 space-y-3">
+
+        <h1 className="text-lg font-extrabold text-slate-800">{pageTitle}</h1>
 
         {/* ── Sort by ── */}
         <FilterChips chips={SORT_CHIPS} active={sortBy} onChange={setSortBy} />

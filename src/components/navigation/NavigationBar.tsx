@@ -13,7 +13,7 @@ const ALL_ITEMS: NavItem[] = [
   { icon: Users,           label: 'Leads',     path: '/leads'       },
   { icon: FolderOpen,      label: 'Projects',  path: '/projects'    },
   { icon: Layers,          label: 'Production',path: '/production'  },
-  { icon: MapPin,          label: 'Visits',    path: '/site-visits' },
+  { icon: MapPin,          label: 'Site Visits', path: '/site-visits' },
   { icon: CheckSquare,     label: 'Approvals', path: '/approvals'   },
   { icon: CalendarOff,     label: 'Leave',     path: '/leave-applications' },
   { icon: Settings,        label: 'Settings',  path: '/settings'    },

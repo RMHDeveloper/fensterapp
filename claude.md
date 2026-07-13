@@ -60,5 +60,12 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Git Push Requires Confirmation
+
+**Never push to any remote (origin, fensterapp, etc.) without asking first.**
+
+- Commit locally as needed, but stop before `git push` and confirm with the user.
+- This applies even if a previous round in the same session was pushed after approval — ask again each time.
+
 ----
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

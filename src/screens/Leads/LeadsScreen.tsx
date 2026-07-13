@@ -615,6 +615,7 @@ export default function LeadsScreen() {
     <div className="min-h-screen bg-slate-50 pb-24">
       <AppHeader />
       <div className="bg-white px-5 pt-4 pb-4 border-b border-slate-100 sticky top-14 z-20">
+        <h1 className="text-lg font-extrabold text-slate-800 mb-3">{isNegotiationView ? 'Negotiation' : 'Leads'}</h1>
         <div className="flex items-center gap-2 mb-3">
           <SearchBar value={search} onChange={setSearch} placeholder="Search leads…" className="flex-1" />
           {canExport && (
@@ -637,7 +638,7 @@ export default function LeadsScreen() {
           </PermissionGate>
         </div>
         {isNegotiationView ? (
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Negotiation — Client Approval to Advance Received</p>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Client Approval to Advance Received</p>
         ) : (
           <FilterChips chips={CHIPS} active={filter} onChange={setFilter} />
         )}

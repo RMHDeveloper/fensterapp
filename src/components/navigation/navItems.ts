@@ -41,7 +41,7 @@ export const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
       { icon: CheckSquare,    label: 'Delivery QC',  path: '/delivery-qc',  permission: 'view_delivery_qc' },
       { icon: ClipboardCheck, label: 'Approvals',    path: '/approvals',    permission: 'approve_work'     },
       { icon: UserCheck,      label: 'Installation Approvals', path: '/installation-approvals', permission: 'approve_installation' },
-      { icon: AlertTriangle,  label: 'Problems',     path: '/mistakes',     permission: 'view_mistakes'    },
+      { icon: AlertTriangle,  label: 'Mistakes',     path: '/mistakes',     permission: 'view_mistakes'    },
       { icon: Wallet,         label: 'Payments',     path: '/payments',     permission: 'view_payments'    },
       { icon: Wrench,         label: 'Installation', path: '/installation', permission: 'view_installation'},
       { icon: File,           label: 'Files',        path: '/files',        permission: 'view_files'       },
