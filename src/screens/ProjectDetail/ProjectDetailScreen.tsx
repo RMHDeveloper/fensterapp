@@ -333,9 +333,9 @@ export default function ProjectDetailScreen() {
   const { user } = useAuth()
 
   // Payment visibility: MD/ED/Admin (all `owner` role) and LO (lead_manager) only
-  const canSeePayments = user?.role === 'owner' || user?.role === 'lead_manager'
+  const canSeePayments = hasRole(user, 'owner') || hasRole(user, 'lead_manager')
   // Profit is sensitive even among owner-role accounts — MD/ED only, not Admin, not LO, not anyone else
-  const canSeeProfit = user?.role === 'owner' && !!(user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED'))
+  const canSeeProfit = hasRole(user, 'owner') && !!(user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED'))
   // Drop Project — MD only, not ED/Admin
   const isTrueMD = user?.displayRole?.includes('MD') ?? false
 
@@ -352,9 +352,9 @@ export default function ProjectDetailScreen() {
   // Installation Details accordion — Admin, MD/ED, LO, Site Engineer Lead always;
   // Installation Incharge/Technician only when they're the assigned installer
   const canSeeInstallationDetails =
-    user?.role === 'owner' || user?.role === 'lead_manager' ||
-    user?.role === 'production_admin' || user?.role === 'site_engineer_lead' ||
-    ((user?.role === 'technician' || user?.role === 'installation_incharge') &&
+    hasRole(user, 'owner') || hasRole(user, 'lead_manager') ||
+    hasRole(user, 'production_admin') || hasRole(user, 'site_engineer_lead') ||
+    ((hasRole(user, 'technician') || hasRole(user, 'installation_incharge')) &&
       tasks.some(t => t.installationPerson === user?.name || t.assignedTo === user?.name || t.assignee === user?.name))
 
   // Derive project value from flow tasks when project record hasn't been updated yet
@@ -376,7 +376,7 @@ export default function ProjectDetailScreen() {
   const [editClientName,  setEditClientName]  = useState('')
 
   // MD-only edit mode — unlocks editing of payment fields and note/activity text
-  const isMD = user?.role === 'owner'
+  const isMD = hasRole(user, 'owner')
   const [mdEditMode, setMdEditMode] = useState(false)
   const [editQuoted,      setEditQuoted]      = useState('')
   const [editPaid,        setEditPaid]        = useState('')
@@ -922,7 +922,7 @@ function handleSaveTask() {
         {/* Two-column: project info (left) + progress circle (right) */}
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
-            {user?.role === 'owner' ? (
+            {isTrueMD ? (
               <button onClick={() => { setEditClientName(project.client); setShowEditClient(true) }} className="text-left w-full">
                 <h1 className="text-xl font-extrabold text-white leading-tight truncate flex items-center gap-1.5">
                   {project.client} <Pencil size={12} className="text-white/50 flex-shrink-0" />
@@ -974,7 +974,7 @@ function handleSaveTask() {
         <div className="grid grid-cols-3 gap-2 mt-4">
           {/* Start Date — editable for owner/LM */}
           {(() => {
-            const canEdit = user?.role === 'owner' || user?.role === 'lead_manager'
+            const canEdit = hasRole(user, 'owner') || hasRole(user, 'lead_manager')
             const val = fmtDate(project.startDate ?? project.createdAt)
             return canEdit ? (
               <button onClick={() => { setEditDateType('start'); setEditDateValue(project.startDate ?? '') }}
@@ -993,7 +993,7 @@ function handleSaveTask() {
           })()}
           {/* Due Date — editable for owner/LM */}
           {(() => {
-            const canEdit = user?.role === 'owner' || user?.role === 'lead_manager'
+            const canEdit = hasRole(user, 'owner') || hasRole(user, 'lead_manager')
             const val = fmtDate(project.dueDate)
             return canEdit ? (
               <button onClick={() => { setEditDateType('due'); setEditDateValue(project.dueDate && project.dueDate !== '—' ? project.dueDate : '') }}
@@ -1059,7 +1059,7 @@ function handleSaveTask() {
         </div>
 
         {/* Google Maps link — shown for site engineers to navigate to job site */}
-        {user?.role === 'site_engineer' && (project.location || project.city) && (
+        {hasRole(user, 'site_engineer') && (project.location || project.city) && (
           <div className="flex justify-center">
             <a
               href={getGoogleMapsUrl(project, activeFlowTask)}
@@ -1097,7 +1097,7 @@ function handleSaveTask() {
       )}
 
       {/* Current Action Needed — LM / owner banner */}
-      {activeFlowTask && (user?.role === 'lead_manager' || user?.role === 'owner') && (
+      {activeFlowTask && (hasRole(user, 'lead_manager') || hasRole(user, 'owner')) && (
         <div className="px-4 mb-3">
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2.5">
             <div className="flex items-center justify-between gap-2">

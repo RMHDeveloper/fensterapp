@@ -16,6 +16,7 @@ import {
 import { getAllManagedUsers } from '../../services/userService'
 import { isSupabaseConfigured } from '../../lib/supabase'
 import { getRoleDisplayLabel } from '../../data/permissions'
+import { hasRole } from '../../utils/permissions'
 
 type Tab = 'all' | 'active' | 'inactive'
 
@@ -41,7 +42,7 @@ const lbl = 'text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block
 export default function UserManagementScreen() {
   const { user: authUser } = useAuth()
 
-  if (authUser?.role !== 'owner') {
+  if (!hasRole(authUser, 'owner')) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center px-8 text-center">
         <div>

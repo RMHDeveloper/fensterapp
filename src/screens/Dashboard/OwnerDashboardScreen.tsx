@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useAppData } from '../../context/AppDataContext'
+import { hasRole } from '../../utils/permissions'
 import { AppHeader } from '../../components/layout/AppHeader'
 import { Calendar, ChevronDown, ChevronRight, X, SlidersHorizontal } from 'lucide-react'
 import { loadManagedUsers } from '../../utils/userStorage'
@@ -298,13 +299,13 @@ function EditTargetsModal({ targets, onClose, onSaved }: { targets: DashboardTar
 export default function OwnerDashboardScreen() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { projects: allProjects, tasks, leads, mistakes, isSupabaseReady, syncError } = useAppData()
+  const { projects: allProjects, tasks, leads, isSupabaseReady, syncError } = useAppData()
   // Not yet converted from their lead — stay off the MD dashboard until the LM converts them
   const projects = allProjects.filter(p => !p.pendingConversion)
 
   // Visible to MD / ED / Owner only — all three map to the internal 'owner' role in this app
   useEffect(() => {
-    if (user && user.role !== 'owner') navigate('/home', { replace: true })
+    if (user && !hasRole(user, 'owner')) navigate('/home', { replace: true })
   }, [user, navigate])
 
   const [dateFilter, setDateFilter] = useState<DateFilter>('today')
@@ -342,12 +343,12 @@ export default function OwnerDashboardScreen() {
   const installationMetric = useMemo(() => getInstallationMetric(projects, tasks, from, to), [projects, tasks, from, to])
   const collection         = useMemo(() => getCollectionBreakdown(tasks, from, to),          [tasks, from, to])
 
-  // Mistakes in date range
-  const filteredMistakes = useMemo(
-    () => mistakes.filter(m => inRange((m as { createdAt?: string }).createdAt, from, to)),
-    [mistakes, from, to]
-  )
-  const openMistakes = filteredMistakes.filter(m => (m as { status?: string }).status === 'open').length
+  // Open mistakes — the separate fenster_mistakes table is unused (confirmed
+  // empty in Supabase); the real "Mistake" reporting technicians actually use
+  // is the installation_update flow, which flags the task itself
+  // (flowStatus 'mistake') rather than writing a separate record. Count that
+  // instead so this card reflects what's genuinely awaiting review.
+  const openMistakes = useMemo(() => tasks.filter(t => t.flowStatus === 'mistake').length, [tasks])
 
   // ── LO Performance ───────────────────────────────────────────────────────
   // Not memoized with an empty dep array on purpose: managed users load
