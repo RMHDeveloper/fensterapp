@@ -49,15 +49,34 @@ interface AppDataContextValue {
 
 const AppDataContext = createContext<AppDataContextValue | null>(null)
 
+// Last-known-good snapshot of everything Supabase feeds — read on mount so a
+// refresh shows real (if briefly stale) numbers instead of empty/zero cards
+// while the network fetch is still in flight, and survives a fetch that
+// fails outright. Overwritten every time refetchAll succeeds.
+const DATA_CACHE_KEY = 'fenster_data_cache'
+interface DataCacheShape {
+  tasks: Task[]; production: ProductionItem[]; leads: Lead[]
+  payments: Payment[]; projects: Project[]; mistakes: Mistake[]
+}
+function loadDataCache(): Partial<DataCacheShape> {
+  try {
+    const raw = window.localStorage.getItem(DATA_CACHE_KEY)
+    return raw ? (JSON.parse(raw) as Partial<DataCacheShape>) : {}
+  } catch { return {} }
+}
+function saveDataCache(data: DataCacheShape) {
+  try { window.localStorage.setItem(DATA_CACHE_KEY, JSON.stringify(data)) } catch { /* storage unavailable */ }
+}
+
 export function AppDataProvider({ children }: { children: ReactNode }) {
   runMigrations()
 
-  const [tasks,      setTasks]      = useState<Task[]>([])
-  const [production, setProduction] = useState<ProductionItem[]>([])
-  const [leads,      setLeads]      = useState<Lead[]>([])
-  const [payments,   setPayments]   = useState<Payment[]>([])
-  const [projects,   setProjects]   = useState<Project[]>([])
-  const [mistakes,   setMistakes]   = useState<Mistake[]>([])
+  const [tasks,      setTasks]      = useState<Task[]>(() => loadDataCache().tasks ?? [])
+  const [production, setProduction] = useState<ProductionItem[]>(() => loadDataCache().production ?? [])
+  const [leads,      setLeads]      = useState<Lead[]>(() => loadDataCache().leads ?? [])
+  const [payments,   setPayments]   = useState<Payment[]>(() => loadDataCache().payments ?? [])
+  const [projects,   setProjects]   = useState<Project[]>(() => loadDataCache().projects ?? [])
+  const [mistakes,   setMistakes]   = useState<Mistake[]>(() => loadDataCache().mistakes ?? [])
   const [isSyncing,  setIsSyncing]  = useState(false)
   const [isSupabaseReady, setIsSupabaseReady] = useState(false)
 
@@ -119,6 +138,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setPayments(sbPayments)
       setMistakes(sbMistakes)
       setProduction(sbProduction)
+      saveDataCache({
+        projects: backfilledProjects, tasks: sbTasks, leads: healedLeads,
+        payments: sbPayments, mistakes: sbMistakes, production: sbProduction,
+      })
     } catch (err) {
       console.warn('[Fenster] Supabase fetch error:', err)
     } finally {

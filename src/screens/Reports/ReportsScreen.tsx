@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Calendar, BarChart3, TrendingUp, TrendingDown, IndianRupee, FolderOpen, CheckCircle2, AlertTriangle } from 'lucide-react'
-import { MISTAKES } from '../../data/mockData'
 import { useAppData } from '../../context/AppDataContext'
 import { AppHeader } from '../../components/layout/AppHeader'
 import { BackButton } from '../../components/layout/BackButton'
 import { getLeadFlowBucket, isLeadConverted, isCompletedProject } from '../../utils/stageHelpers'
 import { type DateFilter, DATE_FILTERS, getDateRange, inRange, leadDate } from '../../utils/dateRange'
+import { getMonthlyRevenue, getBalanceAmount, formatINR } from '../../utils/dashboardMetrics'
 import type { LeadSource } from '../../types'
 
 const LEAD_SOURCE_ORDER: { value: LeadSource; label: string }[] = [
@@ -27,27 +27,14 @@ const LEAD_SOURCE_ORDER: { value: LeadSource; label: string }[] = [
 ]
 
 export default function ReportsScreen() {
-  const { payments, leads, projects, tasks, isSupabaseReady } = useAppData()
+  const { leads, projects, tasks, mistakes, isSupabaseReady } = useAppData()
 
   // Real revenue collected per month, for the 6 months ending this month —
-  // was previously a hardcoded Jan-Jun sample that never matched the actual date.
-  const BAR_DATA = useMemo(() => {
-    const now = new Date()
-    const months = Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
-      return { key: `${d.getFullYear()}-${d.getMonth()}`, month: d.toLocaleString('en-IN', { month: 'short' }), value: 0 }
-    })
-    const byKey = new Map(months.map(m => [m.key, m]))
-    payments.forEach(p => {
-      p.history.forEach(h => {
-        const d = new Date(h.date)
-        if (isNaN(d.getTime())) return
-        const m = byKey.get(`${d.getFullYear()}-${d.getMonth()}`)
-        if (m) m.value += h.amount
-      })
-    })
-    return months.map(m => ({ month: m.month, value: Math.round(m.value / 1000) }))
-  }, [payments])
+  // computed from actual payment events on task statusHistory (the real
+  // system of record — the separate `payments` collection isn't written to
+  // by the advance/partial/final payment flows and is stale/unmaintained).
+  const BAR_DATA = useMemo(() => getMonthlyRevenue(tasks, 6), [tasks])
+
   const [dateFilter, setDateFilter] = useState<DateFilter>('month')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo,   setCustomTo]   = useState('')
@@ -64,11 +51,15 @@ export default function ReportsScreen() {
     [projects, from, to]
   )
 
-  const totalRevenue      = payments.reduce((s, p) => s + p.received, 0)
-  const totalOutstanding  = payments.reduce((s, p) => s + p.pending, 0)
+  // Revenue collected — sum of every task's actual paidAmount (one evolving
+  // task per project, so this is the true cumulative collected across all
+  // projects). Outstanding — sum of each project's real balance (project
+  // value minus paid), same rule the MD Dashboard's Outstanding card uses.
+  const totalRevenue      = tasks.reduce((s, t) => s + (t.paidAmount ?? 0), 0)
+  const totalOutstanding  = projects.reduce((s, p) => s + getBalanceAmount(p, tasks), 0)
   const activeProjects    = filteredProjects.filter(p => !isCompletedProject(p)).length
   const completedProjects = filteredProjects.filter(isCompletedProject).length
-  const openMistakes      = MISTAKES.filter(m => m.status !== 'resolved').length
+  const openMistakes      = mistakes.filter(m => m.status !== 'resolved').length
   const wonLeads          = filteredLeads.filter(isLeadConverted).length
 
   const maxBar = Math.max(1, ...BAR_DATA.map(b => b.value))
@@ -107,7 +98,9 @@ export default function ReportsScreen() {
     return { label, total, contacted, measurement, quotation, convertedCount, conversionPct, totalValue }
   }).filter(r => r.total > 0)
 
-  if (!isSupabaseReady) {
+  // Cached data (loaded synchronously from localStorage on mount) already
+  // covers a normal refresh — only block when there's truly nothing cached.
+  if (!isSupabaseReady && projects.length === 0 && leads.length === 0) {
     return (
       <div className="min-h-screen bg-slate-50 pb-24 flex items-center justify-center">
         <p className="text-sm text-slate-400 font-semibold">Loading dashboard…</p>
@@ -178,7 +171,7 @@ export default function ReportsScreen() {
         {/* Revenue Bar Chart */}
         <div className="bg-white rounded-2xl shadow-card border border-slate-100 p-4">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-bold text-slate-700">Monthly Revenue (₹L)</p>
+            <p className="text-sm font-bold text-slate-700">Monthly Revenue</p>
             <p className="text-[11px] text-slate-400">Last 6 months</p>
           </div>
           <div className="flex items-end gap-2 h-32">
@@ -190,7 +183,7 @@ export default function ReportsScreen() {
                   </div>
                 </div>
                 <p className="text-[9px] text-slate-400 font-medium">{month}</p>
-                <p className="text-[9px] font-bold text-slate-600">{value}K</p>
+                <p className="text-[9px] font-bold text-slate-600">{formatINR(value)}</p>
               </div>
             ))}
           </div>

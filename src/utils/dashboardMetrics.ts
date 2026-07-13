@@ -78,6 +78,13 @@ export interface CollectionBreakdown {
   total: number
 }
 
+function paymentEventAmount(h: StatusHistoryItem): number {
+  if (h.stage === 'advance_payment' && h.status === 'completed') return parseRupeeAmount(h.note, 'Advance')
+  if (h.stage === 'final_payment' && h.status === 'partial_paid') return parseRupeeAmount(h.note, 'Partial payment')
+  if (h.stage === 'final_payment' && h.status === 'completed') return parseRupeeAmount(h.note, 'Final payment')
+  return 0
+}
+
 export function getCollectionBreakdown(tasks: Task[], from: Date, to: Date): CollectionBreakdown {
   let advance = 0, partial = 0, final = 0
   for (const t of tasks) {
@@ -93,6 +100,31 @@ export function getCollectionBreakdown(tasks: Task[], from: Date, to: Date): Col
     }
   }
   return { advance, partial, final, total: advance + partial + final }
+}
+
+// ─── Monthly revenue, from real payment events (task statusHistory), not a
+// separate/unmaintained payments collection — the 6 months ending this
+// month, current month stopping at today rather than projecting to month-end.
+export interface MonthlyRevenueBucket { month: string; value: number }
+
+export function getMonthlyRevenue(tasks: Task[], monthsBack = 6): MonthlyRevenueBucket[] {
+  const now = new Date()
+  const months = Array.from({ length: monthsBack }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (monthsBack - 1 - i), 1)
+    return { key: `${d.getFullYear()}-${d.getMonth()}`, month: d.toLocaleString('en-IN', { month: 'short' }), value: 0 }
+  })
+  const byKey = new Map(months.map(m => [m.key, m]))
+  for (const t of tasks) {
+    for (const h of t.statusHistory ?? []) {
+      const amount = paymentEventAmount(h)
+      if (amount <= 0) continue
+      const d = new Date(h.updatedAt)
+      if (isNaN(d.getTime())) continue
+      const bucket = byKey.get(`${d.getFullYear()}-${d.getMonth()}`)
+      if (bucket) bucket.value += amount
+    }
+  }
+  return months.map(m => ({ month: m.month, value: m.value }))
 }
 
 // ─── Top dashboard cards ────────────────────────────────────────────────────

@@ -5110,7 +5110,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                               helperText="Upload payment proof / bank screenshot (optional)" />
                             {expensesAndCompletion}
                             <button type="button"
-                              onClick={() => completeProjectWithPayment(paid + balance, 0, `Payment ₹${balance.toLocaleString('en-IN')} received — fully paid`)}
+                              onClick={() => completeProjectWithPayment(paid + balance, 0, `Final payment ₹${balance.toLocaleString('en-IN')} received — fully paid`)}
                               className="w-full py-4 rounded-2xl bg-emerald-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
                               <CheckCircle2 size={15} /> Complete Project
                             </button>

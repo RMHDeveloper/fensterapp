@@ -406,7 +406,10 @@ export default function OwnerDashboardScreen() {
     return 'Select date range'
   }, [dateFilter, from, to, customFrom, customTo])
 
-  if (!isSupabaseReady) {
+  // Cached data (loaded synchronously from localStorage on mount) already
+  // covers a normal refresh — only block on the network fetch when there's
+  // truly nothing to show yet (first-ever visit, empty cache).
+  if (!isSupabaseReady && allProjects.length === 0 && tasks.length === 0) {
     return (
       <div className="min-h-screen bg-[#f8f9fa] pb-24 flex items-center justify-center">
         <AppHeader />

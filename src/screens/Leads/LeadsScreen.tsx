@@ -224,7 +224,6 @@ export default function LeadsScreen() {
   const [editPhone,     setEditPhone]     = useState('')
   const [editEmail,     setEditEmail]     = useState('')
   const [editCity,      setEditCity]      = useState('')
-  const [editReq,       setEditReq]       = useState('')
   const [editNotes,     setEditNotes]     = useState('')
   const [editSource,    setEditSource]    = useState<LeadSource>('cold_call')
   const [editInterest,  setEditInterest]  = useState<LeadInterest>('medium')
@@ -359,7 +358,6 @@ export default function LeadsScreen() {
     setEditPhone(selected.phone)
     setEditEmail(selected.email ?? '')
     setEditCity(selected.city)
-    setEditReq(selected.requirement ?? '')
     setEditNotes(selected.notes ?? '')
     setEditSource(selected.source)
     setEditInterest(selected.interest ?? 'medium')
@@ -377,7 +375,6 @@ export default function LeadsScreen() {
       email:       editEmail.trim() || undefined,
       city:        editCity.trim(),
       location:    editCity.trim(),
-      requirement: editReq.trim() || undefined,
       notes:       editNotes.trim() || undefined,
       source:      editSource,
       interest:    editInterest,
@@ -785,7 +782,6 @@ export default function LeadsScreen() {
               {[
                 { label: 'Phone',       value: selected.phone },
                 { label: 'City',        value: selected.city },
-                { label: 'Requirement', value: selected.requirement },
                 { label: 'Source',      value: SOURCE_LABEL[selected.source] ?? selected.source },
                 ...(selected.followUpDate && selected.followUpDate !== 'TBD'
                   ? [{ label: 'Follow-up', value: `📅 ${selected.followUpDate}` }]
@@ -995,11 +991,6 @@ export default function LeadsScreen() {
             <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Location / City *</label>
             <input type="text" value={editCity} onChange={e => setEditCity(e.target.value)} placeholder="e.g. Anna Nagar, Chennai"
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400" />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Requirement</label>
-            <textarea rows={2} value={editReq} onChange={e => setEditReq(e.target.value)} placeholder="Describe what the client needs…"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Lead Source</label>
