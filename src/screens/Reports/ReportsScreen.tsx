@@ -78,29 +78,27 @@ export default function ReportsScreen() {
     { label: 'Conversion Rate',   value: filteredLeads.length > 0 ? `${Math.round((wonLeads / filteredLeads.length) * 100)}%` : '0%', sub: 'Leads to orders', icon: TrendingUp, color: 'bg-violet-50 text-violet-700' },
   ]
 
-  // Lead Source Conversion — real data from leads/projects, no hardcoded sample values
+  // Lead Source Conversion — real data from leads/projects, no hardcoded sample
+  // values. Each lead is counted in exactly ONE column (its current stage),
+  // not every stage it has ever passed through — a cumulative "reached this
+  // stage or further" count made every column look full for small sources
+  // (e.g. 1 converted lead showed up in Contacted, Measurement, Quotation
+  // AND Converted at once), which read as broken rather than informative.
   const leadSourceRows = LEAD_SOURCE_ORDER.map(({ value, label }) => {
     const sourceLeads = filteredLeads.filter(l => l.source === value)
     const total = sourceLeads.length
-    const contacted = sourceLeads.filter(l => l.status !== 'new').length
-    const measurement = sourceLeads.filter(l => {
-      if (isLeadConverted(l)) return true
-      const bucket = getLeadFlowBucket(l, projects, tasks)
-      return bucket === 'measurement' || bucket === 'quotation' || bucket === 'negotiation'
-    }).length
-    const quotation = sourceLeads.filter(l => {
-      if (isLeadConverted(l)) return true
-      const bucket = getLeadFlowBucket(l, projects, tasks)
-      return bucket === 'quotation' || bucket === 'negotiation'
-    }).length
     const converted = sourceLeads.filter(isLeadConverted)
     const convertedCount = converted.length
+    const contacted   = sourceLeads.filter(l => l.status === 'contacted').length
+    const measurement = sourceLeads.filter(l => getLeadFlowBucket(l, projects, tasks) === 'measurement').length
+    const quotation    = sourceLeads.filter(l => getLeadFlowBucket(l, projects, tasks) === 'quotation').length
+    const negotiation = sourceLeads.filter(l => getLeadFlowBucket(l, projects, tasks) === 'negotiation').length
     const conversionPct = total > 0 ? (convertedCount / total) * 100 : 0
     const totalValue = converted.reduce((s, l) => {
       const proj = projects.find(p => p.leadId === l.id)
       return s + (proj ? (proj.costBreakdown?.quotationAmount ?? proj.quotationAmount ?? proj.value ?? 0) : 0)
     }, 0)
-    return { label, total, contacted, measurement, quotation, convertedCount, conversionPct, totalValue }
+    return { label, total, contacted, measurement, quotation, negotiation, convertedCount, conversionPct, totalValue }
   }).filter(r => r.total > 0)
 
   // Lead Pipeline — same stage vocabulary/logic as the Leads screen's own
@@ -122,9 +120,9 @@ export default function ReportsScreen() {
       ['KPI', 'Value', 'Detail'],
       ...kpiCards.map(k => [k.label, k.value, k.sub]),
       [],
-      ['Lead Source Conversion (reached stage or further)'],
-      ['Source', 'Leads', 'Contacted', 'Measurement', 'Quotation', 'Converted', 'Conversion %', 'Converted Value (Rs)'],
-      ...leadSourceRows.map(r => [r.label, r.total, r.contacted, r.measurement, r.quotation, r.convertedCount, r.conversionPct.toFixed(0), r.totalValue]),
+      ['Lead Source Conversion (current stage)'],
+      ['Source', 'Leads', 'Contacted', 'Measurement', 'Quotation', 'Negotiation', 'Converted', 'Conversion %', 'Converted Value (Rs)'],
+      ...leadSourceRows.map(r => [r.label, r.total, r.contacted, r.measurement, r.quotation, r.negotiation, r.convertedCount, r.conversionPct.toFixed(0), r.totalValue]),
       [],
       ['Lead Pipeline (current stage)'],
       ['Stage', 'Leads'],
@@ -238,23 +236,23 @@ export default function ReportsScreen() {
         {/* Lead Source Conversion */}
         <div className="bg-white rounded-2xl shadow-card border border-slate-100 p-4">
           <p className="text-sm font-bold text-slate-700">Lead Source Conversion</p>
-          <p className="text-[11px] text-slate-400 mb-4">Leads that reached each stage or further</p>
+          <p className="text-[11px] text-slate-400 mb-4">Current stage of each lead, by source</p>
           {leadSourceRows.length === 0 ? (
             <p className="text-xs text-slate-400 italic">No leads yet</p>
           ) : (
             <div className="space-y-3">
-              {leadSourceRows.map(({ label, total, contacted, measurement, quotation, convertedCount, conversionPct, totalValue }) => (
+              {leadSourceRows.map(({ label, total, contacted, measurement, quotation, negotiation, convertedCount, conversionPct, totalValue }) => (
                 <div key={label} className="border border-slate-100 rounded-xl p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-slate-700">{label}</span>
-                    <span className="text-xs font-extrabold text-emerald-600">{conversionPct.toFixed(0)}%</span>
+                    <span className="text-xs font-bold text-slate-700">{label} <span className="text-slate-400 font-semibold">· {total} lead{total !== 1 ? 's' : ''}</span></span>
+                    <span className="text-xs font-extrabold text-emerald-600">{conversionPct.toFixed(0)}% converted</span>
                   </div>
                   <div className="grid grid-cols-5 gap-1.5 text-center">
                     {[
-                      { l: 'Leads',       v: total },
                       { l: 'Contacted',   v: contacted },
                       { l: 'Measurement', v: measurement },
                       { l: 'Quotation',   v: quotation },
+                      { l: 'Negotiation', v: negotiation },
                       { l: 'Converted',   v: convertedCount },
                     ].map(({ l, v }) => (
                       <div key={l} className="bg-slate-50 rounded-lg py-1.5">
