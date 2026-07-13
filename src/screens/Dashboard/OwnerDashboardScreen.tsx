@@ -298,7 +298,7 @@ function EditTargetsModal({ targets, onClose, onSaved }: { targets: DashboardTar
 export default function OwnerDashboardScreen() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { projects: allProjects, tasks, leads, mistakes, isSupabaseReady } = useAppData()
+  const { projects: allProjects, tasks, leads, mistakes, isSupabaseReady, syncError } = useAppData()
   // Not yet converted from their lead — stay off the MD dashboard until the LM converts them
   const projects = allProjects.filter(p => !p.pendingConversion)
 
@@ -421,6 +421,12 @@ export default function OwnerDashboardScreen() {
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-24">
       <AppHeader />
+
+      {syncError && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center">
+          <p className="text-[11px] font-semibold text-amber-700">Couldn't refresh from the server — showing last saved data.</p>
+        </div>
+      )}
 
       {/* Date filter */}
       <div className="bg-white border-b border-slate-100 px-4 pt-3 pb-2 sticky top-14 z-20 space-y-2">

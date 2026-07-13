@@ -27,7 +27,7 @@ const LEAD_SOURCE_ORDER: { value: LeadSource; label: string }[] = [
 ]
 
 export default function ReportsScreen() {
-  const { leads, projects, tasks, mistakes, isSupabaseReady } = useAppData()
+  const { leads, projects, tasks, mistakes, isSupabaseReady, syncError } = useAppData()
 
   // Real revenue collected per month, for the 6 months ending this month —
   // computed from actual payment events on task statusHistory (the real
@@ -111,6 +111,11 @@ export default function ReportsScreen() {
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
       <AppHeader />
+      {syncError && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center">
+          <p className="text-[11px] font-semibold text-amber-700">Couldn't refresh from the server — showing last saved data.</p>
+        </div>
+      )}
       {/* Sub-header */}
       <div className="bg-white px-5 pt-4 pb-4 border-b border-slate-100">
         <div className="flex items-center justify-between">

@@ -28,6 +28,7 @@ interface AppDataContextValue {
   mistakes:           Mistake[]
   isSyncing:          boolean
   isSupabaseReady:    boolean
+  syncError:          string | null
 
   updateTaskStatus:      (taskId: string, status: TaskStatus, note?: string, proofFiles?: string[]) => void
   updateTask:            (taskId: string, updates: Partial<Task>) => void
@@ -52,8 +53,11 @@ const AppDataContext = createContext<AppDataContextValue | null>(null)
 // Last-known-good snapshot of everything Supabase feeds — read on mount so a
 // refresh shows real (if briefly stale) numbers instead of empty/zero cards
 // while the network fetch is still in flight, and survives a fetch that
-// fails outright. Overwritten every time refetchAll succeeds.
-const DATA_CACHE_KEY = 'fenster_data_cache'
+// fails outright or a Supabase read that comes back suspiciously empty
+// (e.g. an RLS policy silently filtering out every row). Deliberately named
+// outside the `fenster_` prefix — runMigrations() wipes any key matching
+// that prefix on an app-version bump, which would otherwise nuke this cache.
+const DATA_CACHE_KEY = 'fc_data_cache'
 interface DataCacheShape {
   tasks: Task[]; production: ProductionItem[]; leads: Lead[]
   payments: Payment[]; projects: Project[]; mistakes: Mistake[]
@@ -68,6 +72,18 @@ function saveDataCache(data: DataCacheShape) {
   try { window.localStorage.setItem(DATA_CACHE_KEY, JSON.stringify(data)) } catch { /* storage unavailable */ }
 }
 
+// A Supabase read that comes back empty when we already had real cached data
+// is more likely a transient/RLS/permission problem than every record having
+// genuinely vanished — keep showing the last-known-good list instead of
+// clobbering it with an empty one, and flag it so it's visible, not silent.
+function pickOrKeep<T>(fresh: T[], current: T[], label: string): T[] {
+  if (fresh.length === 0 && current.length > 0) {
+    console.warn(`[Fenster] Supabase returned 0 ${label} but ${current.length} were cached — keeping cached data. Check RLS policies / anon role permissions.`)
+    return current
+  }
+  return fresh
+}
+
 export function AppDataProvider({ children }: { children: ReactNode }) {
   runMigrations()
 
@@ -79,25 +95,36 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [mistakes,   setMistakes]   = useState<Mistake[]>(() => loadDataCache().mistakes ?? [])
   const [isSyncing,  setIsSyncing]  = useState(false)
   const [isSupabaseReady, setIsSupabaseReady] = useState(false)
+  const [syncError, setSyncError]   = useState<string | null>(null)
 
   // Track latest state in refs for use inside realtime callbacks
-  const projectsRef = useRef(projects)
-  const tasksRef    = useRef(tasks)
-  const leadsRef    = useRef(leads)
-  const paymentsRef = useRef(payments)
-  const mistakesRef = useRef(mistakes)
-  useEffect(() => { projectsRef.current = projects }, [projects])
-  useEffect(() => { tasksRef.current    = tasks    }, [tasks])
-  useEffect(() => { leadsRef.current    = leads    }, [leads])
-  useEffect(() => { paymentsRef.current = payments }, [payments])
-  useEffect(() => { mistakesRef.current = mistakes }, [mistakes])
+  const projectsRef   = useRef(projects)
+  const tasksRef      = useRef(tasks)
+  const leadsRef       = useRef(leads)
+  const paymentsRef    = useRef(payments)
+  const mistakesRef    = useRef(mistakes)
+  const productionRef  = useRef(production)
+  useEffect(() => { projectsRef.current   = projects   }, [projects])
+  useEffect(() => { tasksRef.current      = tasks      }, [tasks])
+  useEffect(() => { leadsRef.current      = leads      }, [leads])
+  useEffect(() => { paymentsRef.current   = payments   }, [payments])
+  useEffect(() => { mistakesRef.current   = mistakes   }, [mistakes])
+  useEffect(() => { productionRef.current = production }, [production])
+
+  // Write-through cache — persists on every change to this data, not just
+  // after a refetchAll(), so anything the user has seen/added is available
+  // immediately on the next load regardless of what the next Supabase
+  // request does.
+  useEffect(() => {
+    saveDataCache({ tasks, production, leads, payments, projects, mistakes })
+  }, [tasks, production, leads, payments, projects, mistakes])
 
   // ── Supabase: initial fetch + realtime ────────────────────────────────────
   async function refetchAll(): Promise<void> {
     if (!isSupabaseConfigured) return
     setIsSyncing(true)
     try {
-      const [sbProjects, sbTasks, sbLeads, sbPayments, sbMistakes, sbProduction] = await Promise.all([
+      const [rawProjects, rawTasks, rawLeads, rawPayments, rawMistakes, rawProduction] = await Promise.all([
         getAllProjects(),
         getAllTasks(),
         getAllLeads(),
@@ -105,6 +132,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         getAllMistakes(),
         getAllProduction(),
       ])
+
+      // A read that comes back empty when we already had real data is more
+      // likely RLS/permissions/a transient blip than everything genuinely
+      // having vanished — keep the last-known-good list in that case.
+      const sbProjects   = pickOrKeep(rawProjects,   projectsRef.current,   'projects')
+      const sbTasks      = pickOrKeep(rawTasks,      tasksRef.current,      'tasks')
+      const sbLeads      = pickOrKeep(rawLeads,      leadsRef.current,      'leads')
+      const sbPayments   = pickOrKeep(rawPayments,   paymentsRef.current,   'payments')
+      const sbMistakes   = pickOrKeep(rawMistakes,   mistakesRef.current,   'mistakes')
+      const sbProduction = pickOrKeep(rawProduction, productionRef.current, 'production items')
+
       // Backfill: push costBreakdown from task → project for existing records
       const backfilledProjects = sbProjects.map(p => {
         if (p.costBreakdown) return p
@@ -138,12 +176,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setPayments(sbPayments)
       setMistakes(sbMistakes)
       setProduction(sbProduction)
-      saveDataCache({
-        projects: backfilledProjects, tasks: sbTasks, leads: healedLeads,
-        payments: sbPayments, mistakes: sbMistakes, production: sbProduction,
-      })
+      setSyncError(null)
     } catch (err) {
       console.warn('[Fenster] Supabase fetch error:', err)
+      setSyncError(err instanceof Error ? err.message : 'Could not refresh from the server')
     } finally {
       setIsSyncing(false)
     }
@@ -453,7 +489,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   return (
     <AppDataContext.Provider value={{
       tasks, production, leads, payments, projects, mistakes,
-      isSyncing, isSupabaseReady,
+      isSyncing, isSupabaseReady, syncError,
       updateTaskStatus, updateTask, updateProductionStage, updateProject,
       addLead, updateLeadStatus, updateLead, deleteLead,
       updatePaymentAmount, addTask, addProject, addMistake, updateMistake, resetAllData,
