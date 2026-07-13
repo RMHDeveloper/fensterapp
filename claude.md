@@ -68,4 +68,4 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - This applies even if a previous round in the same session was pushed after approval — ask again each time.
 
 ----
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes..
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.....
