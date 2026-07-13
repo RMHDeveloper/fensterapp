@@ -1,5 +1,5 @@
 import type { ManagedUser, UserRole } from '../types'
-import { getAllManagedUsers, upsertManagedUsers } from '../services/userService'
+import { getAllManagedUsers, upsertManagedUsers, upsertManagedUser } from '../services/userService'
 
 let _cache: ManagedUser[] = []
 
@@ -10,6 +10,14 @@ export function loadManagedUsers(): ManagedUser[] {
 export function saveManagedUsers(users: ManagedUser[]): void {
   _cache = users
   upsertManagedUsers(users).catch(() => {})
+}
+
+// Updates a single user's own profile (name/photo) — unlike saveManagedUsers,
+// only sends this one row remotely rather than re-upserting every cached user,
+// since a non-owner session is only ever allowed to write its own row under RLS.
+export function updateManagedUserProfile(updated: ManagedUser): void {
+  _cache = _cache.map(u => u.id === updated.id ? updated : u)
+  upsertManagedUser(updated).catch(() => {})
 }
 
 // One-time migration: seeded production accounts' mobile numbers were

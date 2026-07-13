@@ -13,7 +13,7 @@ import {
   DISPLAY_ROLES,
   DISPLAY_ROLE_TO_INTERNAL,
 } from '../../utils/userStorage'
-import { getAllManagedUsers } from '../../services/userService'
+import { getAllManagedUsers, syncManagedUserAuth } from '../../services/userService'
 import { isSupabaseConfigured } from '../../lib/supabase'
 import { getRoleDisplayLabel } from '../../data/permissions'
 import { hasRole } from '../../utils/permissions'
@@ -142,7 +142,7 @@ export default function UserManagementScreen() {
     return Object.keys(errs).length === 0
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!validate()) return
     const now = new Date().toISOString()
     // First selected role stays the "primary" role — drives nav layout and
@@ -151,6 +151,12 @@ export default function UserManagementScreen() {
     const internalRole: UserRole = DISPLAY_ROLE_TO_INTERNAL[primaryDisplayRole] ?? 'viewer'
     const internalRoles: UserRole[] = [...new Set(form.displayRoles.map(r => DISPLAY_ROLE_TO_INTERNAL[r] ?? 'viewer'))]
     let updated: ManagedUser[]
+
+    // Only re-sync the Supabase Auth account when the login-relevant fields actually changed.
+    const credentialsChanged = !editUser
+      || editUser.mobile !== form.mobile.trim()
+      || editUser.password !== form.password.trim()
+    const syncTargetId = editUser?.id ?? `managed_${Date.now()}`
 
     if (editUser) {
       updated = users.map(u =>
@@ -172,10 +178,9 @@ export default function UserManagementScreen() {
             }
           : u
       )
-      setSnack({ open: true, msg: 'User updated successfully', type: 'success' })
     } else {
       const newUser: ManagedUser = {
-        id:           `managed_${Date.now()}`,
+        id:           syncTargetId,
         fullName:     form.fullName.trim(),
         mobile:       form.mobile.trim(),
         email:        form.email.trim().toLowerCase(),
@@ -193,12 +198,25 @@ export default function UserManagementScreen() {
         updatedAt:    now,
       }
       updated = [...users, newUser]
-      setSnack({ open: true, msg: 'User created successfully', type: 'success' })
     }
 
     saveManagedUsers(updated)
     setUsers(updated)
     setShowForm(false)
+
+    const successMsg = editUser ? 'User updated successfully' : 'User created successfully'
+    if (credentialsChanged) {
+      const result = await syncManagedUserAuth(syncTargetId, form.mobile.trim(), form.password.trim())
+      if (!result.ok) {
+        setSnack({
+          open: true,
+          msg: `${successMsg}, but login sync failed (${result.error ?? 'unknown error'}) — they may not be able to log in yet.`,
+          type: 'error',
+        })
+        return
+      }
+    }
+    setSnack({ open: true, msg: successMsg, type: 'success' })
   }
 
   function toggleStatus(u: ManagedUser) {

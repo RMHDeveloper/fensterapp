@@ -10,7 +10,11 @@
     "db:setup": "node --env-file=.env.local scripts/setup-supabase.mjs",
     "db:setup-production-table": "node --env-file=.env.local scripts/setup-production-table.mjs",
     "db:setup-files-table": "node --env-file=.env.local scripts/setup-files-table.mjs",
-    "db:setup-dashboard-targets-table": "node --env-file=.env.local scripts/setup-dashboard-targets-table.mjs"
+    "db:setup-dashboard-targets-table": "node --env-file=.env.local scripts/setup-dashboard-targets-table.mjs",
+    "db:auth-migration": "node --env-file=.env.local scripts/run-sql.mjs supabase/auth-migration.sql",
+    "db:migrate-users-to-auth": "node --env-file=.env.local --use-system-ca scripts/migrate-users-to-auth.mjs",
+    "db:rls-authenticated": "node --env-file=.env.local scripts/run-sql.mjs supabase/rls-authenticated-policies.sql",
+    "db:rls-drop-anon": "node --env-file=.env.local scripts/run-sql.mjs supabase/rls-drop-anon.sql"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",

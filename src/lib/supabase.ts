@@ -8,6 +8,10 @@ let _client: SupabaseClient | null = null
 if (url && key) {
   _client = createClient(url, key, {
     realtime: { params: { eventsPerSecond: 10 } },
+    // Matches the previous custom-session behavior (logged out when the tab/browser
+    // fully closes) rather than Supabase's localStorage default, which would persist
+    // login across browser restarts — not something we changed on purpose.
+    auth: { storage: window.sessionStorage, persistSession: true, autoRefreshToken: true },
   })
 } else {
   console.warn(

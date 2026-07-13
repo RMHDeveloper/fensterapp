@@ -13,14 +13,14 @@ export default function LoginScreen() {
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
     if (!phone.trim())      { setError('Please enter your phone number.'); return }
     if (phone.length !== 10) { setError('Enter a valid 10-digit phone number.'); return }
     if (!password)          { setError('Please enter your password.'); return }
     setLoading(true)
-    const result = loginWithCredentials(phone, password)
+    const result = await loginWithCredentials(phone, password)
     setLoading(false)
     if (!result.success) {
       setError(result.error ?? 'Invalid phone number or password.')

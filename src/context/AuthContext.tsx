@@ -1,10 +1,10 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
-import type { AuthUser, UserRole, Permission } from '../types'
+import type { AuthUser, ManagedUser, Permission } from '../types'
 import { hasPermission } from '../utils/permissions'
-import { authenticateUser } from '../data/mockUsers'
+import { syntheticEmailFromMobile } from '../utils/authIdentity'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { getManagedUserByAuthId } from '../services/userService'
 import { initUsersFromSupabase } from '../utils/userStorage'
-
-const SESSION_KEY = 'fenster_session'
 
 export interface LoginResult {
   success: boolean
@@ -15,7 +15,7 @@ interface AuthContextValue {
   user:                 AuthUser | null
   isLoggedIn:           boolean
   isAuthReady:          boolean
-  loginWithCredentials: (mobile: string, password: string) => LoginResult
+  loginWithCredentials: (mobile: string, password: string) => Promise<LoginResult>
   logout:               () => void
   can:                  (permission: Permission) => boolean
   updateProfile:        (updates: Partial<Pick<AuthUser, 'name' | 'photo'>>) => void
@@ -23,55 +23,76 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+function toAuthUser(m: ManagedUser): AuthUser {
+  const initials = m.fullName.split(' ').map(w => w[0] ?? '').join('').slice(0, 2).toUpperCase()
+  // installation_incharge is a legacy alias — normalize to technician (identical permissions either way)
+  const role = (m.role as string) === 'installation_incharge' ? 'technician' : m.role
+  return {
+    id: m.id, role, name: m.fullName, initials, email: m.email,
+    displayRole: m.displayRole, roles: m.roles,
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthReady, setIsAuthReady] = useState(false)
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    try {
-      const saved = sessionStorage.getItem(SESSION_KEY)
-      if (!saved) return null
-      const parsed = JSON.parse(saved) as AuthUser
-      if (parsed && (parsed.role as string) === 'installation_incharge') {
-        return { ...parsed, role: 'technician' }
-      }
-      return parsed
-    } catch { return null }
-  })
+  const [user, setUser] = useState<AuthUser | null>(null)
 
   useEffect(() => {
-    initUsersFromSupabase().finally(() => setIsAuthReady(true))
+    let cancelled = false
+
+    async function loadProfileForSession(authUserId: string): Promise<void> {
+      const managed = await getManagedUserByAuthId(authUserId)
+      if (cancelled) return
+      if (!managed || managed.status !== 'active') {
+        setUser(null)
+        await supabase?.auth.signOut()
+        return
+      }
+      setUser(toAuthUser(managed))
+    }
+
+    async function init() {
+      await initUsersFromSupabase().catch(() => {})
+      if (!isSupabaseConfigured || !supabase) { if (!cancelled) setIsAuthReady(true); return }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) await loadProfileForSession(session.user.id)
+      if (!cancelled) setIsAuthReady(true)
+
+      supabase.auth.onAuthStateChange((_event, newSession) => {
+        if (cancelled) return
+        if (newSession) loadProfileForSession(newSession.user.id)
+        else setUser(null)
+      })
+    }
+    init()
+
+    return () => { cancelled = true }
   }, [])
 
-  useEffect(() => {
-    try {
-      if (user) sessionStorage.setItem(SESSION_KEY, JSON.stringify(user))
-      else sessionStorage.removeItem(SESSION_KEY)
-    } catch {}
-  }, [user])
-
-  function loginWithCredentials(mobile: string, password: string): LoginResult {
-    const result = authenticateUser(mobile, password)
-    if (!result.ok) {
-      if (result.reason === 'inactive') {
-        return { success: false, error: 'This user is inactive. Please contact Admin.' }
-      }
+  async function loginWithCredentials(mobile: string, password: string): Promise<LoginResult> {
+    if (!supabase) return { success: false, error: 'Not configured.' }
+    const email = syntheticEmailFromMobile(mobile)
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error || !data.session) {
       return { success: false, error: 'Invalid phone number or password.' }
     }
-    const account = result.user
-    setUser({
-      id:          account.id,
-      role:        account.role as UserRole,
-      name:        account.name,
-      initials:    account.initials,
-      email:       account.email,
-      displayRole: account.displayRole,
-      roles:       account.roles,
-    })
+    const managed = await getManagedUserByAuthId(data.session.user.id)
+    if (!managed) {
+      await supabase.auth.signOut()
+      return { success: false, error: 'Invalid phone number or password.' }
+    }
+    if (managed.status === 'inactive') {
+      await supabase.auth.signOut()
+      return { success: false, error: 'This user is inactive. Please contact Admin.' }
+    }
+    setUser(toAuthUser(managed))
     return { success: true }
   }
 
   function logout() {
     setUser(null)
-    sessionStorage.removeItem(SESSION_KEY)
+    supabase?.auth.signOut()
   }
 
   function can(permission: Permission): boolean {

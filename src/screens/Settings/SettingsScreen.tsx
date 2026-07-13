@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useAppData } from '../../context/AppDataContext'
 import { hasRole } from '../../utils/permissions'
-import { loadManagedUsers, saveManagedUsers } from '../../utils/userStorage'
+import { loadManagedUsers, updateManagedUserProfile } from '../../utils/userStorage'
+import { supabase } from '../../lib/supabase'
 import { storeFile } from '../../utils/fileStorage'
 import { migrateFromLocalStorage, hasLocalStorageData } from '../../utils/migrateFromLocalStorage'
 import { getRoleDisplayLabel } from '../../data/permissions'
@@ -85,18 +86,20 @@ export default function SettingsScreen() {
 
       updateProfile(updates)
 
-      // Persist name/password changes to managed user cache + Supabase
-      if (user?.email && (updates.name || editPass)) {
+      // Password changes go straight to Supabase Auth (self-service — no
+      // service role / admin function needed for changing your own password).
+      if (editPass && supabase) {
+        const { error: pwError } = await supabase.auth.updateUser({ password: editPass })
+        if (pwError) throw new Error(pwError.message)
+      }
+
+      // Name changes persist to this user's own managed-user row only (never
+      // the whole cached list — a non-owner session can only write its own row).
+      if (user?.email && updates.name) {
         const managed = loadManagedUsers()
         const idx = managed.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase())
         if (idx !== -1) {
-          managed[idx] = {
-            ...managed[idx],
-            ...(updates.name ? { fullName: updates.name } : {}),
-            ...(editPass     ? { password: editPass }     : {}),
-            updatedAt: new Date().toISOString(),
-          }
-          saveManagedUsers(managed)
+          updateManagedUserProfile({ ...managed[idx], fullName: updates.name, updatedAt: new Date().toISOString() })
         }
       }
 

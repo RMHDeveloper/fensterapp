@@ -11,6 +11,7 @@ import {
   onLabourAssigned,
 } from '../utils/workflow'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { useAuth } from './AuthContext'
 import { getAllProjects, upsertProject, deleteProject } from '../services/projectService'
 import { getAllTasks, upsertTask, deleteTasksByProject } from '../services/taskService'
 import { getAllLeads, upsertLead, deleteLead as deleteLeadRecord } from '../services/leadService'
@@ -87,6 +88,7 @@ function pickOrKeep<T>(fresh: T[], current: T[], label: string): T[] {
 export function AppDataProvider({ children }: { children: ReactNode }) {
   runMigrations()
 
+  const { isLoggedIn, isAuthReady } = useAuth()
   const [tasks,      setTasks]      = useState<Task[]>(() => loadDataCache().tasks ?? [])
   const [production, setProduction] = useState<ProductionItem[]>(() => loadDataCache().production ?? [])
   const [leads,      setLeads]      = useState<Lead[]>(() => loadDataCache().leads ?? [])
@@ -186,7 +188,19 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    // Auth state hasn't resolved yet — wait rather than briefly clearing cached data.
+    if (!isAuthReady) return
+
     if (!isSupabaseConfigured) { setIsSupabaseReady(true); return }
+
+    // Logged out — nothing is fetchable under session-scoped RLS. Clear any
+    // previously-loaded data so a different user logging in next doesn't
+    // briefly see the last user's cached rows.
+    if (!isLoggedIn) {
+      setTasks([]); setProduction([]); setLeads([]); setPayments([]); setProjects([]); setMistakes([])
+      setIsSupabaseReady(true)
+      return
+    }
 
     // Initial fetch from Supabase
     refetchAll().then(() => setIsSupabaseReady(true))
@@ -298,7 +312,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       clearInterval(pollInterval)
       window.removeEventListener('focus', handleFocus)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAuthReady, isLoggedIn]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Write functions ───────────────────────────────────────────────────────
 
