@@ -168,14 +168,14 @@ export default function TaskDetailScreen() {
 
         {/* Info card */}
         <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
-          {task.customer && (
+          {(task.customer || task.clientName) && (
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
                 <span className="text-lg" aria-hidden="true">👤</span>
               </div>
               <div className="flex-1">
                 <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Customer</p>
-                <p className="text-base font-bold text-slate-800">{task.customer}</p>
+                <p className="text-base font-bold text-slate-800">{task.customer ?? task.clientName}</p>
               </div>
               {hasPhone && (
                 <a href="tel:9876543210"
@@ -370,7 +370,7 @@ export default function TaskDetailScreen() {
           onClose={() => setShowStatus(false)}
           onSave={handleStatusSave}
           taskTitle={task.title}
-          taskMeta={task.customer ?? task.projectName}
+          taskMeta={task.customer ?? task.clientName ?? task.projectName}
           currentStatus={status}
           allowedStatuses={getStatusesForRole(taskTypeToModule(task.type), (user?.role ?? 'viewer') as UserRole)}
           requiredProofType={task.requiredProofType}

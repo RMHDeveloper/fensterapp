@@ -77,7 +77,7 @@ export function TaskCard({ task, onClick, onAction, compact = false }: Props) {
               {task.title}
             </p>
             <p className="text-xs text-slate-400 mt-0.5 truncate">
-              {task.customer ?? task.projectName} {task.dueTime ? `· ${task.dueTime}` : ''}
+              {task.customer ?? task.clientName ?? task.projectName} {task.dueTime ? `· ${task.dueTime}` : ''}
             </p>
           </div>
           <ChevronRight size={16} className="text-slate-300 flex-shrink-0" />
@@ -130,12 +130,12 @@ export function TaskCard({ task, onClick, onAction, compact = false }: Props) {
         </h3>
 
         {/* Customer + Project */}
-        {(task.customer || task.projectName) && (
+        {(task.customer || task.clientName || task.projectName) && (
           <div className="bg-slate-50 rounded-xl px-3 py-2.5 mb-3 space-y-1.5">
-            {task.customer && (
+            {(task.customer || task.clientName) && (
               <div className="flex items-center gap-2">
                 <span className="text-[13px]">👤</span>
-                <span className="text-sm font-semibold text-slate-700">{task.customer}</span>
+                <span className="text-sm font-semibold text-slate-700">{task.customer ?? task.clientName}</span>
               </div>
             )}
             {task.projectName && (

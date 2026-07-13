@@ -86,8 +86,8 @@ export function WorkflowStatusSheet({ isOpen, onClose, task, role, onComplete }:
         <div className="px-5 py-4 space-y-5 pb-8">
           {/* Task context */}
           <div className="bg-slate-50 rounded-2xl p-4">
-            {task.projectName && (
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{task.projectName}</p>
+            {(task.projectName || task.clientName) && (
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{task.projectName || task.clientName}</p>
             )}
             <p className="text-sm font-bold text-slate-800">{task.title}</p>
             {task.workerName && (
