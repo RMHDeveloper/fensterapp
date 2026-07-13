@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Wrench, Plus, MapPin } from 'lucide-react'
 import { INSTALLATIONS } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
+import { hasRole } from '../../utils/permissions'
 import { StatusBadge } from '../../components/badges/StatusBadge'
 import { BottomSheet } from '../../components/feedback/BottomSheet'
 import { Snackbar } from '../../components/feedback/Snackbar'
@@ -20,7 +21,10 @@ const CHIPS: { value: Filter; label: string }[] = [
 ]
 
 export default function InstallationScreen() {
-  const { can } = useAuth()
+  const { user, can } = useAuth()
+  // Assigning/scheduling a new installation is an LO/MD-owner action per prdrole.md
+  // ("Installation ✅ Assign") — distinct from technicians updating status on one already assigned to them.
+  const canSchedule = hasRole(user, 'owner') || hasRole(user, 'lead_manager')
   const [filter, setFilter] = useState<Filter>('all')
   const [selected, setSelected] = useState<Installation | null>(null)
   const [showNew, setShowNew] = useState(false)
@@ -44,10 +48,12 @@ export default function InstallationScreen() {
               <p className="text-xs text-slate-500">{scheduled} upcoming · {completed} completed</p>
             </div>
           </div>
-          <button onClick={() => setShowNew(true)}
-            className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-fab active:bg-indigo-700">
-            <Plus size={19} className="text-white" strokeWidth={2.5} />
-          </button>
+          {canSchedule && (
+            <button onClick={() => setShowNew(true)}
+              className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-fab active:bg-indigo-700">
+              <Plus size={19} className="text-white" strokeWidth={2.5} />
+            </button>
+          )}
         </div>
 
         {/* Filter chips */}
@@ -144,7 +150,7 @@ export default function InstallationScreen() {
       </BottomSheet>
 
       {/* Schedule Sheet */}
-      <BottomSheet isOpen={showNew} onClose={() => setShowNew(false)} title="Schedule Installation" height="full">
+      <BottomSheet isOpen={canSchedule && showNew} onClose={() => setShowNew(false)} title="Schedule Installation" height="full">
         <div className="space-y-4">
           {[
             { label: 'Project *', placeholder: 'Select project' },

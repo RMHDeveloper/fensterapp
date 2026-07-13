@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Plus, UserPlus, HardHat, Phone, Pencil, FileDown, FileUp, Upload, Ban, Trash2 } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
+import { hasRole } from '../../utils/permissions'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { PermissionGate } from '../../components/layout/PermissionGate'
 import { StatusBadge } from '../../components/badges/StatusBadge'
@@ -145,9 +146,9 @@ export default function LeadsScreen() {
 
   const isMdEd = user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED')
   const isMD   = user?.displayRole?.includes('MD') ?? false
-  const isLO   = user?.role === 'lead_manager'
+  const isLO   = hasRole(user, 'lead_manager')
   const canEditLead  = isMdEd || isLO
-  const canExport    = user?.role === 'owner' || user?.role === 'lead_manager' || user?.role === 'production_admin'
+  const canExport    = hasRole(user, 'owner') || hasRole(user, 'lead_manager')
   const leadManagers = loadManagedUsers()
     .filter(u => u.status === 'active' && u.role === 'lead_manager')
     .map(u => u.fullName)
@@ -231,7 +232,7 @@ export default function LeadsScreen() {
 
 
   const filtered = leads.filter(l => {
-    if (user?.role === 'lead_manager' && l.assignee && l.assignee !== user.name) return false
+    if (user && hasRole(user, 'lead_manager') && l.assignee && l.assignee !== user.name) return false
     const matchSearch = !search
       || l.name.toLowerCase().includes(search.toLowerCase())
       || l.phone.includes(search)
@@ -415,8 +416,8 @@ export default function LeadsScreen() {
     const name = `${lead.name} Project`
 
     const assigneeUser = loadManagedUsers().find(u => u.fullName === lead.assignee)
-    const ownerId   = user?.role === 'lead_manager' ? user.id   : assigneeUser?.id
-    const ownerName = user?.role === 'lead_manager' ? user.name : (assigneeUser?.fullName ?? lead.assignee)
+    const ownerId   = user && hasRole(user, 'lead_manager') ? user.id   : assigneeUser?.id
+    const ownerName = user && hasRole(user, 'lead_manager') ? user.name : (assigneeUser?.fullName ?? lead.assignee)
 
     const projectId = addProject({
       number:       `FC-${String(Date.now()).slice(-4)}`,
@@ -664,7 +665,7 @@ export default function LeadsScreen() {
                     {lead.interest && <InterestBadge interest={lead.interest} />}
                   </div>
                   {/* Lead Owner — visible to MD/ED/Admin only */}
-                  {user?.role === 'owner' && lead.assignee && (
+                  {hasRole(user, 'owner') && lead.assignee && (
                     <p className="text-[11px] text-indigo-500 font-semibold mb-1">Lead Owner: {lead.assignee}</p>
                   )}
                   {/* Requirement */}

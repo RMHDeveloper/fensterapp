@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, Plus, User, ChevronDown } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
+import { hasRole } from '../../utils/permissions'
 import { StatusBadge } from '../../components/badges/StatusBadge'
 import { PriorityBadge } from '../../components/badges/PriorityBadge'
 import { BottomSheet } from '../../components/feedback/BottomSheet'
@@ -58,9 +59,9 @@ export default function MistakesScreen() {
   const [fAssign,   setFAssign]   = useState('')
 
   const managedUsers = loadManagedUsers().filter(u => u.status === 'active')
-  const isManager    = user?.role === 'owner' || user?.role === 'lead_manager'
+  const isManager    = hasRole(user, 'owner') || hasRole(user, 'lead_manager')
 
-  const myProjectIds = user?.role === 'lead_manager'
+  const myProjectIds = user && hasRole(user, 'lead_manager')
     ? new Set(projects.filter(p => p.ownerId === user.id).map(p => p.id))
     : null
 

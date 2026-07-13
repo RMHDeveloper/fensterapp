@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, MapPin, Clock, Phone, RefreshCw, MessageSquare, History, FileX } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
+import { hasRole } from '../../utils/permissions'
 import { StatusUpdateSheet } from '../../components/feedback/StatusUpdateSheet'
 import { WorkflowStatusSheet } from './WorkflowStatusSheet'
 import { ProofBadge } from '../../components/badges/ProofBadge'
@@ -53,8 +54,8 @@ export default function TaskDetailScreen() {
     )
   }
 
-  const isViewer = user?.role === 'viewer'
-  const canEdit  = user?.role === 'owner' || user?.role === 'lead_manager' ||
+  const isViewer = hasRole(user, 'viewer')
+  const canEdit  = hasRole(user, 'owner') || hasRole(user, 'lead_manager') ||
     task.assignedTo === user?.name || task.assignedTo === user?.id ||
     task.assignee   === user?.name || task.assignee   === user?.id
   const isDone   = status === 'completed'

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Check, X as XIcon } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { hasRole } from '../../utils/permissions'
 import { AppHeader } from '../../components/layout/AppHeader'
 import { BackButton } from '../../components/layout/BackButton'
 import { BottomSheet } from '../../components/feedback/BottomSheet'
@@ -20,7 +21,7 @@ const lbl = 'text-xs font-semibold text-slate-500 mb-1.5 block'
 
 export default function LeaveApplicationScreen() {
   const { user } = useAuth()
-  const isTechnician = user?.role === 'technician' || user?.role === 'installation_incharge'
+  const isTechnician = hasRole(user, 'technician') || hasRole(user, 'installation_incharge')
   const [leaves, setLeaves] = useState<LeaveApplication[]>(loadLeaveApplications())
   const [showNew, setShowNew] = useState(false)
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FolderOpen, FileDown } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
+import { hasRole } from '../../utils/permissions'
 import { ProjectRow } from '../../components/cards/ProjectRow'
 import { FilterChips } from '../../components/forms/FilterChips'
 import { SearchBar } from '../../components/forms/SearchBar'
@@ -147,8 +148,8 @@ export default function ProjectsScreen() {
   function handleCreate() {
     if (!fCustomer.trim() || !fPhone.trim() || !fName.trim() || !fLocation.trim()) return
 
-    const ownerId   = user?.role === 'lead_manager' ? user.id   : (fLeadOwner || undefined)
-    const ownerName = user?.role === 'lead_manager' ? user.name : (leadManagers.find(u => u.id === fLeadOwner)?.fullName || undefined)
+    const ownerId   = user && hasRole(user, 'lead_manager') ? user.id   : (fLeadOwner || undefined)
+    const ownerName = user && hasRole(user, 'lead_manager') ? user.name : (leadManagers.find(u => u.id === fLeadOwner)?.fullName || undefined)
 
     const projData = {
       ...createProjectFromForm({
@@ -187,7 +188,7 @@ export default function ProjectsScreen() {
   }
 
   const canCreate = fCustomer.trim() && fPhone.trim() && fName.trim() && fLocation.trim()
-  const canExport = user?.role === 'owner' || user?.role === 'lead_manager' || user?.role === 'production_admin'
+  const canExport = hasRole(user, 'owner') || hasRole(user, 'lead_manager') || hasRole(user, 'production_admin')
 
   function exportCSV(filename: string, rows: (string | number)[][]) {
     const csv = rows.map(row =>
@@ -205,7 +206,7 @@ export default function ProjectsScreen() {
 
   function downloadProjectsExcel() {
     const canSeeCosts = canExport
-    const canSeeProfit = user?.role === 'owner' && !!(user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED'))
+    const canSeeProfit = hasRole(user, 'owner') && !!(user?.displayRole?.includes('MD') || user?.displayRole?.includes('ED'))
     let exportList = filtered
     if (exportFrom) exportList = exportList.filter(p => p.createdAt >= exportFrom)
     if (exportTo)   exportList = exportList.filter(p => p.createdAt <= exportTo + 'T23:59:59')
@@ -303,7 +304,7 @@ export default function ProjectsScreen() {
             <p className="text-xs font-semibold text-indigo-700">* Required fields</p>
           </div>
 
-          {user?.role === 'owner' && leadManagers.length > 0 && (
+          {hasRole(user, 'owner') && leadManagers.length > 0 && (
             <div>
               <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Assign Lead Owner <span className="text-slate-300 font-normal">(optional)</span></label>
               <select value={fLeadOwner} onChange={e => setFLeadOwner(e.target.value)} className={inp}>

@@ -2,6 +2,7 @@ import { MapPin, Clock, Phone, CheckCircle2, AlertCircle, ChevronRight } from 'l
 import type { Task } from '../../types'
 import { ProofBadge } from '../badges/ProofBadge'
 import { useAuth } from '../../context/AuthContext'
+import { hasRole } from '../../utils/permissions'
 
 interface Props {
   task: Task
@@ -57,7 +58,7 @@ function getCardBorder(task: Task): string {
 
 export function TaskCard({ task, onClick, onAction, compact = false }: Props) {
   const { user } = useAuth()
-  const isViewer  = user?.role === 'viewer'
+  const isViewer  = hasRole(user, 'viewer')
   const isDone    = task.status === 'completed'
   const isOverdue = task.status === 'overdue'
   const isUrgent  = task.priority === 'critical' || task.priority === 'high'

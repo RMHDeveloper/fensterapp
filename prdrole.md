@@ -7,6 +7,7 @@
 | `owner` | Managing Director (MD) / Executive Director (ED) / Admin | Haroon, senior decision makers |
 | `lead_manager` | Lead Owner (LO) / Sales Team | Sales staff who own client relationships |
 | `site_engineer` | Site Engineer (SE) | Field engineers who do measurements |
+| `site_engineer_lead` | Site Engineer Lead | Approves/reassigns the installer proposed for a project — separate from the regular Site Engineer's site-visit/measurement work |
 | `production_admin` | Production Incharge | Checks material availability before production starts |
 | `production_manager` | Production Manager | Does the actual production work on the floor |
 | `technician` / `installation_incharge` | Technician / Installation Incharge | Installs the product at the client site |
@@ -21,35 +22,35 @@
 
 ### Legend: ✅ Full Access · 👁 View Only · 🔒 No Access · ✏️ Own Only
 
-| Feature / Screen | MD / ED / Admin | Lead Owner (LO) | Site Engineer | Prod Admin | Prod Manager | Technician |
-|---|---|---|---|---|---|---|
-| **Leads screen** | ✅ All leads | ✏️ Own leads only | 🔒 | 🔒 | 🔒 | 🔒 |
-| Create lead | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 |
-| Edit lead | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 |
-| Update lead status | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 |
-| Assign site engineer | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 |
-| Convert lead to project | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 |
-| **Projects screen** | ✅ All projects | ✏️ Own projects | 👁 Assigned only | 👁 Pre-prod stage | 👁 Production stage | 👁 Installation stage |
-| Create project | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 |
-| Edit project details | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 |
-| Edit project dates | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 |
-| Edit account / client name | ✅ MD only | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
-| View project amount (₹) | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 |
-| **Site visit** | ✅ | 👁 | ✅ Can update | 🔒 | 🔒 | 🔒 |
-| **Quotation** | ✅ Approve/Reject | ✅ Create & Send | 🔒 | 🔒 | 🔒 | 🔒 |
-| View profit breakdown | ✅ MD/ED only | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
-| **Advance payment** | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 |
-| **Production check** | ✅ | 👁 | 🔒 | ✅ | 🔒 | 🔒 |
-| **Production work** | ✅ | 👁 | 🔒 | ✅ | ✅ | 🔒 |
-| **Installation** | ✅ | ✅ Assign | 🔒 | 🔒 | 🔒 | ✅ Do work |
-| **Final payment** | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 |
-| **Delivery QC** | ✅ | 👁 | 🔒 | 👁 | ✅ | 🔒 |
-| **Mistakes** | ✅ Review & Close | ✅ Create | ✅ Create | 🔒 | ✅ Create | ✅ Create |
-| **Payments** | ✅ | ✅ Update | 🔒 | 🔒 | 🔒 | 🔒 |
-| **Reports** | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
-| **Manage Users** | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
-| **Settings** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Files / Upload** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Feature / Screen | MD / ED / Admin | Lead Owner (LO) | Site Engineer | Site Engineer Lead | Prod Admin | Prod Manager | Technician | Viewer |
+|---|---|---|---|---|---|---|---|---|
+| **Leads screen** | ✅ All leads | ✏️ Own leads only | 🔒 | 👁 View + Create | 🔒 | 🔒 | 🔒 | 🔒 |
+| Create lead | ✅ | ✅ | 🔒 | ✅ | 🔒 | 🔒 | 🔒 | 🔒 |
+| Edit lead | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| Update lead status | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| Assign site engineer | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| Convert lead to project | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| **Projects screen** | ✅ All projects | ✏️ Own projects | 👁 Assigned only | 👁 Installation stage | 👁 Pre-prod stage | 👁 Production stage | 👁 Installation stage | 👁 Read-only, no stage filter |
+| Create project | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| Edit project details | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| Edit project dates | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| Edit account / client name | ✅ MD only | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| View project amount (₹) | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| **Site visit** | ✅ | 👁 | ✅ Can update | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| **Quotation** | ✅ Approve/Reject | ✅ Create & Send | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 👁 View only |
+| View profit breakdown | ✅ MD/ED only | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| **Advance payment** | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| **Production check** | ✅ | 👁 | 🔒 | 🔒 | ✅ | 🔒 | 🔒 | 🔒 |
+| **Production work** | ✅ | 👁 | 🔒 | 🔒 | ✅ | ✅ | 🔒 | 🔒 |
+| **Installation** | ✅ | ✅ Assign | 🔒 | ✅ Approve/reassign installer | 🔒 | 🔒 | ✅ Do work | 🔒 |
+| **Final payment** | ✅ | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| **Delivery QC** | ✅ | 👁 | 🔒 | 🔒 | 👁 | ✅ | 🔒 | 🔒 |
+| **Mistakes** | ✅ Review & Close | ✅ Create | ✅ Create | 🔒 | 🔒 | ✅ Create | ✅ Create | 🔒 |
+| **Payments** | ✅ | ✅ Update | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| **Reports** | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | ✅ |
+| **Manage Users** | ✅ | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 | 🔒 |
+| **Settings** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Files / Upload** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 👁 View only |
 
 ---
 
@@ -62,9 +63,11 @@ Each role only sees the project filter chips relevant to their job:
 | MD / ED / Admin | All, Measurement, Quotation, Negotiation, Pre-Production, Production, Dispatch Ready, Installation, Payment, Completed |
 | Lead Owner (LO) | All, Measurement, Quotation, Negotiation, Pre-Production, Production, Dispatch Ready, Installation, Payment, Completed |
 | Site Engineer | Measurement, Completed |
+| Site Engineer Lead | Installation, Completed |
 | Production Admin | Pre-Production, Completed |
 | Production Manager | Production, Dispatch Ready, Completed |
 | Technician | Installation, Completed |
+| Viewer | Active, Completed |
 
 ---
 
@@ -425,6 +428,17 @@ Project Complete ───────────── (LO / MD marks done, se
 - Uploads installation photos as proof.
 - Can log a **mistake** if something goes wrong during installation.
 - Cannot see leads, quotations, payments, or production.
+
+### Site Engineer Lead (`site_engineer_lead`)
+- Approves or reassigns the installer proposed for a project — a distinct step from the regular Site Engineer's site-visit/measurement work.
+- Can view and create leads, but cannot edit them or manage the lead-to-project flow.
+- Only sees the **Installation** filter chip in the projects screen (same scope as Technician).
+- Cannot see quotations, payments, or production.
+
+### Viewer (`viewer`)
+- Read-only guest access — no create/edit permissions anywhere in the app.
+- Can view projects (Active/Completed filter chips only), quotations, files, and reports.
+- Cannot see leads, payments, production, or installation.
 
 ---
 

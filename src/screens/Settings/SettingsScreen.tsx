@@ -1,48 +1,28 @@
 import { useState } from 'react'
-import { Bell, LogOut, RefreshCw, ChevronRight, UserCog, Users, UserPlus, Pencil, Camera, SlidersHorizontal, CalendarOff } from 'lucide-react'
+import { Bell, LogOut, RefreshCw, ChevronRight, Users, UserPlus, Pencil, Camera, SlidersHorizontal, CalendarOff } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useAppData } from '../../context/AppDataContext'
+import { hasRole } from '../../utils/permissions'
 import { loadManagedUsers, saveManagedUsers } from '../../utils/userStorage'
 import { storeFile } from '../../utils/fileStorage'
 import { migrateFromLocalStorage, hasLocalStorageData } from '../../utils/migrateFromLocalStorage'
-import { ROLE_LABELS, ROLE_DESCRIPTIONS, getRoleDisplayLabel } from '../../data/permissions'
+import { getRoleDisplayLabel } from '../../data/permissions'
 import { getAppSettings, saveAppSettings } from '../../utils/appSettings'
 import { Dialog } from '../../components/feedback/Dialog'
 import { Snackbar } from '../../components/feedback/Snackbar'
 import { BottomSheet } from '../../components/feedback/BottomSheet'
 import { AppHeader } from '../../components/layout/AppHeader'
 import { BackButton } from '../../components/layout/BackButton'
-import type { UserRole } from '../../types'
-
-const ROLES: UserRole[] = [
-  'owner', 'lead_manager', 'site_engineer', 'site_engineer_lead',
-  'production_admin', 'production_manager', 'technician',
-  'viewer',
-]
-
-const ROLE_ICONS: Record<UserRole, string> = {
-  owner:                '👑',
-  lead_manager:         '📋',
-  site_engineer:        '🏗️',
-  site_engineer_lead:   '🧭',
-  production_admin:     '📦',
-  production_manager:   '🔧',
-  technician:           '🔩',
-  installation_incharge:'🔩',
-  production_team:      '🔧',
-  viewer:               '👁️',
-}
 
 export default function SettingsScreen() {
   const navigate = useNavigate()
-  const { user, login, logout, can, updateProfile } = useAuth()
+  const { user, logout, can, updateProfile } = useAuth()
   const { resetAllData }             = useAppData()
 
   const [showLogout,    setShowLogout]    = useState(false)
   const [showReset,     setShowReset]     = useState(false)
   const [migrating,     setMigrating]     = useState(false)
-  const [showSwitcher,  setShowSwitcher]  = useState(false)
   const [notifications, setNotifications] = useState(true)
   const [snack, setSnack] = useState({ open: false, msg: '' })
 
@@ -157,12 +137,6 @@ export default function SettingsScreen() {
     } finally {
       setMigrating(false)
     }
-  }
-
-  function handleSwitchRole(role: UserRole) {
-    login(role)
-    setShowSwitcher(false)
-    setSnack({ open: true, msg: `Switched to ${ROLE_LABELS[role]}` })
   }
 
   const profilePhoto = user?.photo
@@ -286,7 +260,7 @@ export default function SettingsScreen() {
         </div>
 
         {/* Cost Rates — owner only (MD & ED) */}
-        {user?.role === 'owner' && (
+        {hasRole(user, 'owner') && (
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-2">Quotation Settings</p>
             <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
@@ -341,58 +315,11 @@ export default function SettingsScreen() {
           </div>
         )}
 
-        {/* TEMP DEBUG: Role Switcher opened to all users — REMOVE after testing */}
-        {user && (user.role === 'owner' || hasLocalStorageData()) && <div>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-2">Prototype</p>
+        {/* Data tools — local→Supabase migration (anyone with pending local data) and Clear All Data (owner only) */}
+        {user && (hasRole(user, 'owner') || hasLocalStorageData()) && <div>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-2">Data</p>
           <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-            {user?.role === 'owner' && (
-              <>
-                <button
-                  onClick={() => setShowSwitcher(v => !v)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 active:bg-slate-50 text-left"
-                >
-                  <div className="w-8 h-8 bg-violet-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <UserCog size={16} className="text-violet-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-slate-700">Switch Role</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">
-                      Currently: {user ? getRoleDisplayLabel(user.role, user.displayRole) : '—'}
-                    </p>
-                  </div>
-                  <ChevronRight size={15} className={`text-slate-300 flex-shrink-0 transition-transform ${showSwitcher ? 'rotate-90' : ''}`} />
-                </button>
-
-                {showSwitcher && (
-                  <div className="border-t border-slate-100 px-3 py-2 space-y-1">
-                    {ROLES.map(role => (
-                      <button
-                        key={role}
-                        onClick={() => handleSwitchRole(role)}
-                        className={[
-                          'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-colors',
-                          user?.role === role
-                            ? 'bg-blue-50 text-blue-700'
-                            : 'hover:bg-slate-50 active:bg-slate-100 text-slate-700',
-                        ].join(' ')}
-                      >
-                        <span className="text-lg">{ROLE_ICONS[role]}</span>
-                        <div>
-                          <p className="text-sm font-semibold leading-tight">{ROLE_LABELS[role]}</p>
-                          <p className="text-[10px] text-slate-400">{ROLE_DESCRIPTIONS[role]}</p>
-                        </div>
-                        {user?.role === role && (
-                          <span className="ml-auto text-[10px] font-bold text-green-700">Current</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {hasLocalStorageData() && (<>
-              <div className="h-px bg-slate-100 mx-4" />
+            {hasLocalStorageData() && (
               <button
                 onClick={handleMigrate}
                 disabled={migrating}
@@ -406,11 +333,11 @@ export default function SettingsScreen() {
                   <p className="text-[10px] text-slate-400 mt-0.5">Push existing browser data to the database</p>
                 </div>
               </button>
-            </>)}
+            )}
 
-            {user?.role === 'owner' && (
+            {hasRole(user, 'owner') && (
               <>
-                <div className="h-px bg-slate-100 mx-4" />
+                {hasLocalStorageData() && <div className="h-px bg-slate-100 mx-4" />}
                 <button
                   onClick={() => setShowReset(true)}
                   className="w-full flex items-center gap-3 px-4 py-3.5 active:bg-slate-50 text-left"

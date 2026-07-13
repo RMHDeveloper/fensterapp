@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Phone, IndianRupee } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
+import { hasRole } from '../../utils/permissions'
 import { PermissionGate } from '../../components/layout/PermissionGate'
 import { StatusBadge } from '../../components/badges/StatusBadge'
 import { PaymentCard } from '../../components/cards/PaymentCard'
@@ -31,7 +32,7 @@ export default function PaymentsScreen() {
   const [payMethod, setPayMethod]   = useState('Cash')
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' as 'success' | 'error' })
 
-  const myProjectIds = user?.role === 'lead_manager'
+  const myProjectIds = user && hasRole(user, 'lead_manager')
     ? new Set(projects.filter(p => p.ownerId === user.id).map(p => p.id))
     : null
 

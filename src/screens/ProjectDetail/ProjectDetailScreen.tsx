@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Calendar, MapPin, Phone, CheckCircle2, Star, Navigation, MessageCircle, Pencil, AlertTriangle, X, FolderX, Ban, Upload, FileText, Eye, Download } from 'lucide-react'
 import { useAppData } from '../../context/AppDataContext'
 import { useAuth } from '../../context/AuthContext'
+import { hasRole } from '../../utils/permissions'
 import { StatusBadge } from '../../components/badges/StatusBadge'
 import { ProgressCircle } from '../../components/cards/ProgressCircle'
 import { Timeline } from '../../components/layout/Timeline'
@@ -938,7 +939,7 @@ function handleSaveTask() {
                 const amt = getProjectAmount(project, flowTaskQuotation)
                 const balTask = tasks.find(t => t.balanceAmount && t.balanceAmount > 0)
                 const balance = balTask?.balanceAmount ?? 0
-                const showBalance = user?.role === 'owner'
+                const showBalance = hasRole(user, 'owner')
                 return amt != null ? (
                   <span className="text-emerald-300 text-sm font-extrabold">
                     · ₹{amt.toLocaleString('en-IN')}

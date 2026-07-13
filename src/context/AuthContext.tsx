@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import type { AuthUser, UserRole, Permission } from '../types'
 import { hasPermission } from '../utils/permissions'
 import { authenticateUser } from '../data/mockUsers'
-import { loadManagedUsers, initUsersFromSupabase, DEFAULT_PRODUCTION_USERS } from '../utils/userStorage'
+import { initUsersFromSupabase } from '../utils/userStorage'
 
 const SESSION_KEY = 'fenster_session'
 
@@ -16,7 +16,6 @@ interface AuthContextValue {
   isLoggedIn:           boolean
   isAuthReady:          boolean
   loginWithCredentials: (mobile: string, password: string) => LoginResult
-  login:                (role: UserRole) => void
   logout:               () => void
   can:                  (permission: Permission) => boolean
   updateProfile:        (updates: Partial<Pick<AuthUser, 'name' | 'photo'>>) => void
@@ -70,15 +69,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: true }
   }
 
-  function login(role: UserRole) {
-    const users   = loadManagedUsers()
-    const account = users.find(u => u.role === role)
-      ?? DEFAULT_PRODUCTION_USERS.find(u => u.role === role)
-    if (!account) return
-    const initials = account.fullName.split(' ').map((w: string) => w[0] ?? '').join('').slice(0, 2).toUpperCase()
-    setUser({ id: account.id, role, name: account.fullName, initials, email: account.email, displayRole: account.displayRole })
-  }
-
   function logout() {
     setUser(null)
     sessionStorage.removeItem(SESSION_KEY)
@@ -101,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn: !!user, isAuthReady, loginWithCredentials, login, logout, can, updateProfile }}>
+    <AuthContext.Provider value={{ user, isLoggedIn: !!user, isAuthReady, loginWithCredentials, logout, can, updateProfile }}>
       {children}
     </AuthContext.Provider>
   )

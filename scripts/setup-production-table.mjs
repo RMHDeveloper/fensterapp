@@ -22,8 +22,14 @@ END $$;
 ALTER PUBLICATION supabase_realtime ADD TABLE fenster_production;
 `
 
+const connectionString = process.env.SUPABASE_DB_URL
+if (!connectionString) {
+  console.error('Set SUPABASE_DB_URL (Supabase project → Settings → Database → Connection string) before running this script.')
+  process.exit(1)
+}
+
 const client = new Client({
-  connectionString: 'postgresql://postgres.ifpyxfrdphrzybxnvnwx:Fenster%40098%21%21@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres',
+  connectionString,
   ssl: { rejectUnauthorized: false },
 })
 
