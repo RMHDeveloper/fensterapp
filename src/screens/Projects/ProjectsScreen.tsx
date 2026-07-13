@@ -13,7 +13,7 @@ import { BottomSheet } from '../../components/feedback/BottomSheet'
 import { Snackbar } from '../../components/feedback/Snackbar'
 import { createProjectFromForm, createSiteAssignTask } from '../../utils/workflow'
 import { loadManagedUsers } from '../../utils/userStorage'
-import { normalizeRole, isCompletedProject, isCancelledProject, isConvertedProject, getProjectFilterStage, type ProjectFilterStage } from '../../utils/stageHelpers'
+import { normalizeRole, isCompletedProject, isCancelledProject, isConvertedProject, getProjectFilterStage, canUserSeeProject, type ProjectFilterStage } from '../../utils/stageHelpers'
 import type { Project, Task } from '../../types'
 
 type Filter = 'active' | 'pre_production' | 'production' | 'ready_to_dispatch' | 'installation' | 'collection' | 'completed' | 'dropped'
@@ -101,29 +101,6 @@ export default function ProjectsScreen() {
   const leadManagers = loadManagedUsers().filter(u => u.role === 'lead_manager' && u.status === 'active')
   const chips = getChipsForRole(user?.role)
 
-  function matchesRoleVisibility(p: Project, bucket: Bucket): boolean {
-    const role = normalizeRole(user?.role)
-    if (!role || role === 'owner') return true
-    if (role === 'lead_manager') return p.ownerId === user!.id
-    if (role === 'site_engineer') {
-      return allTasks.some(t =>
-        t.projectId === p.id &&
-        (t.type === 'site_visit' || t.flowStage === 'site_assign' || t.flowStage === 'site_visit') &&
-        (t.assignedTo === user!.name || t.assignee === user!.name || t.siteEngineerName === user!.name)
-      )
-    }
-    if (role === 'production_admin') {
-      return isCompletedProject(p) || bucket === 'pre_production' || bucket === 'production'
-    }
-    if (role === 'production_manager') {
-      return isCompletedProject(p) || bucket === 'pre_production' || bucket === 'production' || bucket === 'ready_to_dispatch'
-    }
-    if (role === 'technician' || role === 'site_engineer_lead') {
-      return isCompletedProject(p) || bucket === 'ready_to_dispatch' || bucket === 'installation'
-    }
-    return true
-  }
-
   const filtered = projects.filter(p => {
     // Not yet converted from its lead (still managed from the Leads page) — hidden
     // everywhere except for the site engineer, whose only assigned work (site
@@ -131,7 +108,7 @@ export default function ProjectsScreen() {
     // left them with an empty Projects tab despite having active site visits.
     if (!isConvertedProject(p) && normalizeRole(user?.role) !== 'site_engineer') return false
     const bucket = getProjectFilterStage(p, allTasks)
-    if (!matchesRoleVisibility(p, bucket)) return false
+    if (!canUserSeeProject(p, allTasks, user)) return false
     const matchF = matchesFilter(p, filter, bucket)
     const matchS = !search
       || p.name.toLowerCase().includes(search.toLowerCase())

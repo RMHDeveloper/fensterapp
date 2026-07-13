@@ -36,7 +36,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   ],
 
   site_engineer: [
-    'view_home','view_today','view_projects',
+    'view_home','view_today',
     'view_site_visit','update_site_visit',
     'view_files','upload_files',
     'view_mistakes','create_mistake',

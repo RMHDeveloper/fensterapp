@@ -2597,7 +2597,7 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
           {/* ═══════════════════════════════════════════════════════════════
               3. SITE REVIEW — LM creates quotation
           ════════════════════════════════════════════════════════════════ */}
-          {displayStage === 'site_review' && (
+          {displayStage === 'site_review' && (role === 'lead_manager' || role === 'owner') && (
             <>
               {/* ── Site Visit Summary (moved to top — everything except site location) ── */}
               {(task.siteEngineerName || task.visitDate || task.sitePhotos?.length || task.measurementDetails) && (
@@ -2780,6 +2780,49 @@ export function DemoFlowSheet({ isOpen, onClose, task, onUpdate }: Props) {
                 className="w-full py-4 rounded-2xl bg-violet-600 text-white text-sm font-extrabold active:opacity-90 flex items-center justify-center gap-2">
                 <Send size={15} /> Send Quotation for Approval
               </button>
+            </>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════════
+              3b. SITE REVIEW — read-only summary for everyone else (e.g. the
+              Site Engineer checking what they submitted) — no access to the
+              Sales Team's quotation form.
+          ════════════════════════════════════════════════════════════════ */}
+          {displayStage === 'site_review' && role !== 'lead_manager' && role !== 'owner' && (
+            <>
+              {(task.siteEngineerName || task.visitDate || task.sitePhotos?.length || task.measurementDetails) && (
+                <div className="space-y-3 pb-3">
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Your Site Visit Submission</p>
+
+                  {(task.siteEngineerName || task.visitDate) && (
+                    <div className="bg-cyan-50 border border-cyan-200 rounded-xl px-4 py-3 space-y-0.5">
+                      <p className="text-[10px] font-bold text-cyan-500 uppercase mb-1">Site Engineer Details</p>
+                      {task.siteEngineerName && <p className="text-sm font-bold text-cyan-800">{task.siteEngineerName}</p>}
+                      {task.visitDate && <p className="text-xs text-cyan-600">Visit Date: {task.visitDate}{task.visitTime ? ` at ${task.visitTime}` : ''}</p>}
+                      {task.note && <p className="text-xs text-cyan-500 italic mt-0.5">"{task.note}"</p>}
+                    </div>
+                  )}
+                  {task.sitePhotos && task.sitePhotos.length > 0 && (
+                    <div className="bg-teal-50 rounded-xl px-4 py-3">
+                      <MediaPreviewList files={task.sitePhotos} title={`Site Photos (${task.sitePhotos.length})`} />
+                    </div>
+                  )}
+                  {task.measurementFiles && task.measurementFiles.length > 0 && (
+                    <div className="bg-violet-50 rounded-xl px-4 py-3">
+                      <MediaPreviewList files={task.measurementFiles} title={`Measurement Files (${task.measurementFiles.length})`} />
+                    </div>
+                  )}
+                  {task.measurementDetails && (
+                    <div className="bg-slate-50 rounded-xl px-4 py-3">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Measurements</p>
+                      <p className="text-xs text-slate-700 whitespace-pre-wrap">{task.measurementDetails}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              <WaitingView icon={FileText} color="bg-violet-50 border border-violet-200 text-violet-700"
+                title="Waiting for Sales Team"
+                sub="Sales Team is preparing the quotation from your site visit." />
             </>
           )}
 

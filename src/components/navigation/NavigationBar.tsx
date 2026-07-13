@@ -1,4 +1,4 @@
-import { LayoutDashboard, CalendarCheck, FolderOpen, Layers, Settings, Users, MapPin, CheckSquare, UserCheck, CalendarOff } from 'lucide-react'
+import { LayoutDashboard, CalendarCheck, FolderOpen, Layers, Settings, Users, MapPin, CheckSquare, UserCheck, CalendarOff, User } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import type { UserRole } from '../../types'
@@ -23,7 +23,7 @@ const ROLE_PATHS: Record<UserRole, string[]> = {
   // MD/ED: leads replace today; approvals in bar
   owner:                ['/dashboard', '/leads', '/approvals', '/projects', '/settings'],
   lead_manager:         ['/home', '/leads/negotiation', '/leads', '/projects', '/settings'],
-  site_engineer:        ['/home', '/tasks', '/site-visits', '/projects',   '/settings'],
+  site_engineer:        ['/home', '/tasks', '/site-visits', '/settings'],
   site_engineer_lead:   ['/home', '/tasks', '/leads', '/projects', '/settings'],
   production_admin:     ['/home', '/tasks', '/production',  '/projects',   '/settings'],
   production_manager:   ['/home', '/tasks', '/projects',    '/settings'],
@@ -58,6 +58,10 @@ export function NavigationBar() {
       if (path === '/tasks') {
         const label = roles.includes('site_engineer_lead') ? 'Approvals' : isDateRole ? 'Today' : 'Pending'
         return { ...item, label }
+      }
+      // Site engineers use Settings purely as their profile page — label it as such.
+      if (path === '/settings' && roles.length === 1 && roles[0] === 'site_engineer') {
+        return { ...item, icon: User, label: 'Profile' }
       }
       return item
     })

@@ -51,6 +51,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(toAuthUser(managed))
     }
 
+    let unsubscribe: (() => void) | undefined
+
     async function init() {
       await initUsersFromSupabase().catch(() => {})
       if (!isSupabaseConfigured || !supabase) { if (!cancelled) setIsAuthReady(true); return }
@@ -59,15 +61,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session) await loadProfileForSession(session.user.id)
       if (!cancelled) setIsAuthReady(true)
 
-      supabase.auth.onAuthStateChange((_event, newSession) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
         if (cancelled) return
         if (newSession) loadProfileForSession(newSession.user.id)
         else setUser(null)
       })
+      unsubscribe = () => subscription.unsubscribe()
     }
     init()
 
-    return () => { cancelled = true }
+    return () => { cancelled = true; unsubscribe?.() }
   }, [])
 
   async function loginWithCredentials(mobile: string, password: string): Promise<LoginResult> {

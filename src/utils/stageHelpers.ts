@@ -1,4 +1,4 @@
-import type { Project, Task, UserRole, Lead, FlowStage } from '../types'
+import type { Project, Task, UserRole, Lead, FlowStage, AuthUser } from '../types'
 
 // Normalizes free-text role variants (PM, Production Manager, Production Incharge,
 // Project Incharge, Installation Technician, etc.) into the canonical UserRole used
@@ -72,6 +72,36 @@ export function getProjectFilterStage(project: Project, tasks: Task[]): ProjectF
   if (stage === 'installation_update') return 'installation'
   if (stage === 'final_payment' || stage === 'final_completion') return 'collection'
   return null
+}
+
+// Single source of truth for "can this user see this project" — used by
+// ProjectsScreen's row filter and FilesScreen's file-visibility scoping so
+// the two can't drift apart. Mirrors the same rule enforced server-side by
+// fenster_can_see_project() in supabase/rls-authenticated-policies.sql.
+export function canUserSeeProject(
+  project: Project, tasks: Task[], user: Pick<AuthUser, 'role' | 'name' | 'id'> | null | undefined
+): boolean {
+  const role = normalizeRole(user?.role)
+  if (!role || role === 'owner' || role === 'viewer') return true
+  if (role === 'lead_manager') return project.ownerId === user?.id
+  if (role === 'site_engineer') {
+    return tasks.some(t =>
+      t.projectId === project.id &&
+      (t.type === 'site_visit' || t.flowStage === 'site_assign' || t.flowStage === 'site_visit') &&
+      (t.assignedTo === user?.name || t.assignee === user?.name || t.siteEngineerName === user?.name)
+    )
+  }
+  const bucket = getProjectFilterStage(project, tasks)
+  if (role === 'production_admin') {
+    return isCompletedProject(project) || bucket === 'pre_production' || bucket === 'production'
+  }
+  if (role === 'production_manager') {
+    return isCompletedProject(project) || bucket === 'pre_production' || bucket === 'production' || bucket === 'ready_to_dispatch'
+  }
+  if (role === 'technician' || role === 'site_engineer_lead') {
+    return isCompletedProject(project) || bucket === 'ready_to_dispatch' || bucket === 'installation'
+  }
+  return true
 }
 
 // Real runtime order of flow stages (NOT the declaration order in FlowStage) —
